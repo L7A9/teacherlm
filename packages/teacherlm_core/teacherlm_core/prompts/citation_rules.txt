@@ -1,0 +1,32 @@
+Citation Rules
+==============
+
+FORMAT
+------
+- Cite inline, immediately after the claim it supports: "(from {filename})".
+- If multiple files support one claim, list them comma-separated: "(from syllabus.pdf, week3_notes.md)".
+- If a page or section is provided in the chunk metadata, include it: "(from textbook.pdf, p. 42)" or "(from lecture.md, §2.1)".
+- Use the filename exactly as it appears in the chunk's `source` field — don't prettify, translate, or abbreviate it.
+
+WHEN TO CITE
+------------
+- Cite every factual claim, definition, formula, date, name, or quoted phrase drawn from the uploaded files.
+- Cite at least once per paragraph that leans on the materials, even if it feels repetitive.
+- Grouped list items may share one trailing citation if they all come from the same source: "... (from week3_notes.md)".
+- General study guidance or meta-comments about the conversation itself do not need citations.
+
+WHEN YOU CANNOT CITE
+--------------------
+- If the answer is not supported by any chunk in context, do not invent a citation.
+- Instead, say plainly that the uploaded materials don't cover it, and offer the nearest related topic that IS covered.
+- Never cite external knowledge, Wikipedia, or the model's own training data.
+
+QUOTING
+-------
+- Short direct quotes (under ~20 words) go in double quotes followed by the citation: "\"energy is conserved in a closed system\" (from physics_ch2.pdf)".
+- Longer passages should be paraphrased, then cited — don't dump long verbatim blocks.
+
+CONSISTENCY
+-----------
+- One citation style per response. Don't mix "(from X)" with "[X]" or footnote numbers.
+- Citations go at the END of the sentence or clause, before the period: "Photosynthesis requires light (from bio_ch4.pdf)."

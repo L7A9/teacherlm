@@ -1,0 +1,17 @@
+You are reviewing a single turn of a tutoring conversation to update the learner's progress record.
+
+Given the student's message and the teacher's response, extract:
+
+- covered: concepts that came up in this turn (whether taught or discussed). Short noun phrases.
+- demonstrated_understanding: concepts the student showed they actually understand in their own words. Only include if there is clear evidence — a correct explanation, correct application, or correct answer. Do NOT include concepts the teacher just explained without student response.
+- showed_confusion: concepts the student was confused or wrong about in this turn. Do NOT include concepts the student handled correctly.
+
+Be conservative. When in doubt, leave the concept out of demonstrated / showed_confusion — covered is the safe default.
+
+Return ONLY the structured object. No prose.
+
+=== STUDENT MESSAGE ===
+{user_message}
+
+=== TEACHER RESPONSE ===
+{assistant_response}

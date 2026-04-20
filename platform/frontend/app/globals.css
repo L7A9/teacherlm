@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Dark theme is the default — html gets `class="dark"` in layout.tsx.
+   Light mode variables live under `:root` for a future toggle. */
+
+:root {
+  --background: 0 0% 100%;
+  --foreground: 240 10% 10%;
+  --surface: 0 0% 98%;
+  --surface-foreground: 240 10% 10%;
+  --muted: 240 5% 96%;
+  --muted-foreground: 240 4% 40%;
+  --border: 240 6% 90%;
+  --ring: 252 80% 60%;
+  --primary: 252 80% 60%;
+  --primary-foreground: 0 0% 100%;
+  --accent: 188 85% 45%;
+  --accent-foreground: 0 0% 100%;
+  --success: 150 60% 45%;
+  --warning: 38 90% 55%;
+  --danger: 0 75% 55%;
+  --radius: 0.625rem;
+
+  --font-sans: "Inter", "Geist", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Geist Mono", ui-monospace, monospace;
+}
+
+.dark {
+  --background: 240 10% 6%;
+  --foreground: 240 10% 96%;
+  --surface: 240 10% 10%;
+  --surface-foreground: 240 10% 96%;
+  --muted: 240 6% 16%;
+  --muted-foreground: 240 5% 65%;
+  --border: 240 6% 20%;
+  --ring: 252 80% 65%;
+  --primary: 252 80% 65%;
+  --primary-foreground: 240 10% 6%;
+  --accent: 188 85% 55%;
+  --accent-foreground: 240 10% 6%;
+  --success: 150 55% 55%;
+  --warning: 38 90% 60%;
+  --danger: 0 75% 60%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html,
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    color-scheme: dark;
+  }
+  body {
+    @apply antialiased min-h-screen;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.35);
+  }
+
+  /* Custom scrollbars that match the dark theme. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.4);
+  }
+}
+
+@layer components {
+  .flip-card-face {
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+}
+
+@layer utilities {
+  .preserve-3d {
+    transform-style: preserve-3d;
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "generators": [
+    {
+      "id": "teacher_gen",
+      "name": "Teacher",
+      "type": "api",
+      "endpoint": "http://teacher_gen:8001/run",
+      "enabled": true,
+      "output_type": "text",
+      "icon": "👩‍🏫",
+      "description": "Your AI teacher — chats, explains, guides",
+      "is_chat_default": true
+    },
+    {
+      "id": "quiz_gen",
+      "name": "Quiz",
+      "type": "api",
+      "endpoint": "http://localhost:8002/run",
+      "enabled": false,
+      "output_type": "quiz",
+      "icon": "📝",
+      "description": "Generate a quiz from your course materials",
+      "is_chat_default": false
+    },
+    {
+      "id": "report_gen",
+      "name": "Report",
+      "type": "api",
+      "endpoint": "http://localhost:8003/run",
+      "enabled": false,
+      "output_type": "report",
+      "icon": "📄",
+      "description": "Generate a study report on what you've covered",
+      "is_chat_default": false
+    },
+    {
+      "id": "presentation_gen",
+      "name": "Presentation",
+      "type": "api",
+      "endpoint": "http://localhost:8004/run",
+      "enabled": false,
+      "output_type": "presentation",
+      "icon": "📑",
+      "description": "Generate a slide-style presentation",
+      "is_chat_default": false
+    },
+    {
+      "id": "flashcard_gen",
+      "name": "Flashcards",
+      "type": "api",
+      "endpoint": "http://localhost:8005/run",
+      "enabled": false,
+      "output_type": "flashcards",
+      "icon": "🎴",
+      "description": "Generate flashcards for spaced repetition",
+      "is_chat_default": false
+    },
+    {
+      "id": "chart_gen",
+      "name": "Chart",
+      "type": "api",
+      "endpoint": "http://localhost:8006/run",
+      "enabled": false,
+      "output_type": "chart",
+      "icon": "📊",
+      "description": "Generate a concept diagram or chart",
+      "is_chat_default": false
+    },
+    {
+      "id": "podcast_gen",
+      "name": "Podcast",
+      "type": "api",
+      "endpoint": "http://localhost:8007/run",
+      "enabled": false,
+      "output_type": "podcast",
+      "icon": "🎙️",
+      "description": "Generate a podcast-style explainer",
+      "is_chat_default": false
+    }
+  ]
+}

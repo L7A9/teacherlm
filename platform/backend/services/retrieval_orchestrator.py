@@ -1,0 +1,129 @@
+from __future__ import annotations
+
+import uuid
+from typing import Literal
+
+from teacherlm_core.retrieval.hybrid_retriever import HybridRetriever
+from teacherlm_core.retrieval.retrieval_modes import (
+    coverage_broad,
+    narrative_arc,
+    relationship_dense,
+    semantic_topk,
+    topic_clusters,
+)
+from teacherlm_core.schemas.chunk import Chunk
+
+from config import Settings, get_settings
+from services.vector_service import VectorService, _collection_name, get_vector_service
+
+
+OutputType = Literal["text", "quiz", "report", "presentation", "flashcards", "chart", "podcast"]
+RetrievalMode = Literal[
+    "semantic_topk",
+    "coverage_broad",
+    "narrative_arc",
+    "topic_clusters",
+    "relationship_dense",
+]
+
+
+# Mapping from backend CLAUDE.md.
+_OUTPUT_TO_MODE: dict[str, RetrievalMode] = {
+    "text": "semantic_topk",
+    "chat": "semantic_topk",
+    "quiz": "coverage_broad",
+    "flashcards": "coverage_broad",
+    "report": "topic_clusters",
+    "presentation": "topic_clusters",
+    "podcast": "narrative_arc",
+    "chart": "relationship_dense",
+}
+
+
+class RetrievalOrchestrator:
+    """Picks a retrieval mode from the requested output type and runs it.
+
+    Builds a HybridRetriever on top of the VectorService's AsyncQdrantClient
+    and cached fastembed TextEmbedding. BM25 is primed from the per-conversation
+    chunk corpus scrolled out of Qdrant.
+    """
+
+    def __init__(
+        self,
+        settings: Settings | None = None,
+        vector_service: VectorService | None = None,
+    ) -> None:
+        self._settings = settings or get_settings()
+        self._vectors = vector_service or get_vector_service()
+
+    def mode_for(self, output_type: str) -> RetrievalMode:
+        return _OUTPUT_TO_MODE.get(output_type, "semantic_topk")
+
+    async def retrieve_for(
+        self,
+        *,
+        output_type: str,
+        query: str,
+        conversation_id: uuid.UUID | str,
+    ) -> list[Chunk]:
+        mode = self.mode_for(output_type)
+        return await self.retrieve(mode=mode, query=query, conversation_id=conversation_id)
+
+    async def retrieve(
+        self,
+        *,
+        mode: RetrievalMode,
+        query: str,
+        conversation_id: uuid.UUID | str,
+    ) -> list[Chunk]:
+        collection = _collection_name(conversation_id)
+        if not await self._vectors._client.collection_exists(collection):
+            return []
+
+        embedder = await self._vectors._get_embedder()
+        retriever = HybridRetriever(
+            qdrant_client=self._vectors._client,
+            collection_name=collection,
+            embedder=embedder,
+        )
+
+        all_chunks = await self._load_corpus(conversation_id)
+        if all_chunks:
+            retriever.index_bm25(all_chunks)
+
+        k = self._settings.retrieval_top_k
+
+        match mode:
+            case "semantic_topk":
+                return await semantic_topk(query, retriever, k=k)
+            case "coverage_broad":
+                return await coverage_broad(query, retriever, k=max(k * 2, 12))
+            case "narrative_arc":
+                return await narrative_arc(query, retriever, all_chunks)
+            case "topic_clusters":
+                return await topic_clusters(query, retriever, n_clusters=6)
+            case "relationship_dense":
+                return await relationship_dense(query, retriever)
+
+    async def _load_corpus(self, conversation_id: uuid.UUID | str) -> list[Chunk]:
+        scored = await self._vectors.scroll_all(conversation_id, limit=2000)
+        return [
+            Chunk(
+                text=s.text,
+                source=s.source,
+                score=s.score,
+                chunk_id=s.chunk_id,
+                metadata=dict(s.metadata),
+            )
+            for s in scored
+        ]
+
+
+_orchestrator: RetrievalOrchestrator | None = None
+
+
+def get_retrieval_orchestrator() -> RetrievalOrchestrator:
+    global _orchestrator
+    if _orchestrator is None:
+        _orchestrator = RetrievalOrchestrator()
+    return _orchestrator

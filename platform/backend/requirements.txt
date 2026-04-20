@@ -1,0 +1,42 @@
+# TeacherLM Platform Backend — Python 3.14+
+# Compatibility: Pydantic V2 only, no LangChain/LangGraph, no llama-parse.
+
+# --- Web framework ---
+fastapi>=0.135
+uvicorn[standard]>=0.32
+sse-starlette>=2.1
+python-multipart>=0.0.18
+
+# --- Data validation / settings ---
+pydantic>=2.12
+pydantic-settings>=2.7
+
+# --- Database ---
+sqlalchemy>=2.0.36
+asyncpg>=0.30
+alembic>=1.14
+
+# --- Parsing (llama-cloud v1+, NOT llama-parse / llama-cloud-services) ---
+llama-cloud>=1.0
+
+# --- Vector store + embeddings ---
+qdrant-client>=1.12
+fastembed>=0.4
+
+# --- Task queue ---
+arq>=0.26
+
+# --- Object storage ---
+minio>=7.2
+aiofiles>=24.1
+
+# --- HTTP client (dispatcher adapters, SSE) ---
+httpx>=0.28
+httpx-sse>=0.4
+
+# --- Shared core library ---
+# teacherlm_core is installed separately (editable) before this file is
+# processed — by the Dockerfile (RUN pip install -e /app/packages/teacherlm_core)
+# or locally via: pip install -e packages/teacherlm_core
+# Listing it here with a relative -e path breaks when pip's cwd differs from
+# platform/backend/ (e.g., inside Docker the WORKDIR is /app).

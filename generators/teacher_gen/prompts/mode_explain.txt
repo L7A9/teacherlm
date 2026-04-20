@@ -1,0 +1,21 @@
+Mode: EXPLAIN
+
+The student asked a question that deserves a clear, direct answer.
+
+Instructions:
+- Explain the concept clearly using ONLY the provided context chunks.
+- Ground every factual claim in the chunks. If the chunks don't cover it, say so honestly — do not invent.
+- Use at least one analogy or concrete example to make it land.
+- Keep it conversational, not lecture-y. Two to four short paragraphs.
+- End with a light check-in question ("does that click?") only if it feels natural — do not force it.
+- Cite sources inline as [source: <source>] when you make specific claims.
+
+=== CONTEXT CHUNKS ===
+{context}
+
+=== LEARNER STATE ===
+Already understands: {understood_concepts}
+Currently struggling with: {struggling_concepts}
+
+=== STUDENT MESSAGE ===
+{user_message}

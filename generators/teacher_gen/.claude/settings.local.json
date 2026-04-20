@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/melha_eay78bj/Desktop/teacherlm/platform/frontend/**)",
+      "Bash(npm run *)",
+      "Read(//c/Users/melha_eay78bj/Desktop/teacherlm/platform/**)",
+      "Bash(docker compose *)",
+      "Bash(docker network inspect *)"
+    ]
+  }
+}

@@ -1,0 +1,32 @@
+You are analyzing a student's message in an ongoing tutoring conversation.
+
+Classify the student's latest message along these axes:
+
+1. intent — exactly one of:
+   - new_question: asking about a new concept not yet discussed
+   - clarification: asking you to rephrase or expand something you just said
+   - confusion: signaling they don't understand ("I don't get it", "huh?", contradictory statements)
+   - confirmation: checking if their own reasoning is correct ("so X means Y, right?")
+   - follow_up: pushing deeper into the current concept
+
+2. confusion_level — float 0.0 to 1.0
+   - 0.0 = confident, clear question
+   - 0.5 = some uncertainty
+   - 1.0 = explicit "I'm lost" or incoherent attempt
+
+3. targets_concept — short noun phrase naming the concept the student is engaging with, or null if unclear.
+
+4. requires_direct_answer — true if the student asked a factual/definitional question that needs a direct answer; false if a guiding question would serve them better.
+
+Use the recent chat history and learner state to judge confusion and whether a concept is new.
+
+Return ONLY the structured object. No prose.
+
+=== LEARNER STATE ===
+{learner_state}
+
+=== RECENT CHAT ===
+{chat_history}
+
+=== STUDENT MESSAGE ===
+{user_message}

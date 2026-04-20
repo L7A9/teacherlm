@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "teacherlm_core"
+version = "0.1.0"
+description = "Shared library for the TeacherLM platform and generators."
+readme = "README.md"
+requires-python = ">=3.14"
+license = { text = "Proprietary" }
+authors = [{ name = "TeacherLM" }]
+dependencies = [
+    "pydantic>=2.12",
+    "pydantic-settings>=2.6",
+    "ollama>=0.4",
+    "qdrant-client>=1.12",
+    "fastembed>=0.4",
+    "rank-bm25>=0.2.2",
+    "httpx>=0.28",
+    "numpy>=2.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["teacherlm_core"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

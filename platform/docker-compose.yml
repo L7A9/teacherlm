@@ -1,0 +1,158 @@
+# TeacherLM platform stack.
+#
+# Service hostnames inside the compose network:
+#   postgres  redis  qdrant  minio  backend  arq_worker  teacher_gen  frontend
+#
+# Secrets and overridable credentials live in platform/.env (see .env.example).
+# The backend and worker override URLs for the in-network hostnames below so a
+# developer's host-side .env (pointing at localhost) still works outside compose.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-teacherlm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-teacherlm}
+      POSTGRES_DB: ${POSTGRES_DB:-teacherlm}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-teacherlm}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    restart: unless-stopped
+    volumes:
+      - qdrant_data:/qdrant/storage
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build:
+      context: ..
+      dockerfile: platform/backend/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-teacherlm}:${POSTGRES_PASSWORD:-teacherlm}@postgres:5432/${POSTGRES_DB:-teacherlm}
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+      MINIO_ENDPOINT: minio:9000
+      MINIO_SECURE: "false"
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+      CORS_ORIGINS: '["http://localhost:3000"]'
+    volumes:
+      - ../generators_registry.json:/app/generators_registry.json:ro
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      minio:
+        condition: service_healthy
+
+  arq_worker:
+    build:
+      context: ..
+      dockerfile: platform/backend/Dockerfile
+    restart: unless-stopped
+    command: ["arq", "workers.ingestion_worker.WorkerSettings"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-teacherlm}:${POSTGRES_PASSWORD:-teacherlm}@postgres:5432/${POSTGRES_DB:-teacherlm}
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+      MINIO_ENDPOINT: minio:9000
+      MINIO_SECURE: "false"
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      minio:
+        condition: service_healthy
+
+  teacher_gen:
+    build:
+      context: ..
+      dockerfile: generators/teacher_gen/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      TEACHER_GEN_OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+      TEACHER_GEN_CHAT_MODEL: ${TEACHER_GEN_CHAT_MODEL:-llama3.1:8b-instruct-q4_K_M}
+      TEACHER_GEN_ANALYSIS_MODEL: ${TEACHER_GEN_ANALYSIS_MODEL:-llama3.2:latest}
+      TEACHER_GEN_EXTRACTION_MODEL: ${TEACHER_GEN_EXTRACTION_MODEL:-llama3.2:latest}
+      TEACHER_GEN_HYDE_ENABLED: ${TEACHER_GEN_HYDE_ENABLED:-false}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${TEACHER_GEN_PORT:-8001}:8001"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # NEXT_PUBLIC_* is inlined at build time; must be a build-arg, not a runtime env.
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  qdrant_data:
+  minio_data:
