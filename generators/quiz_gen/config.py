@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     # Quiz shape defaults
     default_question_count: int = 8
     min_question_count: int = 3
-    max_question_count: int = 20
+    max_question_count: int = 30
 
     # Difficulty mix (must sum to 1.0)
     mix_struggling: float = 0.6
@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     mix_stretch: float = 0.1
 
     # Distractor engine
+    # Off by default: the fastembed-bigram candidate pool often surfaces
+    # fragments ("of the", "by which") that aren't answer-shaped, which ends up
+    # degrading the LLM's original options rather than improving them.
+    enhance_distractors: bool = False
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     distractor_sim_min: float = 0.4
     distractor_sim_max: float = 0.7

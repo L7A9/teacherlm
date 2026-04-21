@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import re
+
 from ..schemas import FillBlank, MCQ, Question, TrueFalse
+
+
+_WS_RE = re.compile(r"\s+")
 
 
 def _is_valid_mcq(q: MCQ) -> bool:
@@ -64,6 +69,39 @@ def validate_questions(questions: list[Question]) -> tuple[list[Question], list[
                     "reason": "failed_quality_validation",
                 }
             )
+    return kept, dropped
+
+
+def _question_signature(q: Question) -> str:
+    """Normalized form used to detect near-duplicate questions.
+
+    Lowercases, collapses whitespace, strips trailing punctuation. Good enough
+    to catch the common failure mode (same concept + same chunk → same wording).
+    """
+    text = q.question.strip().lower().rstrip("?.!")
+    return _WS_RE.sub(" ", text)
+
+
+def deduplicate_questions(
+    questions: list[Question],
+) -> tuple[list[Question], list[dict]]:
+    """Drop questions that share a normalized wording with an earlier one."""
+    kept: list[Question] = []
+    dropped: list[dict] = []
+    seen: set[str] = set()
+    for q in questions:
+        sig = _question_signature(q)
+        if sig in seen:
+            dropped.append(
+                {
+                    "type": q.type,
+                    "concept": getattr(q, "concept", ""),
+                    "reason": "duplicate_question",
+                }
+            )
+            continue
+        seen.add(sig)
+        kept.append(q)
     return kept, dropped
 
 

@@ -3,10 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { CheckCircle2, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import rehypeKatex from "rehype-katex";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import type { FlashcardPayload, UUID } from "@/lib/types";
+import type { FlashcardItem, FlashcardPayload, UUID } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useProgressStore } from "@/stores/progressStore";
 
@@ -16,7 +20,10 @@ interface Props {
 }
 
 export function FlashcardRenderer({ payload, conversationId }: Props) {
-  const cards = payload.cards;
+  const cards = useMemo(
+    () => (payload.cards ?? []).map(normalizeCard).filter(isViewable),
+    [payload.cards],
+  );
   const total = cards.length;
   const [index, setIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
@@ -106,8 +113,8 @@ export function FlashcardRenderer({ payload, conversationId }: Props) {
             flipped && "[transform:rotateY(180deg)]",
           )}
         >
-          <CardFace side="front">{card.front}</CardFace>
-          <CardFace side="back">{card.back}</CardFace>
+          <CardFace side="front" text={card.front} />
+          <CardFace side="back" text={card.back} />
         </div>
       </div>
 
@@ -155,23 +162,71 @@ export function FlashcardRenderer({ payload, conversationId }: Props) {
   );
 }
 
+interface ViewableCard {
+  front: string;
+  back: string;
+  concept?: string;
+}
+
+// Anki cloze syntax: "{{c1::answer}}" — render the front with the answer
+// blanked out so the student fills it in, then reveal on flip.
+const CLOZE_PATTERN = /\{\{c\d+::(.*?)\}\}/g;
+
+function normalizeCard(card: FlashcardItem): ViewableCard {
+  if (card.type === "cloze") {
+    const prompt = (card.text ?? "").replace(CLOZE_PATTERN, "_____").trim();
+    const revealed = (card.text ?? "")
+      .replace(CLOZE_PATTERN, (_m, answer) => answer)
+      .trim();
+    return {
+      front: prompt,
+      back: revealed || (card.answer ?? ""),
+      concept: card.concept,
+    };
+  }
+  return {
+    front: (card.front ?? "").trim(),
+    back: (card.back ?? "").trim(),
+    concept: card.concept,
+  };
+}
+
+function isViewable(card: ViewableCard): boolean {
+  return card.front.length > 0 && card.back.length > 0;
+}
+
 function CardFace({
   side,
-  children,
+  text,
 }: {
   side: "front" | "back";
-  children: React.ReactNode;
+  text: string;
 }) {
   return (
     <div
       className={cn(
-        "flip-card-face absolute inset-0 flex items-center justify-center rounded-xl border border-border p-6 text-center text-lg font-medium shadow-sm",
+        "flip-card-face absolute inset-0 flex items-center justify-center overflow-auto rounded-xl border border-border p-6 text-center text-lg font-medium shadow-sm",
         side === "front"
           ? "bg-surface text-surface-foreground"
           : "bg-primary/10 text-foreground [transform:rotateY(180deg)]",
       )}
     >
-      <p className="leading-snug">{children}</p>
+      <MathMarkdown text={text} />
+    </div>
+  );
+}
+
+// `remark-math` handles both inline (`$...$`) and display (`$$...$$`) math;
+// `rehype-katex` renders the parsed nodes via the KaTeX CSS imported in layout.tsx.
+function MathMarkdown({ text }: { text: string }) {
+  return (
+    <div className="text-lg leading-snug [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_p]:my-0 [&_.katex-display]:my-1 [&_strong]:font-semibold">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+      >
+        {text}
+      </ReactMarkdown>
     </div>
   );
 }

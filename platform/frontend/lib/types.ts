@@ -226,12 +226,24 @@ export interface QuizPayload {
   bloom_distribution?: Record<string, number>;
 }
 
-export interface FlashcardItem {
+export interface BasicFlashcard {
+  type?: "basic";
   id?: string;
   front: string;
   back: string;
   concept?: string;
 }
+
+export interface ClozeFlashcard {
+  type: "cloze";
+  id?: string;
+  // Anki-style cloze, e.g. "{{c1::photosynthesis}} is the process..."
+  text: string;
+  answer: string;
+  concept?: string;
+}
+
+export type FlashcardItem = BasicFlashcard | ClozeFlashcard;
 
 export interface FlashcardPayload {
   title?: string;

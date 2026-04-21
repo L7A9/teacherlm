@@ -1,4 +1,5 @@
 import logging
+import re
 
 from teacherlm_core.schemas.chunk import Chunk
 
@@ -7,6 +8,40 @@ from .llm_service import LLMService, build_system_prompt
 
 
 logger = logging.getLogger(__name__)
+
+
+# Reject concept names that are boilerplate metadata — authors, affiliations,
+# schools, copyright, etc. The prompt already tells the LLM to skip these, but
+# smaller models leak them anyway. Mirror of flashcard_gen's filter.
+_BOILERPLATE_TERMS = re.compile(
+    r"\b(author|authors|supervisor|university|college|institute|department|"
+    r"faculty|school|copyright|acknowledg(e)?ments?|bibliography|references|"
+    r"table of contents|arxiv|doi|page\s+\d+)\b",
+    re.IGNORECASE,
+)
+_WORD_RE = re.compile(r"[A-Za-z][A-Za-z'-]*")
+
+
+def _is_proper_noun_only(name: str) -> bool:
+    """Title Case Name With No Lowercase Words — almost always a person or org."""
+    words = _WORD_RE.findall(name)
+    if not words:
+        return False
+    if len(words) == 1 and words[0][0].islower():
+        return False
+    significant = [w for w in words if len(w) > 2]
+    if not significant:
+        return False
+    return all(w[0].isupper() for w in significant)
+
+
+def _is_boilerplate_concept(card: ConceptCard) -> bool:
+    haystack = f"{card.name}\n{card.description or ''}"
+    if _BOILERPLATE_TERMS.search(haystack):
+        return True
+    if _is_proper_noun_only(card.name):
+        return True
+    return False
 
 
 def _format_chunks(chunks: list[Chunk]) -> str:
@@ -23,6 +58,9 @@ def _clean_card(card: ConceptCard, valid_ids: set[str]) -> ConceptCard | None:
     to the top-scoring chunk, which is still a valid source.
     """
     if not card.name or not card.name.strip():
+        return None
+    if _is_boilerplate_concept(card):
+        logger.debug("dropping boilerplate concept: %r", card.name)
         return None
     kept = [cid for cid in card.source_chunk_ids if cid in valid_ids]
     return card.model_copy(update={"source_chunk_ids": kept})

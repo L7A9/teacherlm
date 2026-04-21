@@ -34,7 +34,8 @@
       "Bash(MSYS_NO_PATHCONV=1 docker exec platform-backend-1 tar -C /tmp/fastembed_cache -cf - .)",
       "Bash(MSYS_NO_PATHCONV=1 docker run --rm -i -v platform_fastembed_cache:/dest alpine tar -C /dest -xf -)",
       "Bash(MSYS_NO_PATHCONV=1 docker run --rm -v platform_fastembed_cache:/dest alpine sh -c 'find /dest -name \"model*.onnx\" -exec ls -la {} \\\\;')",
-      "Bash(MSYS_NO_PATHCONV=1 docker run *)"
+      "Bash(MSYS_NO_PATHCONV=1 docker run *)",
+      "Bash(python *)"
     ]
   }
 }

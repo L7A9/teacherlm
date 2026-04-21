@@ -107,11 +107,15 @@ def plan_question_mix(
     n_total: int,
     *,
     seed: int | None = None,
+    allowed_kinds: list[QuestionKind] | None = None,
 ) -> QuizPlan:
     """Plan a quiz with a 60/30/10 split across struggling / coverage / stretch.
 
     Resilient to a cold-start learner: empty struggling/understood lists are
     handled by reallocating to coverage so we never produce a 0-question quiz.
+
+    When ``allowed_kinds`` is provided, only those question kinds are used in
+    the rotation — otherwise the default mix (mcq-heavy) is used.
     """
     settings = get_settings()
     rng = random.Random(seed)
@@ -122,6 +126,7 @@ def plan_question_mix(
         return QuizPlan(slots=[], total=0, counts={"struggling": 0, "coverage": 0, "stretch": 0})
 
     counts = _split_counts(n_total, settings)
+    rotation = list(allowed_kinds) if allowed_kinds else list(_KIND_ROTATION)
 
     # --- pick concept pools ---
     struggling_cards: list[ConceptCard] = []
@@ -147,7 +152,7 @@ def plan_question_mix(
         counts["coverage"] += counts["stretch"]
         counts["stretch"] = 0
 
-    kinds = cycle(_KIND_ROTATION)
+    kinds = cycle(rotation)
 
     slots: list[QuestionSlot] = []
     slots.extend(_slots_for(counts["struggling"], struggling_cards, "struggling", kinds, rng))

@@ -170,6 +170,31 @@ services:
       minio:
         condition: service_healthy
 
+  flashcard_gen:
+    build:
+      context: ..
+      dockerfile: generators/flashcard_gen/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      FLASHCARD_GEN_OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+      FLASHCARD_GEN_CHAT_MODEL: ${FLASHCARD_GEN_CHAT_MODEL:-llama3.1:8b-instruct-q4_K_M}
+      FLASHCARD_GEN_GENERATION_MODEL: ${FLASHCARD_GEN_GENERATION_MODEL:-llama3.1:8b-instruct-q4_K_M}
+      FLASHCARD_GEN_MINIO_ENDPOINT: minio:9000
+      FLASHCARD_GEN_MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-localhost:9000}
+      FLASHCARD_GEN_MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      FLASHCARD_GEN_MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      FLASHCARD_GEN_MINIO_BUCKET: ${MINIO_BUCKET:-teacherlm}
+      FLASHCARD_GEN_MINIO_SECURE: "false"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${FLASHCARD_GEN_PORT:-8005}:8005"
+    depends_on:
+      minio:
+        condition: service_healthy
+
   frontend:
     build:
       context: ./frontend

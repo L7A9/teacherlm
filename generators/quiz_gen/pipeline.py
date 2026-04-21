@@ -16,6 +16,7 @@ from .schemas import (
     ExtractedConcepts,
     MCQ,
     Question,
+    QuestionKind,
     QuizOutput,
     QuizPlan,
 )
@@ -24,8 +25,27 @@ from .services.concept_extractor import extract_concepts
 from .services.difficulty_adapter import plan_question_mix
 from .services.distractor_engine import enhance_mcq_distractors
 from .services.llm_service import LLMService, build_system_prompt, get_llm_service
-from .services.quality_validator import bloom_distribution, validate_questions
+from .services.quality_validator import (
+    bloom_distribution,
+    deduplicate_questions,
+    validate_questions,
+)
 from .services.question_generator import generate_questions
+
+
+# Frontend sends human-friendly type names; map to the internal QuestionKind.
+_FRONTEND_KIND_ALIASES: dict[str, QuestionKind] = {
+    "mcq": "mcq",
+    "multiple_choice": "mcq",
+    "multi_choice": "mcq",
+    "multichoice": "mcq",
+    "true_false": "true_false",
+    "truefalse": "true_false",
+    "tf": "true_false",
+    "fill_blank": "fill_blank",
+    "fill_in_the_blank": "fill_blank",
+    "short_answer": "fill_blank",
+}
 
 
 def _sse(event: str, data: dict) -> str:
@@ -34,12 +54,32 @@ def _sse(event: str, data: dict) -> str:
 
 def _resolve_question_count(options: dict) -> int:
     s = get_settings()
-    raw = options.get("n_questions") or options.get("count") or s.default_question_count
+    raw = (
+        options.get("question_count")
+        or options.get("n_questions")
+        or options.get("count")
+        or s.default_question_count
+    )
     try:
         n = int(raw)
     except (TypeError, ValueError):
         n = s.default_question_count
     return max(s.min_question_count, min(n, s.max_question_count))
+
+
+def _resolve_allowed_kinds(options: dict) -> list[QuestionKind] | None:
+    raw = options.get("question_types") or options.get("types") or options.get("kinds")
+    if not raw:
+        return None
+    if isinstance(raw, str):
+        raw = [raw]
+    kinds: list[QuestionKind] = []
+    for item in raw:
+        key = str(item).strip().lower()
+        kind = _FRONTEND_KIND_ALIASES.get(key)
+        if kind and kind not in kinds:
+            kinds.append(kind)
+    return kinds or None
 
 
 def _resolve_title(options: dict, learner_concepts: list[str]) -> str:
@@ -99,6 +139,7 @@ async def run(inp: GeneratorInput) -> AsyncIterator[str]:
 
     options = dict(inp.options or {})
     n_target = _resolve_question_count(options)
+    allowed_kinds = _resolve_allowed_kinds(options)
     learner = inp.learner_state
 
     yield _sse(
@@ -116,6 +157,7 @@ async def run(inp: GeneratorInput) -> AsyncIterator[str]:
         learner_state=learner,
         extracted=extracted,
         n_total=n_target,
+        allowed_kinds=allowed_kinds,
     )
     yield _sse(
         "progress",
@@ -148,10 +190,15 @@ async def run(inp: GeneratorInput) -> AsyncIterator[str]:
     )
     yield _sse("progress", {"stage": "generated", "count": len(raw_questions)})
 
-    enhanced = await _enhance_mcqs(raw_questions, inp.context_chunks)
-    yield _sse("progress", {"stage": "distractors_enhanced"})
+    if settings.enhance_distractors:
+        enhanced = await _enhance_mcqs(raw_questions, inp.context_chunks)
+        yield _sse("progress", {"stage": "distractors_enhanced"})
+    else:
+        enhanced = raw_questions
 
-    questions, dropped = validate_questions(enhanced)
+    validated, dropped = validate_questions(enhanced)
+    questions, duplicates = deduplicate_questions(validated)
+    dropped.extend(duplicates)
     bloom_counts = bloom_distribution(questions)
     yield _sse(
         "progress",

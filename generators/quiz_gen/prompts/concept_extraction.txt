@@ -18,6 +18,17 @@ HARD RULES:
 - If a level has no defensible concepts, leave that list empty.
 - Prefer fewer high-quality concepts over many shallow ones.
 
+IGNORE boilerplate and metadata entirely. None of these are testable concepts:
+- Author names, supervisors, presenters, editors, co-authors.
+- Universities, colleges, departments, institutes, schools, companies.
+- City / country / location names used as affiliations.
+- Copyright notices, dates, course codes, logos, cover-page titles.
+- Page headers / footers, slide numbers, table of contents, bibliography.
+- URLs, email addresses, DOI / arXiv identifiers, figure / table captions by themselves.
+
+Extract only what the material is *teaching* — the domain ideas, methods,
+formulas, and relationships a student would be tested on.
+
 Return ONLY the structured JSON object — no prose, no code fences.
 
 === CONTEXT CHUNKS ===

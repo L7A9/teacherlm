@@ -91,20 +91,17 @@ type Kind =
 
 function normalizeKind(a: Artifact): Kind {
   const t = a.type.toLowerCase();
-  if (t.includes("quiz")) return "quiz";
-  if (t.includes("flashcard")) return "flashcards";
-  if (t.includes("chart") || t.includes("diagram") || t.includes("mermaid")) {
-    return "chart";
-  }
-  if (t.includes("podcast") || t.includes("audio")) return "podcast";
-  if (t.includes("transcript")) return "transcript";
   const name = (a.filename ?? "").toLowerCase();
-  if (t.includes("pdf") || name.endsWith(".pdf")) return "pdf";
-  if (
-    t.includes("pptx") ||
-    t.includes("presentation") ||
-    name.endsWith(".pptx")
-  ) {
+  // Structured JSON payloads: exact-match only. Sibling exports like
+  // `flashcards_csv` / `flashcards_apkg` must fall through to FileDownload,
+  // otherwise the renderer tries to JSON-parse CSV / Anki zip bytes.
+  if (t === "quiz") return "quiz";
+  if (t === "flashcards") return "flashcards";
+  if (t === "chart" || t === "diagram" || t === "mermaid") return "chart";
+  if (t === "podcast" || t === "audio") return "podcast";
+  if (t === "transcript") return "transcript";
+  if (t === "pdf" || name.endsWith(".pdf")) return "pdf";
+  if (t === "pptx" || t === "presentation" || name.endsWith(".pptx")) {
     return "pptx";
   }
   return "file";
