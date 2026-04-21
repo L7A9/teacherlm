@@ -1,16 +1,8 @@
 import type { Metadata, Viewport } from "next";
 
-import { Inter } from "next/font/google";
-
 import { Providers } from "@/app/providers";
 
 import "./globals.css";
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: {
@@ -35,7 +27,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <body
-        className={`${inter.variable} min-h-dvh bg-background font-sans text-foreground antialiased`}
+        className="min-h-dvh bg-background font-sans text-foreground antialiased"
       >
         <Providers>{children}</Providers>
       </body>

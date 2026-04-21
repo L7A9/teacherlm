@@ -80,6 +80,8 @@ services:
       CORS_ORIGINS: '["http://localhost:3000"]'
     volumes:
       - ../generators_registry.json:/app/generators_registry.json:ro
+      - fastembed_cache:/opt/fastembed_cache
+      - hf_cache:/opt/hf_cache
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     extra_hosts:
@@ -109,6 +111,9 @@ services:
       MINIO_ENDPOINT: minio:9000
       MINIO_SECURE: "false"
       OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+    volumes:
+      - fastembed_cache:/opt/fastembed_cache
+      - hf_cache:/opt/hf_cache
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -139,6 +144,32 @@ services:
     ports:
       - "${TEACHER_GEN_PORT:-8001}:8001"
 
+  quiz_gen:
+    build:
+      context: ..
+      dockerfile: generators/quiz_gen/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      QUIZ_GEN_OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+      QUIZ_GEN_CHAT_MODEL: ${QUIZ_GEN_CHAT_MODEL:-llama3.1:8b-instruct-q4_K_M}
+      QUIZ_GEN_EXTRACTION_MODEL: ${QUIZ_GEN_EXTRACTION_MODEL:-llama3.1:8b-instruct-q4_K_M}
+      QUIZ_GEN_GENERATION_MODEL: ${QUIZ_GEN_GENERATION_MODEL:-llama3.1:8b-instruct-q4_K_M}
+      QUIZ_GEN_MINIO_ENDPOINT: minio:9000
+      QUIZ_GEN_MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-localhost:9000}
+      QUIZ_GEN_MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      QUIZ_GEN_MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      QUIZ_GEN_MINIO_BUCKET: ${MINIO_BUCKET:-teacherlm}
+      QUIZ_GEN_MINIO_SECURE: "false"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${QUIZ_GEN_PORT:-8002}:8002"
+    depends_on:
+      minio:
+        condition: service_healthy
+
   frontend:
     build:
       context: ./frontend
@@ -156,3 +187,5 @@ volumes:
   postgres_data:
   qdrant_data:
   minio_data:
+  fastembed_cache:
+  hf_cache:

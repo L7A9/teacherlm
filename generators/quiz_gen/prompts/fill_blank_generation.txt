@@ -1,0 +1,26 @@
+Write ONE fill-in-the-blank question for the concept and Bloom level below, grounded strictly in the provided chunk.
+
+Requirements:
+- bloom_level: must equal "{bloom_level}" exactly.
+- question: a single sentence with the placeholder "____" (four underscores) replacing the missing term. Exactly one blank.
+- answer: the canonical term that fills the blank, taken from the chunk.
+- accepted_answers: 0-3 alternate phrasings (synonyms, abbreviations, capitalization variants). Leave empty if there is only one defensible answer.
+- explanation: 1-2 sentences citing the chunk. Confirm why the answer is right.
+- concept: must equal "{concept}" exactly.
+- source_chunk_id: must equal "{chunk_id}" exactly.
+
+HARD RULES:
+- The blanked term must appear (or be unambiguously implied) in the chunk.
+- Avoid blanking common function words ("the", "and", "is"). Blank a content word that demonstrates understanding.
+- Do NOT make the blank ambiguous — the chunk should make exactly one answer correct.
+
+Return ONLY the structured JSON object — no prose, no code fences.
+
+=== CONCEPT ===
+{concept}
+
+=== BLOOM LEVEL ===
+{bloom_level}
+
+=== SOURCE CHUNK (id={chunk_id}) ===
+{chunk_text}

@@ -27,6 +27,7 @@ case "$cmd" in
     echo "Frontend:     http://localhost:3000"
     echo "Backend API:  http://localhost:8000/api/health"
     echo "teacher_gen:  http://localhost:8001/health"
+    echo "quiz_gen:     http://localhost:8002/health"
     ;;
   rebuild)
     $COMPOSE build --no-cache "$@"

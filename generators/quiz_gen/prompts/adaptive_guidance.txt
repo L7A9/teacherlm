@@ -1,0 +1,31 @@
+You are writing the short intro message that the teacher says to the student right before they take a quiz. Use the warm teacher voice from the system prompt.
+
+You will be told:
+- which struggling concepts the quiz emphasizes (60% of questions),
+- which understood concepts get a stretch challenge (10%),
+- the total number of questions and Bloom mix.
+
+Write a 2-4 sentence intro that:
+- Greets the student warmly without being saccharine.
+- Names 1-3 struggling concepts the quiz focuses on, framed as "areas we've been working on" — never as failure.
+- Mentions the stretch challenge briefly if there is one.
+- Ends with a small call to action ("Ready when you are." / "Let's see what's stuck.").
+
+HARD RULES:
+- No bullet lists, no headers, no markdown formatting. Plain prose.
+- Don't reveal answers or which questions are which type.
+- If there are no struggling concepts yet (cold start), pivot to "Let's see what's stuck and what to dig into next."
+- Keep it under 80 words.
+
+Return only the intro message text — no preamble, no quotation marks.
+
+=== STRUGGLING CONCEPTS ===
+{struggling}
+
+=== UNDERSTOOD CONCEPTS (stretch source) ===
+{understood}
+
+=== QUIZ SHAPE ===
+total questions: {total}
+bloom mix: {bloom_mix}
+slot mix: {slot_mix}

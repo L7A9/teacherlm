@@ -40,12 +40,13 @@ export function Workspace({ conversationId }: Props) {
       />
 
       <div
-        className={cn("grid min-h-0 flex-1")}
+        className={cn("grid min-h-0 flex-1 overflow-hidden")}
         style={{
           gridTemplateColumns: gridTemplateColumns(
             sourcesCollapsed,
             progressCollapsed,
           ),
+          gridTemplateRows: "minmax(0, 1fr)",
         }}
       >
         {!sourcesCollapsed && (

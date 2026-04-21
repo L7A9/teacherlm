@@ -16,7 +16,7 @@ export function SourcesPanel({ conversationId, className }: Props) {
   return (
     <aside
       className={cn(
-        "flex h-full flex-col border-r border-border bg-background",
+        "flex h-full min-h-0 flex-col overflow-hidden border-r border-border bg-background",
         className,
       )}
       aria-label="Sources"

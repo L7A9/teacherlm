@@ -54,7 +54,7 @@ export function ProgressPanel({ conversationId, className }: Props) {
   return (
     <aside
       className={cn(
-        "flex h-full flex-col border-l border-border bg-background",
+        "flex h-full min-h-0 flex-col overflow-hidden border-l border-border bg-background",
         className,
       )}
       aria-label="Progress"

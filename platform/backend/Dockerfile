@@ -26,6 +26,13 @@ RUN pip install -e /app/packages/teacherlm_core
 COPY platform/backend/requirements.txt /app/platform/backend/requirements.txt
 RUN pip install -r /app/platform/backend/requirements.txt
 
+# Fastembed/HF cache lives on a named volume mounted by docker-compose so the
+# embedding model (~80 MB) persists across container rebuilds — the Docker
+# build sandbox on this host can't reach HF Hub, so we download lazily on
+# first use from within the running container and keep it across recreations.
+ENV HF_HOME=/opt/hf_cache \
+    FASTEMBED_CACHE_PATH=/opt/fastembed_cache
+
 # Copy the rest of the backend source.
 COPY platform/backend /app/platform/backend
 COPY generators_registry.json /app/generators_registry.json

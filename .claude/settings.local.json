@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker exec *)",
+      "Bash(docker restart *)",
+      "Bash(ollama list *)",
+      "Bash(docker compose *)",
+      "Bash(curl -sS http://localhost:8001/health)",
+      "Bash(curl -sS http://localhost:8000/api/health)",
+      "Bash(curl -sSI http://localhost:3000/)",
+      "Bash(curl -sS -m 5 http://localhost:8001/health)",
+      "Bash(curl -sS -m 5 http://localhost:8000/api/health)",
+      "Bash(curl -sSI -m 5 http://localhost:3000/)",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec platform-arq_worker-1 *)",
+      "Bash(chmod +x C:/Users/melha_eay78bj/Desktop/teacherlm/run.sh)",
+      "Bash(docker cp *)",
+      "Bash(xargs -I{} curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" \"{}\")",
+      "Bash(docker buildx *)",
+      "Bash(docker system *)",
+      "Bash(curl -s -o /dev/null -w \"backend /api/health: %{http_code}\\\\n\" http://localhost:8000/api/health)",
+      "Bash(curl -s -o /dev/null -w \"frontend /: %{http_code}\\\\n\" http://localhost:3000)",
+      "Bash(curl -s -o /dev/null -w \"teacher_gen /health: %{http_code}\\\\n\" http://localhost:8001/health)",
+      "Bash(curl -s -o /dev/null -w \"quiz_gen /health: %{http_code}\\\\n\" http://localhost:8002/health)",
+      "Bash(curl -s http://localhost:8000/api/conversations)",
+      "Bash(curl -sN -X POST \"http://localhost:8000/api/conversations/f95e2b1f-f940-4b6b-8206-c1ec40008996/generate\" -H \"Content-Type: application/json\" -d '{\"output_type\":\"quiz\",\"options\":{\"n_questions\":3},\"topic\":\"recommendation systems\"}')",
+      "Bash(curl -s -o /dev/null -w \"backend: %{http_code}\\\\n\" http://localhost:8000/api/health)",
+      "Bash(curl -sN -X POST \"http://localhost:8000/api/conversations/f95e2b1f-f940-4b6b-8206-c1ec40008996/generate\" -H \"Content-Type: application/json\" -d '{\"output_type\":\"quiz\",\"options\":{\"n_questions\":3}}' --max-time 200)",
+      "Bash(echo \"started, PID $!\")",
+      "Bash(curl -sN -X POST \"http://localhost:8000/api/conversations/f95e2b1f-f940-4b6b-8206-c1ec40008996/chat\" -H \"Content-Type: application/json\" -d '{\"user_message\":\"What is collaborative filtering?\"}' --max-time 90)",
+      "Bash(curl -s -N --max-time 120 -X POST \"http://localhost:8000/api/conversations/f95e2b1f-f940-4b6b-8206-c1ec40008996/generate\" -H \"Content-Type: application/json\" -d '{\"output_type\":\"quiz\",\"options\":{\"n_questions\":3},\"topic\":\"filtrage collaboratif\"}')",
+      "Bash(curl *)",
+      "Bash(docker volume *)",
+      "Bash(docker run *)",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec platform-backend-1 tar -C /tmp/fastembed_cache -cf - .)",
+      "Bash(MSYS_NO_PATHCONV=1 docker run --rm -i -v platform_fastembed_cache:/dest alpine tar -C /dest -xf -)",
+      "Bash(MSYS_NO_PATHCONV=1 docker run --rm -v platform_fastembed_cache:/dest alpine sh -c 'find /dest -name \"model*.onnx\" -exec ls -la {} \\\\;')",
+      "Bash(MSYS_NO_PATHCONV=1 docker run *)"
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+Write ONE multiple-choice question for the concept and Bloom level below, grounded strictly in the provided chunk.
+
+Requirements:
+- bloom_level: must equal "{bloom_level}" exactly.
+- question: clear, single-idea, no trick wording. Match the Bloom level (recall vs. application vs. analysis).
+- options: 4 plausible options. The correct one MUST be derivable from the chunk. Distractors will be improved in a later step — for now make them content-relevant, not silly.
+- correct_index: 0-based index into options.
+- explanation: 1-2 sentences citing the source. Phrase as a teacher: "Right — the chunk shows that..."
+- concept: must equal "{concept}" exactly.
+- source_chunk_id: must equal "{chunk_id}" exactly.
+
+HARD RULES:
+- Every claim in the question, correct option, and explanation must be supported by the chunk.
+- Do NOT invent facts, numbers, names, or examples not present in the chunk.
+- All four options should be distinct.
+
+Return ONLY the structured JSON object — no prose, no code fences.
+
+=== CONCEPT ===
+{concept}
+
+=== BLOOM LEVEL ===
+{bloom_level}
+
+=== SOURCE CHUNK (id={chunk_id}) ===
+{chunk_text}

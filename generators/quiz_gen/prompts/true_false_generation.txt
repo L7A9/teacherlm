@@ -1,0 +1,24 @@
+Write ONE true/false question for the concept and Bloom level below, grounded strictly in the provided chunk.
+
+Requirements:
+- bloom_level: must equal "{bloom_level}" exactly.
+- question: a single declarative statement. No double negatives. Avoid "always", "never", "all", "none" unless the chunk literally says so.
+- answer: true or false — the correct verdict on the statement above.
+- explanation: 1-2 sentences citing the chunk. If false, say what the chunk actually states.
+- concept: must equal "{concept}" exactly.
+- source_chunk_id: must equal "{chunk_id}" exactly.
+
+HARD RULES:
+- The statement and the explanation must both be derivable from the chunk.
+- Do NOT make the false-statement false by inventing a contradiction the chunk never addresses. Pick something the chunk explicitly contradicts or clearly supports.
+
+Return ONLY the structured JSON object — no prose, no code fences.
+
+=== CONCEPT ===
+{concept}
+
+=== BLOOM LEVEL ===
+{bloom_level}
+
+=== SOURCE CHUNK (id={chunk_id}) ===
+{chunk_text}

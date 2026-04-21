@@ -181,18 +181,49 @@ export interface ErrorEventData {
 
 // ---------- artifact-specific payload shapes (rendered client-side) ----------
 
-export interface QuizQuestion {
-  id?: string;
+// Mirrors generators/quiz_gen/schemas.py — MCQ | TrueFalse | FillBlank.
+export interface QuizQuestionMCQ {
+  type: "mcq";
+  bloom_level?: string;
   question: string;
-  type?: "multiple_choice" | "true_false" | "short_answer";
-  choices?: string[];
-  correct_answer: string | number;
+  options: string[];
+  correct_index: number;
   explanation?: string;
+  concept?: string;
+  source_chunk_id?: string;
 }
+
+export interface QuizQuestionTrueFalse {
+  type: "true_false";
+  bloom_level?: string;
+  question: string;
+  answer: boolean;
+  explanation?: string;
+  concept?: string;
+  source_chunk_id?: string;
+}
+
+export interface QuizQuestionFillBlank {
+  type: "fill_blank";
+  bloom_level?: string;
+  question: string;
+  answer: string;
+  accepted_answers?: string[];
+  explanation?: string;
+  concept?: string;
+  source_chunk_id?: string;
+}
+
+export type QuizQuestion =
+  | QuizQuestionMCQ
+  | QuizQuestionTrueFalse
+  | QuizQuestionFillBlank;
 
 export interface QuizPayload {
   title?: string;
+  intro_message?: string;
   questions: QuizQuestion[];
+  bloom_distribution?: Record<string, number>;
 }
 
 export interface FlashcardItem {

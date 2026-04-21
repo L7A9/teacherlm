@@ -28,8 +28,7 @@ export function QuizRenderer({ payload }: Props) {
     () =>
       submitted
         ? questions.reduce(
-            (sum, q, idx) =>
-              sum + (isCorrect(q, answers[idx]) ? 1 : 0),
+            (sum, q, idx) => sum + (isCorrect(q, answers[idx]) ? 1 : 0),
             0,
           )
         : 0,
@@ -78,7 +77,7 @@ export function QuizRenderer({ payload }: Props) {
       <ol className="flex flex-col gap-4">
         {questions.map((q, idx) => (
           <QuestionCard
-            key={q.id ?? idx}
+            key={idx}
             index={idx}
             question={q}
             answer={answers[idx]}
@@ -119,6 +118,7 @@ function QuestionCard({
 }) {
   const options = resolveOptions(question);
   const correct = isCorrect(question, answer);
+  const correctLabel = correctAnswerLabel(question);
 
   return (
     <li className="rounded-lg border border-border bg-surface p-4">
@@ -133,7 +133,7 @@ function QuestionCard({
         <ul className="flex flex-col gap-1.5">
           {options.map((opt) => {
             const selected = answer === opt;
-            const isAnswer = String(question.correct_answer) === opt;
+            const isAnswer = correctLabel === opt;
             const state = !submitted
               ? selected
                 ? "selected"
@@ -185,7 +185,7 @@ function QuestionCard({
             ) : (
               <Badge variant="danger">
                 <XCircle className="h-3 w-3" />
-                Correct: {String(question.correct_answer)}
+                Correct: {correctLabel ?? "—"}
               </Badge>
             )}
           </div>
@@ -199,13 +199,31 @@ function QuestionCard({
 }
 
 function resolveOptions(q: QuizQuestion): string[] | null {
-  if (q.choices && q.choices.length > 0) return q.choices;
+  if (q.type === "mcq") return q.options ?? null;
   if (q.type === "true_false") return ["True", "False"];
+  return null;
+}
+
+function correctAnswerLabel(q: QuizQuestion): string | null {
+  if (q.type === "mcq") {
+    const idx = q.correct_index;
+    if (idx == null || !q.options) return null;
+    return q.options[idx] ?? null;
+  }
+  if (q.type === "true_false") return q.answer ? "True" : "False";
+  if (q.type === "fill_blank") return q.answer ?? null;
   return null;
 }
 
 function isCorrect(q: QuizQuestion, given: string | undefined): boolean {
   if (given === undefined) return false;
-  return String(q.correct_answer).trim().toLowerCase() ===
-    given.trim().toLowerCase();
+  const expected = correctAnswerLabel(q);
+  if (expected == null) return false;
+  const norm = (s: string) => s.trim().toLowerCase();
+  if (norm(expected) === norm(given)) return true;
+  if (q.type === "fill_blank") {
+    const accepted = q.accepted_answers ?? [];
+    return accepted.some((a) => norm(a) === norm(given));
+  }
+  return false;
 }
