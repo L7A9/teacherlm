@@ -1,7 +1,8 @@
 # TeacherLM platform stack.
 #
 # Service hostnames inside the compose network:
-#   postgres  redis  qdrant  minio  backend  arq_worker  teacher_gen  frontend
+#   postgres  redis  qdrant  minio  backend  arq_worker  teacher_gen  quiz_gen
+#   flashcard_gen  mindmap_gen  frontend
 #
 # Secrets and overridable credentials live in platform/.env (see .env.example).
 # The backend and worker override URLs for the in-network hostnames below so a
@@ -195,6 +196,30 @@ services:
       minio:
         condition: service_healthy
 
+  mindmap_gen:
+    build:
+      context: ..
+      dockerfile: generators/mindmap_gen/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      OLLAMA_URL: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+      MODEL_NAME: ${MINDMAP_GEN_MODEL:-llama3.1:8b-instruct-q4_K_M}
+      ARTIFACTS_DIR: /app/generators/mindmap_gen/artifacts
+      DEFAULT_SIZE: ${MINDMAP_GEN_DEFAULT_SIZE:-standard}
+      MAX_NODES: ${MINDMAP_GEN_MAX_NODES:-60}
+      # Origin the browser uses to fetch generated artifacts (.json/.html/.mmd).
+      # Compose maps 8008→host so the default works for local dev; override when
+      # deploying behind a reverse proxy.
+      PUBLIC_BASE_URL: ${MINDMAP_GEN_PUBLIC_URL:-http://localhost:8008}
+    volumes:
+      - mindmap_artifacts:/app/generators/mindmap_gen/artifacts
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${MINDMAP_GEN_PORT:-8008}:8008"
+
   frontend:
     build:
       context: ./frontend
@@ -214,3 +239,4 @@ volumes:
   minio_data:
   fastembed_cache:
   hf_cache:
+  mindmap_artifacts:

@@ -1,0 +1,14 @@
+You are analyzing course materials to build a mind map for a student.
+
+Identify the {n_branches} MAIN THEMES that best organize this content
+into a top-level structure.
+
+Rules:
+- Themes should be MUTUALLY EXCLUSIVE (no overlap)
+- Themes should be COLLECTIVELY EXHAUSTIVE (cover all content)
+- Each theme name: 2-5 words maximum, punchy
+- Use the same language as the source content
+- Do NOT include meta-themes like 'Introduction' or 'Conclusion'
+- Themes are the student's high-level study sections
+
+Return ONLY the structured list.

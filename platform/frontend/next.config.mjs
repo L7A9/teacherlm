@@ -3,6 +3,8 @@ const nextConfig = {
   reactStrictMode: true,
   // Produce a self-contained server bundle for the minimal Docker image.
   output: "standalone",
+  // markmap-lib and markmap-view are ESM-only; webpack must transpile them.
+  transpilePackages: ["markmap-lib", "markmap-view", "markmap-common", "markmap-html-parser"],
   // react-pdf / pdfjs-dist ship an ESM worker that needs to be treated as an external.
   experimental: {
     serverComponentsExternalPackages: ["pdfjs-dist"],

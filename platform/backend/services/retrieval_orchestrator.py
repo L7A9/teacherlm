@@ -17,7 +17,16 @@ from config import Settings, get_settings
 from services.vector_service import VectorService, _collection_name, get_vector_service
 
 
-OutputType = Literal["text", "quiz", "report", "presentation", "flashcards", "chart", "podcast"]
+OutputType = Literal[
+    "text",
+    "quiz",
+    "report",
+    "presentation",
+    "flashcards",
+    "chart",
+    "podcast",
+    "mindmap",
+]
 RetrievalMode = Literal[
     "semantic_topk",
     "coverage_broad",
@@ -37,6 +46,7 @@ _OUTPUT_TO_MODE: dict[str, RetrievalMode] = {
     "presentation": "topic_clusters",
     "podcast": "narrative_arc",
     "chart": "relationship_dense",
+    "mindmap": "topic_clusters",
 }
 
 

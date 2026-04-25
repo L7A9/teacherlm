@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{{ title }}</title>
+  <style>
+    html, body {
+      margin: 0; padding: 0; height: 100%;
+      background: #0f172a;
+      color: #f1f5f9;
+      font-family: system-ui, -apple-system, sans-serif;
+      overflow: hidden;
+    }
+    .header {
+      padding: 10px 18px;
+      border-bottom: 1px solid #1e293b;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #0d1526;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 500;
+      color: #f1f5f9;
+    }
+    .header button {
+      background: #1e293b;
+      color: #cbd5e1;
+      border: 1px solid #334155;
+      padding: 5px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .header button:hover { background: #334155; color: #f1f5f9; }
+    #mm { width: 100vw; height: calc(100vh - 45px); display: block; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>{{ title }}</h1>
+    <button onclick="downloadSVG()">Download SVG</button>
+  </div>
+  <svg id="mm"></svg>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script src="https://cdn.jsdelivr.net/npm/markmap-view@0.18/dist/browser/index.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/markmap-lib@0.18/dist/browser/index.js"></script>
+  <script>
+    const markdown = {{ markdown | tojson }};
+    const BRANCH_COLORS = [
+      "#60a5fa","#4ade80","#f472b6","#fb923c",
+      "#a78bfa","#38bdf8","#34d399","#facc15",
+      "#e879f9","#2dd4bf"
+    ];
+
+    const { Transformer } = window.markmap;
+    const transformer = new Transformer();
+    const { root } = transformer.transform(markdown);
+
+    const svg = document.querySelector('#mm');
+    window.markmap.Markmap.create(svg, {
+      duration: 400,
+      maxWidth: 260,
+      spacingHorizontal: 80,
+      spacingVertical: 6,
+      paddingX: 12,
+      autoFit: true,
+      style: () => `.markmap {
+        --markmap-text-color: #f1f5f9;
+        --markmap-circle-open-bg: #1e293b;
+        --markmap-font: 400 13px/1.5 system-ui, sans-serif;
+      }`,
+      color: (node) => {
+        const parts = String(node?.state?.path ?? "").split(".");
+        const branchIdx = parts.length >= 2 ? parseInt(parts[1]) || 0 : 0;
+        return BRANCH_COLORS[Math.abs(branchIdx) % BRANCH_COLORS.length];
+      },
+    }, root);
+
+    function downloadSVG() {
+      const clone = svg.cloneNode(true);
+      clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      const blob = new Blob([new XMLSerializer().serializeToString(clone)],
+                            { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = '{{ filename }}.svg';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>

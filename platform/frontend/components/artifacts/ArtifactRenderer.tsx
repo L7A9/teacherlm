@@ -5,12 +5,14 @@ import { useQuery } from "@tanstack/react-query";
 import { ChartRenderer } from "@/components/artifacts/ChartRenderer";
 import { FileDownload } from "@/components/artifacts/FileDownload";
 import { FlashcardRenderer } from "@/components/artifacts/FlashcardRenderer";
+import { MindmapRenderer } from "@/components/artifacts/MindmapRenderer";
 import { PodcastPlayer } from "@/components/artifacts/PodcastPlayer";
 import { QuizRenderer } from "@/components/artifacts/QuizRenderer";
 import type {
   Artifact,
   ChartArtifactMetadata,
   FlashcardPayload,
+  MindmapPayload,
   PodcastArtifactMetadata,
   QuizPayload,
   UUID,
@@ -53,6 +55,18 @@ export function ArtifactRenderer({
         </JsonBoundary>
       );
 
+    case "mindmap":
+      return (
+        <JsonBoundary<MindmapPayload> url={artifact.url}>
+          {(payload) => (
+            <MindmapRenderer
+              payload={payload}
+              conversationId={conversationId}
+            />
+          )}
+        </JsonBoundary>
+      );
+
     case "podcast": {
       const transcript = findSibling(siblings, "transcript");
       return (
@@ -83,6 +97,7 @@ type Kind =
   | "quiz"
   | "flashcards"
   | "chart"
+  | "mindmap"
   | "podcast"
   | "transcript"
   | "pdf"
@@ -97,6 +112,7 @@ function normalizeKind(a: Artifact): Kind {
   // otherwise the renderer tries to JSON-parse CSV / Anki zip bytes.
   if (t === "quiz") return "quiz";
   if (t === "flashcards") return "flashcards";
+  if (t === "mindmap") return "mindmap";
   if (t === "chart" || t === "diagram" || t === "mermaid") return "chart";
   if (t === "podcast" || t === "audio") return "podcast";
   if (t === "transcript") return "transcript";

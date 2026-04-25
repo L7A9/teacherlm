@@ -76,6 +76,17 @@
       "icon": "🎙️",
       "description": "Generate a podcast-style explainer",
       "is_chat_default": false
+    },
+    {
+      "id": "mindmap_gen",
+      "name": "Mind Map",
+      "type": "api",
+      "endpoint": "http://mindmap_gen:8008/run",
+      "enabled": true,
+      "output_type": "mindmap",
+      "icon": "🗺️",
+      "description": "Generate a mind map of your course materials",
+      "is_chat_default": false
     }
   ]
 }

@@ -35,7 +35,12 @@
       "Bash(MSYS_NO_PATHCONV=1 docker run --rm -i -v platform_fastembed_cache:/dest alpine tar -C /dest -xf -)",
       "Bash(MSYS_NO_PATHCONV=1 docker run --rm -v platform_fastembed_cache:/dest alpine sh -c 'find /dest -name \"model*.onnx\" -exec ls -la {} \\\\;')",
       "Bash(MSYS_NO_PATHCONV=1 docker run *)",
-      "Bash(python *)"
+      "Bash(python *)",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('main:', d.get\\('main'\\)\\); print\\('module:', d.get\\('module'\\)\\); print\\('exports:', json.dumps\\(d.get\\('exports', {}\\), indent=2\\)[:500]\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('main:', d.get\\('main'\\)\\); print\\('module:', d.get\\('module'\\)\\)\")",
+      "Bash(python3 *)"
     ]
   }
 }

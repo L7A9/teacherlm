@@ -8,7 +8,16 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 Role = Literal["user", "assistant", "system"]
-OutputType = Literal["text", "quiz", "report", "presentation", "flashcards", "chart", "podcast"]
+OutputType = Literal[
+    "text",
+    "quiz",
+    "report",
+    "presentation",
+    "flashcards",
+    "chart",
+    "podcast",
+    "mindmap",
+]
 
 
 class Artifact(BaseModel):

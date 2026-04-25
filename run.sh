@@ -21,6 +21,17 @@ shift || true
 
 case "$cmd" in
   up)
+    $COMPOSE up -d
+    $COMPOSE ps
+    echo
+    echo "Frontend:     http://localhost:3000"
+    echo "Backend API:  http://localhost:8000/api/health"
+    echo "teacher_gen:  http://localhost:8001/health"
+    echo "quiz_gen:     http://localhost:8002/health"
+    echo "flashcards_gen: http://localhost:8005/health"
+    echo "mindmap_gen:  http://localhost:8008/health"
+    ;;
+  build)
     $COMPOSE up -d --build
     $COMPOSE ps
     echo
@@ -29,6 +40,7 @@ case "$cmd" in
     echo "teacher_gen:  http://localhost:8001/health"
     echo "quiz_gen:     http://localhost:8002/health"
     echo "flashcards_gen: http://localhost:8005/health"
+    echo "mindmap_gen:  http://localhost:8008/health"
     ;;
   rebuild)
     $COMPOSE build --no-cache "$@"
