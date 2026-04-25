@@ -29,6 +29,7 @@ const TITLES: Record<OutputType, string> = {
   flashcards: "Generate flashcards",
   chart: "Generate a diagram",
   podcast: "Generate a podcast",
+  mindmap: "Generate a mind map",
 };
 
 const DESCRIPTIONS: Record<OutputType, string> = {
@@ -39,6 +40,7 @@ const DESCRIPTIONS: Record<OutputType, string> = {
   flashcards: "Choose a count and what the cards should focus on.",
   chart: "Pick a diagram style — the teacher will extract the relationships.",
   podcast: "Pick a duration and presenter style.",
+  mindmap: "A bird's-eye view of every theme in your uploaded materials.",
 };
 
 export function GeneratorDialog() {
@@ -101,13 +103,16 @@ function OptionsForm({ outputType, onSubmit, onCancel }: FormProps) {
   }, [outputType]);
 
   const fields = FIELDS_BY_TYPE[outputType];
+  // Mind map intentionally has no topic input — it always summarises the
+  // entire uploaded corpus, not a narrow slice.
+  const showTopic = outputType !== "mindmap";
 
   return (
     <form
       className="flex flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit(values, topic);
+        onSubmit(values, showTopic ? topic : "");
       }}
     >
       <div className="flex flex-col gap-3">
@@ -120,18 +125,20 @@ function OptionsForm({ outputType, onSubmit, onCancel }: FormProps) {
           />
         ))}
 
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="generator-topic">Topic (optional)</Label>
-          <Input
-            id="generator-topic"
-            placeholder="e.g. photosynthesis, recursion, the French Revolution"
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-          />
-          <p className="text-[11px] text-muted-foreground">
-            Narrows retrieval to content about this topic.
-          </p>
-        </div>
+        {showTopic && (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="generator-topic">Topic (optional)</Label>
+            <Input
+              id="generator-topic"
+              placeholder="e.g. photosynthesis, recursion, the French Revolution"
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Narrows retrieval to content about this topic.
+            </p>
+          </div>
+        )}
       </div>
 
       <DialogFooter>
@@ -354,6 +361,28 @@ const FIELDS_BY_TYPE: Record<OutputType, FieldSpec[]> = {
         { value: "class", label: "Class / entity" },
         { value: "state", label: "State machine" },
       ],
+    },
+  ],
+  mindmap: [
+    {
+      kind: "select",
+      name: "size",
+      label: "Size",
+      default: "standard",
+      options: [
+        { value: "concise", label: "Concise (~4 branches)" },
+        { value: "standard", label: "Standard (~6 branches)" },
+        { value: "comprehensive", label: "Comprehensive (~9 branches)" },
+      ],
+    },
+    {
+      kind: "number",
+      name: "max_nodes",
+      label: "Max nodes (hard cap)",
+      default: 60,
+      min: 15,
+      max: 200,
+      step: 5,
     },
   ],
 };

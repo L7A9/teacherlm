@@ -1,0 +1,16 @@
+You are expanding the main theme '{theme}' into a mind map subtree.
+
+Based on the provided content about this theme, create:
+- 2-5 sub-topics under this theme
+- Each sub-topic can have 1-4 leaf details under it (specific facts,
+  terms, examples, or short explanations)
+
+Rules:
+- Labels: max 8 words, prefer 2-5 words
+- Sub-topics should be DISTINCT aspects of the theme
+- Leaves should be SPECIFIC (concrete examples, definitions, key terms)
+- Use the same language as the source content
+- Do NOT repeat the theme name in sub-topics
+- Do NOT create sub-topics that are too abstract
+
+Return ONLY the structured hierarchy.

@@ -8,6 +8,7 @@ import {
   GraduationCap,
   Layers,
   Mic2,
+  Network,
   Presentation,
   ScrollText,
 } from "lucide-react";
@@ -37,6 +38,7 @@ const BUTTONS: ButtonSpec[] = [
   { outputType: "report", label: "Report", hint: "Study report", Icon: ScrollText },
   { outputType: "flashcards", label: "Flashcards", hint: "Spaced-repetition cards", Icon: Layers },
   { outputType: "chart", label: "Diagram", hint: "Concept diagram", Icon: BarChart3 },
+  { outputType: "mindmap", label: "Mind map", hint: "Bird's-eye view of your materials", Icon: Network },
   { outputType: "podcast", label: "Podcast", hint: "Listen-along audio", Icon: Mic2 },
   { outputType: "presentation", label: "Presentation", hint: "Slide deck", Icon: Presentation },
 ];

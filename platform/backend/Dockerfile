@@ -10,10 +10,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 # System deps: libpq for asyncpg wheels, build tools for any source-only deps
 # (tiktoken, fastembed's tokenizers, etc.), curl for healthchecks.
+# Rust is required for py-rust-stemmers (fastembed dependency) to build.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         curl \
         libpq-dev \
+        rustc \
+        cargo \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

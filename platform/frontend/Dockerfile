@@ -7,10 +7,13 @@ FROM node:20-alpine AS deps
 
 WORKDIR /app
 
-# Corepack-less install; package-lock.json is optional in dev repos, so fall
-# back to plain `npm install` when a lock file isn't present.
 COPY package.json package-lock.json* ./
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+# `npm ci` follows the lock file verbatim. The lock was generated on Windows,
+# so it records @next/swc-win32-x64-msvc and omits the Alpine/musl SWC binary.
+# `npm install` re-evaluates optional dependencies for the current platform and
+# installs @next/swc-linux-x64-musl at whichever version next's own
+# optionalDependencies specifies — no version guessing needed.
+RUN npm install
 
 # ---------- builder ----------
 FROM node:20-alpine AS builder

@@ -15,7 +15,8 @@ export type OutputType =
   | "presentation"
   | "flashcards"
   | "chart"
-  | "podcast";
+  | "podcast"
+  | "mindmap";
 
 export type FileStatus =
   | "uploaded"
@@ -253,6 +254,12 @@ export interface FlashcardPayload {
 export interface ChartArtifactMetadata {
   mermaid_code?: string;
   diagram_type?: string;
+}
+
+export interface MindmapPayload {
+  markdown: string;
+  central_topic?: string;
+  main_branches?: string[];
 }
 
 export interface PodcastArtifactMetadata {

@@ -37,6 +37,7 @@ _SYNTH_PROMPTS: dict[str, str] = {
     "presentation": "Generate a presentation{topic}.",
     "podcast": "Generate a podcast{topic}.",
     "chart": "Generate a chart{topic}.",
+    "mindmap": "Generate a mind map{topic}.",
     "text": "Explain this topic{topic}.",
 }
 
