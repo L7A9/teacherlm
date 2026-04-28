@@ -23,12 +23,32 @@ class StorageService:
 
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
+        # Pin region so presign skips the AWS-style location probe (which
+        # fails when the sign client points at a host only reachable from
+        # the browser, e.g. localhost:9000).
+        region = "us-east-1"
         self._client = Minio(
             endpoint=self._settings.minio_endpoint,
             access_key=self._settings.minio_access_key,
             secret_key=self._settings.minio_secret_key,
             secure=self._settings.minio_secure,
+            region=region,
         )
+        public_endpoint = (
+            self._settings.minio_public_endpoint or self._settings.minio_endpoint
+        )
+        if public_endpoint == self._settings.minio_endpoint:
+            self._sign_client = self._client
+        else:
+            # Signature includes the Host header, so we must sign against the
+            # hostname the browser will hit, not the in-network one.
+            self._sign_client = Minio(
+                endpoint=public_endpoint,
+                access_key=self._settings.minio_access_key,
+                secret_key=self._settings.minio_secret_key,
+                secure=self._settings.minio_secure,
+                region=region,
+            )
         self._bucket = self._settings.minio_bucket
 
     # --- bucket lifecycle ---
@@ -99,12 +119,16 @@ class StorageService:
 
         await asyncio.to_thread(_delete)
 
-    async def presigned_get_url(self, key: str, expires_seconds: int = 3600) -> str:
+    async def presigned_get_url(
+        self, key: str, expires_seconds: int | None = None
+    ) -> str:
+        ttl = expires_seconds or self._settings.artifact_url_ttl_s
+
         def _sign() -> str:
-            return self._client.presigned_get_object(
+            return self._sign_client.presigned_get_object(
                 self._bucket,
                 key,
-                expires=timedelta(seconds=expires_seconds),
+                expires=timedelta(seconds=ttl),
             )
 
         return await asyncio.to_thread(_sign)

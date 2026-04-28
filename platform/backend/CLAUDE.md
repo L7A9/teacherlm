@@ -72,7 +72,6 @@ and passes it in GeneratorInput.
 Based on output_type:
 - chat → semantic_topk
 - quiz → coverage_broad
-- flashcards → coverage_broad
 - report → topic_clusters
 - presentation → topic_clusters
 - podcast → narrative_arc

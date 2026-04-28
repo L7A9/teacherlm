@@ -4,6 +4,8 @@ from typing import Any
 from ollama import AsyncClient
 from pydantic import BaseModel
 
+from .language import inject_language_directive
+
 
 class OllamaClient:
     """Async wrapper around ollama.AsyncClient with Pydantic-aware helpers."""
@@ -22,7 +24,7 @@ class OllamaClient:
     ) -> Any:
         kwargs: dict[str, Any] = {
             "model": self.model,
-            "messages": messages,
+            "messages": inject_language_directive(messages),
             "stream": stream,
         }
         if format is not None:
@@ -53,7 +55,7 @@ class OllamaClient:
     ) -> AsyncIterator[str]:
         kwargs: dict[str, Any] = {
             "model": self.model,
-            "messages": messages,
+            "messages": inject_language_directive(messages),
             "stream": True,
         }
         if options is not None:

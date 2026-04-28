@@ -5,9 +5,13 @@
 
 ## Stack
 - FastAPI, ollama, teacherlm_core
-- kokoro-onnx (local TTS, 3.14 safe via ONNX runtime)
+- TTS probe order: piper-tts → kokoro-onnx → pyttsx3 (all 3.14-safe).
+  Piper is preferred because every supported language ships TWO distinct
+  neural voices (host_a + host_b sound clearly different in French,
+  Spanish, German, etc — no pitch-shift hack needed).
 - pydub + ffmpeg (audio manipulation)
 - nltk (sentence tokenization)
+- langdetect (post-script language drift check + retranslate)
 
 ## Module Map
 podcast_gen/
@@ -22,6 +26,7 @@ podcast_gen/
 │   ├── narrative_arc.txt
 │   └── script_educational.txt     # only style needed for students
 ├── models/                         # kokoro .onnx cached here
+│   └── piper/                      # piper voices (auto-downloaded on first use)
 ├── artifacts/
 ├── requirements.txt, Dockerfile, README.md
 ## Educational-only style

@@ -17,6 +17,10 @@ class GeneratorArtifact(BaseModel):
     type: str
     url: str
     filename: str
+    # Storage key (e.g. MinIO object key) so the platform can re-sign URLs
+    # when serving message history — presigned URLs expire (default 1h) but
+    # the underlying object survives container restarts.
+    key: str | None = None
 
 
 class LearnerUpdates(BaseModel):

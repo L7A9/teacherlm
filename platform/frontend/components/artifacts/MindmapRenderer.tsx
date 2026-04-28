@@ -37,6 +37,22 @@ function injectSafetyCss() {
   document.head.appendChild(el);
 }
 
+// Walk the markmap tree and mark every node that has children as folded.
+// Markmap's built-in click-on-circle toggles `payload.fold` per node, so
+// the user gets progressive disclosure: click the root's circle to reveal
+// its branches, click a branch's circle to reveal its subtopics, etc.
+type MMNode = {
+  payload?: { fold?: number; [k: string]: unknown };
+  children?: MMNode[];
+};
+function collapseAllChildren(node: MMNode | undefined): void {
+  if (!node?.children?.length) return;
+  node.payload = { ...(node.payload ?? {}), fold: 1 };
+  for (const child of node.children) {
+    collapseAllChildren(child);
+  }
+}
+
 interface Props {
   payload: MindmapPayload;
   conversationId?: UUID;
@@ -76,6 +92,7 @@ export function MindmapRenderer({ payload, conversationId, className }: Props) {
 
         const transformer = new Transformer();
         const { root } = transformer.transform(payload.markdown);
+        collapseAllChildren(root as unknown as MMNode);
 
         try {
           mmRef.current?.destroy?.();
@@ -148,6 +165,12 @@ export function MindmapRenderer({ payload, conversationId, className }: Props) {
 
     const onClick = (e: MouseEvent) => {
       const target = e.target as Element | null;
+
+      // Markmap renders a small circle on every node with children; clicking
+      // it toggles fold. Don't intercept those — let markmap handle expand
+      // / collapse. Only label / foreignObject clicks ask the teacher.
+      if (target?.closest("circle")) return;
+
       const node = target?.closest("g.markmap-node");
       if (!node) return;
 
@@ -186,7 +209,8 @@ export function MindmapRenderer({ payload, conversationId, className }: Props) {
       <div className="flex items-center justify-between gap-2">
         <span className="text-[11px] text-muted-foreground">
           {payload.central_topic ? `${payload.central_topic} · ` : ""}
-          Click any node to ask your teacher to explain it.
+          Click a node's circle to expand its children. Click a label to
+          ask your teacher to explain it.
         </span>
         <Button
           variant="secondary"

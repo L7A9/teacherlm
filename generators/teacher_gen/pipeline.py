@@ -2,6 +2,7 @@ import json
 from collections.abc import AsyncIterator
 from functools import lru_cache
 
+from teacherlm_core.llm.language import set_current_language
 from teacherlm_core.retrieval.reranker import CrossEncoderReranker
 from teacherlm_core.schemas.chunk import Chunk
 from teacherlm_core.schemas.generator_io import GeneratorInput, LearnerUpdates
@@ -45,6 +46,8 @@ async def run(inp: GeneratorInput) -> AsyncIterator[str]:
     settings = get_settings()
     llm = get_llm_service()
     reranker = get_reranker()
+
+    set_current_language((inp.options or {}).get("language"))
 
     history = inp.chat_history or []
     learner = inp.learner_state

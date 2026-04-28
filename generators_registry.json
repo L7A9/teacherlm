@@ -45,17 +45,6 @@
       "is_chat_default": false
     },
     {
-      "id": "flashcard_gen",
-      "name": "Flashcards",
-      "type": "api",
-      "endpoint": "http://flashcard_gen:8005/run",
-      "enabled": true,
-      "output_type": "flashcards",
-      "icon": "🎴",
-      "description": "Generate flashcards for spaced repetition",
-      "is_chat_default": false
-    },
-    {
       "id": "chart_gen",
       "name": "Chart",
       "type": "api",
@@ -70,8 +59,8 @@
       "id": "podcast_gen",
       "name": "Podcast",
       "type": "api",
-      "endpoint": "http://localhost:8007/run",
-      "enabled": false,
+      "endpoint": "http://podcast_gen:8007/run",
+      "enabled": true,
       "output_type": "podcast",
       "icon": "🎙️",
       "description": "Generate a podcast-style explainer",

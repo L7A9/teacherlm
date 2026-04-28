@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -15,8 +16,11 @@ from schemas.conversation import (
     ConversationUpdate,
 )
 from schemas.message import MessageList, MessageRead
+from services.storage_service import get_storage
 from services.vector_service import get_vector_service
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
@@ -100,7 +104,29 @@ async def list_messages(
         .offset(offset)
     )
     items = [MessageRead.model_validate(m) for m in result.scalars().all()]
+    await _refresh_artifact_urls(items)
     return MessageList(items=items, total=int(total or 0))
+
+
+async def _refresh_artifact_urls(messages: list[MessageRead]) -> None:
+    """Re-sign MinIO presigned URLs for any artifact whose object key we know.
+
+    Generators store the object key alongside the URL (see GeneratorArtifact);
+    presigned URLs expire (default 1h) but the object survives container
+    restarts, so we mint a fresh URL each time history is loaded.
+    Artifacts without a key (older rows, or non-MinIO artifacts like the
+    mindmap generator's static URLs) pass through untouched.
+    """
+    storage = get_storage()
+    for message in messages:
+        for artifact in message.artifacts:
+            if artifact.key:
+                try:
+                    artifact.url = await storage.presigned_get_url(artifact.key)
+                except Exception:  # noqa: BLE001
+                    logger.exception(
+                        "failed to refresh artifact URL for key=%s", artifact.key
+                    )
 
 
 @router.delete("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)

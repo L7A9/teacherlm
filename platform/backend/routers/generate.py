@@ -32,7 +32,6 @@ CHAT_HISTORY_LIMIT = 20
 
 _SYNTH_PROMPTS: dict[str, str] = {
     "quiz": "Generate a quiz{topic}.",
-    "flashcards": "Generate flashcards{topic}.",
     "report": "Generate a study report{topic}.",
     "presentation": "Generate a presentation{topic}.",
     "podcast": "Generate a podcast{topic}.",
@@ -65,7 +64,11 @@ async def generate(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     synth_message = _synthesize_prompt(body.output_type, body.topic)
-    retrieval_query = body.topic or synth_message
+    # No topic = no query: the orchestrator falls back to a broad corpus
+    # sample. Using the synth message ("Generate a quiz.") as a query
+    # produces near-empty retrieval pools because nothing in the source
+    # files matches that phrase.
+    retrieval_query = body.topic or ""
 
     chat_history = await _load_history(session, conversation_id, limit=CHAT_HISTORY_LIMIT)
     learner_state = await get_learner_tracker().load_state(session, conversation_id)

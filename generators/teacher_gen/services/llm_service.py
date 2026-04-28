@@ -6,6 +6,7 @@ from typing import TypeVar
 
 from pydantic import BaseModel
 from teacherlm_core.llm.ollama_client import OllamaClient
+from teacherlm_core.llm.structured import generate_structured
 
 from ..config import get_settings
 
@@ -63,13 +64,15 @@ class LLMService:
         user_message: str,
         schema: type[T],
     ) -> T:
-        messages = [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_message},
-        ]
-        return await self.analysis.chat_structured(
-            messages=messages,
+        # Use the shared helper so we get retry-on-validation-error: small
+        # local models occasionally emit out-of-range numbers (e.g.
+        # confusion_level=2 against a 0..1 bound). The retry loop feeds
+        # the validation error back so the next attempt corrects itself.
+        return await generate_structured(
+            client=self.analysis,
             schema=schema,
+            system_prompt=system,
+            user_prompt=user_message,
             options={"temperature": self._s.analysis_temperature},
         )
 
@@ -79,13 +82,11 @@ class LLMService:
         user_message: str,
         schema: type[T],
     ) -> T:
-        messages = [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_message},
-        ]
-        return await self.extraction.chat_structured(
-            messages=messages,
+        return await generate_structured(
+            client=self.extraction,
             schema=schema,
+            system_prompt=system,
+            user_prompt=user_message,
             options={"temperature": self._s.extraction_temperature},
         )
 

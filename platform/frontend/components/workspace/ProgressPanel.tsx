@@ -77,8 +77,8 @@ export function ProgressPanel({ conversationId, className }: Props) {
 
           {groups.length === 0 ? (
             <p className="text-xs text-muted-foreground">
-              Quizzes, flashcards, diagrams, and other generated items will
-              appear here once you create them.
+              Quizzes, diagrams, mind maps, podcasts, and other generated
+              items will appear here once you create them.
             </p>
           ) : (
             <div className="flex flex-col gap-3">

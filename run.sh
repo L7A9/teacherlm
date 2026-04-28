@@ -28,7 +28,7 @@ case "$cmd" in
     echo "Backend API:  http://localhost:8000/api/health"
     echo "teacher_gen:  http://localhost:8001/health"
     echo "quiz_gen:     http://localhost:8002/health"
-    echo "flashcards_gen: http://localhost:8005/health"
+    echo "podcast_gen:  http://localhost:8007/health"
     echo "mindmap_gen:  http://localhost:8008/health"
     ;;
   build)
@@ -39,7 +39,7 @@ case "$cmd" in
     echo "Backend API:  http://localhost:8000/api/health"
     echo "teacher_gen:  http://localhost:8001/health"
     echo "quiz_gen:     http://localhost:8002/health"
-    echo "flashcards_gen: http://localhost:8005/health"
+    echo "podcast_gen:  http://localhost:8007/health"
     echo "mindmap_gen:  http://localhost:8008/health"
     ;;
   rebuild)

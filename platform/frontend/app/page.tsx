@@ -10,6 +10,7 @@ import {
   Loader2,
   MessageSquare,
   Plus,
+  Settings,
   Sparkles,
   Trash2,
 } from "lucide-react";
@@ -62,18 +63,25 @@ export default function HomePage() {
             </div>
           </div>
 
-          <Button
-            variant="primary"
-            onClick={handleNew}
-            disabled={create.isPending}
-          >
-            {create.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Plus className="h-4 w-4" />
-            )}
-            New conversation
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" asChild title="Settings">
+              <Link href="/settings" aria-label="Settings">
+                <Settings className="h-4 w-4" />
+              </Link>
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleNew}
+              disabled={create.isPending}
+            >
+              {create.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+              New conversation
+            </Button>
+          </div>
         </div>
       </header>
 

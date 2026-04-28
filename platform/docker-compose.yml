@@ -2,7 +2,7 @@
 #
 # Service hostnames inside the compose network:
 #   postgres  redis  qdrant  minio  backend  arq_worker  teacher_gen  quiz_gen
-#   flashcard_gen  mindmap_gen  frontend
+#   mindmap_gen  podcast_gen  frontend
 #
 # Secrets and overridable credentials live in platform/.env (see .env.example).
 # The backend and worker override URLs for the in-network hostnames below so a
@@ -76,6 +76,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       QDRANT_URL: http://qdrant:6333
       MINIO_ENDPOINT: minio:9000
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-localhost:9000}
       MINIO_SECURE: "false"
       OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
       CORS_ORIGINS: '["http://localhost:3000"]'
@@ -171,31 +172,6 @@ services:
       minio:
         condition: service_healthy
 
-  flashcard_gen:
-    build:
-      context: ..
-      dockerfile: generators/flashcard_gen/Dockerfile
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      FLASHCARD_GEN_OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
-      FLASHCARD_GEN_CHAT_MODEL: ${FLASHCARD_GEN_CHAT_MODEL:-llama3.1:8b-instruct-q4_K_M}
-      FLASHCARD_GEN_GENERATION_MODEL: ${FLASHCARD_GEN_GENERATION_MODEL:-llama3.1:8b-instruct-q4_K_M}
-      FLASHCARD_GEN_MINIO_ENDPOINT: minio:9000
-      FLASHCARD_GEN_MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-localhost:9000}
-      FLASHCARD_GEN_MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
-      FLASHCARD_GEN_MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
-      FLASHCARD_GEN_MINIO_BUCKET: ${MINIO_BUCKET:-teacherlm}
-      FLASHCARD_GEN_MINIO_SECURE: "false"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    ports:
-      - "${FLASHCARD_GEN_PORT:-8005}:8005"
-    depends_on:
-      minio:
-        condition: service_healthy
-
   mindmap_gen:
     build:
       context: ..
@@ -220,6 +196,43 @@ services:
     ports:
       - "${MINDMAP_GEN_PORT:-8008}:8008"
 
+  podcast_gen:
+    build:
+      context: ..
+      dockerfile: generators/podcast_gen/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PODCAST_GEN_OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+      PODCAST_GEN_CHAT_MODEL: ${PODCAST_GEN_CHAT_MODEL:-llama3.1:8b-instruct-q4_K_M}
+      PODCAST_GEN_EXTRACTION_MODEL: ${PODCAST_GEN_EXTRACTION_MODEL:-llama3.1:8b-instruct-q4_K_M}
+      PODCAST_GEN_GENERATION_MODEL: ${PODCAST_GEN_GENERATION_MODEL:-llama3.1:8b-instruct-q4_K_M}
+      PODCAST_GEN_MINIO_ENDPOINT: minio:9000
+      PODCAST_GEN_MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-localhost:9000}
+      PODCAST_GEN_MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      PODCAST_GEN_MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      PODCAST_GEN_MINIO_BUCKET: ${MINIO_BUCKET:-teacherlm}
+      PODCAST_GEN_MINIO_SECURE: "false"
+      # Voice IDs from kokoro-onnx's voices-v1.0.bin pack. Override via .env
+      # to swap in different voices when the model files are mounted.
+      PODCAST_GEN_VOICE_HOST_A: ${PODCAST_GEN_VOICE_HOST_A:-af_heart}
+      PODCAST_GEN_VOICE_HOST_B: ${PODCAST_GEN_VOICE_HOST_B:-am_michael}
+    volumes:
+      # Bind-mount the host's models dir so the same files work for both
+      # Docker and non-Docker runs. .dockerignore keeps these out of the
+      # build context so image builds stay lean. Without these files the
+      # generator falls back to pyttsx3 (single voice, espeak-ng).
+      - ../generators/podcast_gen/models:/app/generators/podcast_gen/models
+      - podcast_artifacts:/app/generators/podcast_gen/artifacts
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${PODCAST_GEN_PORT:-8007}:8007"
+    depends_on:
+      minio:
+        condition: service_healthy
+
   frontend:
     build:
       context: ./frontend
@@ -240,3 +253,4 @@ volumes:
   fastembed_cache:
   hf_cache:
   mindmap_artifacts:
+  podcast_artifacts:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator
 
+from teacherlm_core.llm.language import set_current_language
 from teacherlm_core.schemas.chunk import Chunk
 from teacherlm_core.schemas.generator_io import (
     GeneratorArtifact,
@@ -138,6 +139,7 @@ async def run(inp: GeneratorInput) -> AsyncIterator[str]:
     llm = get_llm_service()
 
     options = dict(inp.options or {})
+    set_current_language(options.get("language"))
     n_target = _resolve_question_count(options)
     allowed_kinds = _resolve_allowed_kinds(options)
     learner = inp.learner_state
@@ -223,12 +225,14 @@ async def run(inp: GeneratorInput) -> AsyncIterator[str]:
     payload = quiz.model_dump_json(indent=2).encode("utf-8")
     store = get_artifact_store()
     try:
-        _, url = await store.save_json(
+        key, url = await store.save_json(
             conversation_id=inp.conversation_id,
             filename="quiz.json",
             payload=payload,
         )
-        artifact = GeneratorArtifact(type="quiz", url=url, filename="quiz.json")
+        artifact = GeneratorArtifact(
+            type="quiz", url=url, filename="quiz.json", key=key
+        )
         artifacts = [artifact]
     except Exception as exc:  # storage outage shouldn't kill the quiz
         artifacts = []

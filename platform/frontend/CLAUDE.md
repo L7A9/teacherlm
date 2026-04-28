@@ -11,7 +11,7 @@ Three-panel NotebookLM-style layout:
 ## Critical UX Rules
 - User NEVER sees "agent" or "generator" terminology
 - Output types are shown as BUTTONS above chat input: 
-  💬 Chat (default)  📝 Quiz  📄 Report  🎴 Flashcards  📊 Diagram  
+  💬 Chat (default)  📝 Quiz  📄 Report  📊 Diagram  🗺️ Mind map  
   🎙️ Podcast  📑 Presentation
 - Clicking a button opens an options dialog, then streams result into chat
 - Typing in chat → always routes to Teacher (chat output)
@@ -39,7 +39,6 @@ frontend/
 │   ├── artifacts/
 │   │   ├── ArtifactRenderer.tsx   # switch on type
 │   │   ├── QuizRenderer.tsx
-│   │   ├── FlashcardRenderer.tsx
 │   │   ├── ChartRenderer.tsx      # mermaid.js client-side
 │   │   ├── PodcastPlayer.tsx
 │   │   └── FileDownload.tsx       # generic for PDF/PPTX

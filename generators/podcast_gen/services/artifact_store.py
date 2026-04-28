@@ -13,10 +13,10 @@ from ..config import get_settings
 
 
 class ArtifactStore:
-    """MinIO wrapper for flashcard artifacts (JSON, CSV, APKG).
+    """MinIO wrapper for podcast artifacts (MP3 + transcript .txt).
 
-    Mirrors quiz_gen's key layout so artifacts land next to platform-uploaded
-    files:
+    Mirrors the key layout used by quiz_gen so podcasts land alongside
+    platform-uploaded files:
       conversations/{conversation_id}/artifacts/{uuid}_{filename}
     """
 
