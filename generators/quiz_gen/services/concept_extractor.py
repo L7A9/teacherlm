@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 # Reject concept names that are boilerplate metadata — authors, affiliations,
 # schools, copyright, etc. The prompt already tells the LLM to skip these, but
-# smaller models leak them anyway. Mirror of flashcard_gen's filter.
+# smaller models leak them anyway.
 _BOILERPLATE_TERMS = re.compile(
     r"\b(author|authors|supervisor|university|college|institute|department|"
     r"faculty|school|copyright|acknowledg(e)?ments?|bibliography|references|"

@@ -1,0 +1,34 @@
+fastapi>=0.135.0
+uvicorn[standard]>=0.32.0
+sse-starlette>=2.1.0
+httpx>=0.28.0
+
+ollama>=0.4.0
+pydantic>=2.12.0
+pydantic-settings>=2.6.0
+
+# TTS backends. Probe order: piper-tts (best multilingual, two distinct
+# neural voices per language) → kokoro-onnx → pyttsx3 (espeak fallback).
+# All three are pure Python + onnxruntime — no PyTorch, 3.14 safe.
+piper-tts>=1.2.0
+kokoro-onnx>=0.4.0
+onnxruntime>=1.20.0
+pyttsx3>=2.99
+
+# Post-generation language detection — flags segments that drift from the
+# user-selected language so we can re-translate them before TTS.
+langdetect>=1.0.9
+
+# Audio assembly
+pydub>=0.25.1
+# pydub uses the stdlib audioop module, which was removed in Python 3.13
+# (PEP 594). audioop-lts is the canonical out-of-tree port.
+audioop-lts>=0.2.1
+soundfile>=0.13.0
+numpy>=1.26.0
+
+# Sentence segmentation for TTS chunking
+nltk>=3.9.1
+
+# MinIO for artifact storage (mp3 + transcript)
+minio>=7.2.0

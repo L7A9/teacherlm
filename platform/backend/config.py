@@ -30,10 +30,16 @@ class Settings(BaseSettings):
 
     # --- MinIO ---
     minio_endpoint: str = "localhost:9000"
+    # Browser-facing endpoint used when re-signing artifact URLs returned to
+    # the frontend. Defaults to minio_endpoint when unset; override in compose
+    # so the backend signs against `localhost:9000` (browser) instead of the
+    # in-network `minio:9000` (only reachable inside the compose network).
+    minio_public_endpoint: str | None = None
     minio_access_key: str = "minioadmin"
     minio_secret_key: str = "minioadmin"
     minio_bucket: str = "teacherlm"
     minio_secure: bool = False
+    artifact_url_ttl_s: int = 3600
 
     # --- LlamaCloud ---
     llama_cloud_api_key: str = ""

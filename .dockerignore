@@ -1,0 +1,51 @@
+# Exclude bulky / irrelevant files from the Docker build context so image
+# builds stay fast and lean. Files needed by individual Dockerfiles are
+# COPY'd in explicitly.
+
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Local env / editor
+.env.local
+.idea
+.vscode
+.DS_Store
+Thumbs.db
+
+# Python build artefacts (the Dockerfiles install fresh)
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Node build artefacts (frontend Dockerfile reinstalls)
+**/node_modules
+**/.next
+**/out
+**/.turbo
+
+# Large model / TTS / vector files — these are mounted at runtime via
+# docker-compose volumes, never baked into images.
+generators/podcast_gen/models/*.onnx
+generators/podcast_gen/models/*.bin
+generators/podcast_gen/artifacts/
+generators/mindmap_gen/artifacts/
+**/*.onnx
+**/*.safetensors
+**/*.ckpt
+
+# Test / dev files unrelated to runtime images
+tests/
+**/*.test.ts
+**/*.spec.ts
+
+# Docs / planning files
+README.md
+*.tex
+"NotebookLM Mind Map.png"

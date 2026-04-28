@@ -22,7 +22,6 @@ OutputType = Literal[
     "quiz",
     "report",
     "presentation",
-    "flashcards",
     "chart",
     "podcast",
     "mindmap",
@@ -41,7 +40,6 @@ _OUTPUT_TO_MODE: dict[str, RetrievalMode] = {
     "text": "semantic_topk",
     "chat": "semantic_topk",
     "quiz": "coverage_broad",
-    "flashcards": "coverage_broad",
     "report": "topic_clusters",
     "presentation": "topic_clusters",
     "podcast": "narrative_arc",
@@ -103,6 +101,13 @@ class RetrievalOrchestrator:
 
         k = self._settings.retrieval_top_k
 
+        # No-topic path: callers (quiz, mind map, etc.) pass query=""
+        # when the user didn't narrow to a topic. Query-based retrieval
+        # would return an empty pool, so feed the generator a uniform
+        # stride sample of the whole corpus instead.
+        if not query.strip():
+            return self._broad_sample(all_chunks, target=max(k * 4, 24))
+
         match mode:
             case "semantic_topk":
                 return await semantic_topk(query, retriever, k=k)
@@ -114,6 +119,13 @@ class RetrievalOrchestrator:
                 return await topic_clusters(query, retriever, n_clusters=6)
             case "relationship_dense":
                 return await relationship_dense(query, retriever)
+
+    @staticmethod
+    def _broad_sample(chunks: list[Chunk], *, target: int) -> list[Chunk]:
+        if len(chunks) <= target:
+            return list(chunks)
+        stride = max(1, len(chunks) // target)
+        return chunks[::stride][:target]
 
     async def _load_corpus(self, conversation_id: uuid.UUID | str) -> list[Chunk]:
         scored = await self._vectors.scroll_all(conversation_id, limit=2000)

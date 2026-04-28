@@ -17,6 +17,7 @@ import { useChatStream } from "@/hooks/useChatStream";
 import type { UUID } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useConversationStore } from "@/stores/conversationStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 
 export interface ChatInputHandle {
   focus: () => void;
@@ -43,6 +44,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
     Boolean(s.streamingByConversation[conversationId]),
   );
   const abortStream = useConversationStore((s) => s.abortStream);
+  const forcedLanguage = useSettingsStore((s) => s.forcedLanguage);
 
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
@@ -60,8 +62,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
     const trimmed = value.trim();
     if (!trimmed || isStreaming) return;
     setValue("");
+    const options: Record<string, unknown> = forcedLanguage
+      ? { language: forcedLanguage }
+      : {};
     try {
-      await runChat(conversationId, { user_message: trimmed, options: {} });
+      await runChat(conversationId, { user_message: trimmed, options });
     } catch (err) {
       toast.error(`Chat failed: ${(err as Error).message}`);
     }

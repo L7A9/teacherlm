@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 
-import { Sparkles } from "lucide-react";
+import Link from "next/link";
+
+import { Languages, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/Button";
@@ -19,6 +21,10 @@ import { useGenerateStream } from "@/hooks/useChatStream";
 import type { OutputType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useConversationStore } from "@/stores/conversationStore";
+import {
+  languageLabel,
+  useSettingsStore,
+} from "@/stores/settingsStore";
 import { useUiStore } from "@/stores/uiStore";
 
 const TITLES: Record<OutputType, string> = {
@@ -26,7 +32,6 @@ const TITLES: Record<OutputType, string> = {
   quiz: "Generate a quiz",
   report: "Generate a report",
   presentation: "Generate a presentation",
-  flashcards: "Generate flashcards",
   chart: "Generate a diagram",
   podcast: "Generate a podcast",
   mindmap: "Generate a mind map",
@@ -37,7 +42,6 @@ const DESCRIPTIONS: Record<OutputType, string> = {
   quiz: "Pick how many questions, difficulty, and which types to include.",
   report: "Choose a format and how deep the write-up should go.",
   presentation: "Choose a length and style for your slide deck.",
-  flashcards: "Choose a count and what the cards should focus on.",
   chart: "Pick a diagram style — the teacher will extract the relationships.",
   podcast: "Pick a duration and presenter style.",
   mindmap: "A bird's-eye view of every theme in your uploaded materials.",
@@ -47,6 +51,7 @@ export function GeneratorDialog() {
   const { open, outputType } = useUiStore((s) => s.generatorDialog);
   const closeDialog = useUiStore((s) => s.closeGeneratorDialog);
   const activeConversationId = useConversationStore((s) => s.activeConversationId);
+  const forcedLanguage = useSettingsStore((s) => s.forcedLanguage);
   const runGenerate = useGenerateStream();
 
   if (!outputType) {
@@ -59,16 +64,24 @@ export function GeneratorDialog() {
       return;
     }
     closeDialog();
+    // Settings → forcedLanguage flows into every generator. Per-call
+    // options can still override it (advanced power-user path), but the
+    // dialog no longer surfaces a language picker.
+    const mergedOptions: Record<string, unknown> =
+      forcedLanguage && options.language === undefined
+        ? { ...options, language: forcedLanguage }
+        : options;
     try {
       await runGenerate(activeConversationId, {
         output_type: outputType,
-        options,
+        options: mergedOptions,
         topic: topic.trim() || null,
       });
     } catch (err) {
       toast.error(`Generation failed: ${(err as Error).message}`);
     }
   };
+
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && closeDialog()}>
@@ -77,9 +90,40 @@ export function GeneratorDialog() {
           <DialogTitle>{TITLES[outputType]}</DialogTitle>
           <DialogDescription>{DESCRIPTIONS[outputType]}</DialogDescription>
         </DialogHeader>
+        <LanguageBanner forcedLanguage={forcedLanguage} />
         <OptionsForm outputType={outputType} onSubmit={handleSubmit} onCancel={closeDialog} />
       </DialogContent>
     </Dialog>
+  );
+}
+
+function LanguageBanner({ forcedLanguage }: { forcedLanguage: string | null }) {
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-xs",
+        forcedLanguage
+          ? "border-primary/30 bg-primary/10 text-foreground"
+          : "border-border bg-muted text-muted-foreground",
+      )}
+    >
+      <span className="flex items-center gap-1.5">
+        <Languages className="h-3.5 w-3.5" />
+        {forcedLanguage ? (
+          <>
+            Language: <strong>{languageLabel(forcedLanguage)}</strong>
+          </>
+        ) : (
+          <>Language: Auto (per generator)</>
+        )}
+      </span>
+      <Link
+        href="/settings"
+        className="font-medium text-primary underline-offset-4 hover:underline"
+      >
+        Change in Settings
+      </Link>
+    </div>
   );
 }
 
@@ -103,9 +147,9 @@ function OptionsForm({ outputType, onSubmit, onCancel }: FormProps) {
   }, [outputType]);
 
   const fields = FIELDS_BY_TYPE[outputType];
-  // Mind map intentionally has no topic input — it always summarises the
-  // entire uploaded corpus, not a narrow slice.
-  const showTopic = outputType !== "mindmap";
+  // Mind map and quiz intentionally have no topic input — both always
+  // operate on the full uploaded corpus rather than a narrow slice.
+  const showTopic = outputType !== "mindmap" && outputType !== "quiz";
 
   return (
     <form
@@ -177,6 +221,20 @@ function Field({
           onChange={(e) => onChange(Number(e.target.value))}
         />
       )}
+      {field.kind === "text" && (
+        <>
+          <Input
+            id={`opt-${field.name}`}
+            type="text"
+            placeholder={field.placeholder ?? ""}
+            value={String(value ?? "")}
+            onChange={(e) => onChange(e.target.value)}
+          />
+          {field.help ? (
+            <p className="text-[11px] text-muted-foreground">{field.help}</p>
+          ) : null}
+        </>
+      )}
       {field.kind === "select" && (
         <select
           id={`opt-${field.name}`}
@@ -239,6 +297,14 @@ type FieldSpec =
       min?: number;
       max?: number;
       step?: number;
+    }
+  | {
+      kind: "text";
+      name: string;
+      label: string;
+      default: string;
+      placeholder?: string;
+      help?: string;
     }
   | {
       kind: "select";
@@ -320,32 +386,33 @@ const FIELDS_BY_TYPE: Record<OutputType, FieldSpec[]> = {
       ],
     },
   ],
-  flashcards: [
-    { kind: "number", name: "count", label: "Number of cards", default: 12, min: 3, max: 50 },
+  podcast: [
     {
       kind: "select",
-      name: "focus",
-      label: "Focus",
-      default: "key_concepts",
+      name: "duration",
+      label: "Duration",
+      default: "medium",
       options: [
-        { value: "key_concepts", label: "Key concepts" },
-        { value: "definitions", label: "Definitions" },
-        { value: "struggling", label: "Concepts you're struggling with" },
+        { value: "short", label: "Short (~4 min)" },
+        { value: "medium", label: "Medium (~9 min)" },
+        { value: "long", label: "Long (~16 min)" },
       ],
     },
-  ],
-  podcast: [
-    { kind: "number", name: "duration_minutes", label: "Duration (minutes)", default: 8, min: 2, max: 30 },
     {
-      kind: "select",
-      name: "style",
-      label: "Presenter style",
-      default: "two_host",
-      options: [
-        { value: "solo", label: "Solo narrator" },
-        { value: "two_host", label: "Two-host conversation" },
-        { value: "interview", label: "Interview" },
-      ],
+      kind: "text",
+      name: "host_a_name",
+      label: "Host A name (optional)",
+      default: "",
+      placeholder: "Leave blank — AI hosts greet without a name",
+      help: "If set, the curious-student host introduces themselves with this name.",
+    },
+    {
+      kind: "text",
+      name: "host_b_name",
+      label: "Host B name (optional)",
+      default: "",
+      placeholder: "Leave blank — AI hosts greet without a name",
+      help: "If set, the teacher host introduces themselves with this name.",
     },
   ],
   chart: [

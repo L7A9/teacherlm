@@ -33,17 +33,19 @@ def build_system_prompt(local_prompt_name: str, **fmt: object) -> str:
 
 
 class LLMService:
-    """Flashcard-specific Ollama wrapper.
+    """Podcast-specific Ollama wrapper.
 
-    Two roles:
-      - chat:       intro message in teacher voice
-      - generation: structured card batch generation
+    Three roles:
+      - chat:       short intro/outro paragraphs in teacher voice
+      - extraction: structured narrative arc (intro / key points / conclusion)
+      - generation: structured two-host script
     """
 
     def __init__(self) -> None:
         s = get_settings()
         self._s = s
         self.chat = OllamaClient(s.ollama_host, s.chat_model)
+        self.extraction = OllamaClient(s.ollama_host, s.extraction_model)
         self.generation = OllamaClient(s.ollama_host, s.generation_model)
 
     async def reply(self, system: str, user_message: str) -> str:
@@ -56,6 +58,19 @@ class LLMService:
             options={"temperature": self._s.chat_temperature},
         )
         return response["message"]["content"].strip()
+
+    async def extract_structured(
+        self,
+        system: str,
+        user_message: str,
+        schema: type[T],
+    ) -> T:
+        return await generate_structured(
+            client=self.extraction,
+            schema=schema,
+            system_prompt=system,
+            user_prompt=user_message,
+        )
 
     async def generate_structured(
         self,

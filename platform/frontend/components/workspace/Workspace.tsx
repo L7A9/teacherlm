@@ -2,7 +2,9 @@
 
 import { useEffect } from "react";
 
-import { GraduationCap, PanelLeft, PanelRight } from "lucide-react";
+import Link from "next/link";
+
+import { GraduationCap, PanelLeft, PanelRight, Settings } from "lucide-react";
 
 import { GeneratorDialog } from "@/components/chat/GeneratorDialog";
 import { Button } from "@/components/ui/Button";
@@ -107,15 +109,22 @@ function TopBar({
         </div>
       </div>
 
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={onToggleProgress}
-        aria-label={progressCollapsed ? "Show progress" : "Hide progress"}
-        title={progressCollapsed ? "Show progress" : "Hide progress"}
-      >
-        <PanelRight className="h-4 w-4" />
-      </Button>
+      <div className="flex items-center gap-1">
+        <Button variant="ghost" size="icon" asChild title="Settings">
+          <Link href="/settings" aria-label="Settings">
+            <Settings className="h-4 w-4" />
+          </Link>
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onToggleProgress}
+          aria-label={progressCollapsed ? "Show progress" : "Hide progress"}
+          title={progressCollapsed ? "Show progress" : "Hide progress"}
+        >
+          <PanelRight className="h-4 w-4" />
+        </Button>
+      </div>
     </header>
   );
 }

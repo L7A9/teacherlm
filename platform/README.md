@@ -1,7 +1,7 @@
 # TeacherLM — Platform
 
 AI teacher for students. Upload course files, chat with a teacher grounded in
-those files, and generate quizzes, reports, flashcards, diagrams, podcasts, and
+those files, and generate quizzes, reports, mind maps, diagrams, podcasts, and
 presentations from the same corpus.
 
 The platform runs the user-facing app and infrastructure. Individual

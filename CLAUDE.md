@@ -3,7 +3,7 @@
 ## Product
 AI teacher for students. Upload course files → get a personal tutor that:
 - Chats naturally (warm, encouraging teacher voice)
-- Generates quizzes, reports, flashcards, diagrams, podcasts, presentations
+- Generates quizzes, reports, mind maps, diagrams, podcasts, presentations
 - Tracks what the student has learned vs struggled with
 - Always grounds answers in uploaded files only
 
@@ -33,7 +33,6 @@ teacherlm/
     ├── quiz_gen/
     ├── report_gen/
     ├── presentation_gen/
-    ├── flashcard_gen/
     ├── chart_gen/
     └── podcast_gen/
 
@@ -70,7 +69,7 @@ Output:
 {
   "response": str,                       # markdown, teacher voice
   "generator_id": str,
-  "output_type": "text|quiz|report|presentation|flashcards|chart|podcast",
+  "output_type": "text|quiz|report|presentation|chart|podcast|mindmap",
   "artifacts": [{"type", "url", "filename"}],
   "sources": [{"text", "source", "score"}],
   "learner_updates": {                   # generators report back
@@ -83,7 +82,7 @@ Output:
 
 ## Retrieval Modes (platform provides, generators request)
 - "semantic_topk": top-K closest to query (for chat)
-- "coverage_broad": sampled across document (for quizzes, flashcards)
+- "coverage_broad": sampled across document (for quizzes)
 - "narrative_arc": intro + key points + conclusion (for podcasts, reports)
 - "topic_clusters": chunks grouped by topic (for presentations, reports)
 - "relationship_dense": chunks with many entities/relations (for charts)

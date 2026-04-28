@@ -9,11 +9,15 @@ async def generate_structured[T: BaseModel](
     system_prompt: str,
     user_prompt: str,
     max_retries: int = 2,
+    options: dict | None = None,
 ) -> T:
     """Call the model with a schema-constrained format and parse the reply.
 
     On validation failure, retries up to `max_retries` times, feeding the
     previous malformed output and the validation error back to the model.
+    `options` (e.g. {"temperature": 0.2}) is forwarded to ollama on every
+    attempt — useful when the caller needs a colder/hotter sampling than
+    the model's default.
     """
     messages: list[dict] = [
         {"role": "system", "content": system_prompt},
@@ -25,7 +29,9 @@ async def generate_structured[T: BaseModel](
 
     for attempt in range(max_retries + 1):
         try:
-            return await client.chat_structured(messages=messages, schema=schema)
+            return await client.chat_structured(
+                messages=messages, schema=schema, options=options
+            )
         except (ValidationError, ValueError) as exc:
             last_error = exc
             if attempt >= max_retries:

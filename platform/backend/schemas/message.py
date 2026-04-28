@@ -13,7 +13,6 @@ OutputType = Literal[
     "quiz",
     "report",
     "presentation",
-    "flashcards",
     "chart",
     "podcast",
     "mindmap",
@@ -24,6 +23,7 @@ class Artifact(BaseModel):
     type: str
     url: str
     filename: str | None = None
+    key: str | None = None
 
 
 class Source(BaseModel):

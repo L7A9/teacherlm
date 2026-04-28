@@ -2,8 +2,8 @@
 
 > A multi-agent, Retrieval-Augmented Generation (RAG) system that turns uploaded
 > course documents into a personal AI teacher. Students chat, generate quizzes,
-> create flashcards, and more — with **every answer grounded exclusively in the
-> uploaded files**, never the LLM's training data.
+> mind maps, podcasts, and more — with **every answer grounded exclusively in
+> the uploaded files**, never the LLM's training data.
 
 ---
 
@@ -29,7 +29,7 @@
 
 1. **Uploads** course files (PDFs, slides, documents).
 2. **Chats** with a warm, encouraging AI teacher that only answers from the uploaded materials.
-3. **Generates** quizzes, flashcards, and other study artifacts — all derived from the course content.
+3. **Generates** quizzes, mind maps, podcasts, and other study artifacts — all derived from the course content.
 4. **Tracks progress** as the system monitors mastery per concept over time.
 
 ### Core Principles
@@ -38,7 +38,7 @@
 |---|---|
 | **Strict Grounding** | Every factual claim must trace back to a retrieved chunk. If the material doesn't cover it, the system says so — it never hallucinates from training data. |
 | **Learner-Aware** | The system maintains a per-conversation **LearnerState** (understood concepts, struggling concepts, mastery scores) and adapts its behaviour accordingly. |
-| **Multi-Agent / Plugin Architecture** | Each output type (chat, quiz, flashcards, …) is a self-contained **generator** microservice with its own pipeline, models, and prompts. The backend is a thin orchestrator. |
+| **Multi-Agent / Plugin Architecture** | Each output type (chat, quiz, podcast, mind map, …) is a self-contained **generator** microservice with its own pipeline, models, and prompts. The backend is a thin orchestrator. |
 | **Fully Local LLM** | All inference runs through **Ollama** on the host machine. No OpenAI, no cloud LLM APIs — complete data privacy. |
 
 ---
@@ -48,7 +48,7 @@
 ```
 ┌────────────────────────────────────────────────────────────────────┐
 │                         FRONTEND (Next.js 14)                      │
-│   Conversation list • Chat UI • File upload • Quiz/Flashcard UI    │
+│   Conversation list • Chat UI • File upload • Quiz / Mind map UI  │
 └──────────────────────────────┬─────────────────────────────────────┘
                                │  HTTP / SSE
 ┌──────────────────────────────▼─────────────────────────────────────┐
@@ -67,13 +67,13 @@
 │         │          │                                                │
 └─────────┼──────────┼────────────────────────────────────────────────┘
           │          │ HTTP / SSE
-          │    ┌─────▼──────────────────────────────────┐
-          │    │         GENERATOR MICROSERVICES         │
-          │    │  ┌───────────┐ ┌─────────┐ ┌─────────┐│
-          │    │  │teacher_gen│ │quiz_gen │ │flash_gen││
-          │    │  │  :8001    │ │  :8002  │ │  :8005  ││
-          │    │  └───────────┘ └─────────┘ └─────────┘│
-          │    └────────────────────────────────────────┘
+          │    ┌─────▼─────────────────────────────────────────────────┐
+          │    │              GENERATOR MICROSERVICES                   │
+          │    │  ┌───────────┐ ┌─────────┐ ┌────────────┐ ┌──────────┐│
+          │    │  │teacher_gen│ │quiz_gen │ │mindmap_gen │ │podcast_gen││
+          │    │  │  :8001    │ │  :8002  │ │   :8008    │ │   :8007  ││
+          │    │  └───────────┘ └─────────┘ └────────────┘ └──────────┘│
+          │    └────────────────────────────────────────────────────────┘
           │
 ┌─────────▼──────────────────────────────────────────────────────────┐
 │                       INFRASTRUCTURE                                │
@@ -109,7 +109,7 @@
 | **fastembed** | ≥ 0.4 | Text embeddings | Fast, CPU-friendly embedding (`BAAI/bge-small-en-v1.5`, 384-dim). Lighter than sentence-transformers. |
 | **rank-bm25** | ≥ 0.2.2 | Sparse retrieval | BM25Okapi keyword retrieval for the hybrid search pipeline. |
 | **LlamaCloud** | ≥ 1.0 | Document parsing | Cloud API that converts PDFs/slides into clean Markdown. NOT llama-parse (deprecated). |
-| **MinIO** | SDK ≥ 7.2 | S3-compatible object storage | Stores uploaded files, parsed Markdown, and generated artifacts (quiz JSONs, flashcard exports). |
+| **MinIO** | SDK ≥ 7.2 | S3-compatible object storage | Stores uploaded files, parsed Markdown, and generated artifacts (quiz JSONs, podcast MP3s). |
 | **Redis + arq** | Redis 7 / arq ≥ 0.26 | Task queue | Background job processing for the async file ingestion pipeline (parse → chunk → embed). |
 | **httpx + httpx-sse** | ≥ 0.28 / ≥ 0.4 | HTTP client | The Dispatcher uses httpx with SSE support to communicate with generator microservices. |
 | **sse-starlette** | ≥ 2.1 | Server-Sent Events | Streams generator responses token-by-token to the frontend in real time. |
@@ -136,7 +136,7 @@
 
 | Model | Parameters | Quantisation | Used By |
 |---|---|---|---|
-| **Llama 3.1 8B Instruct** | 8B | Q4_K_M | Chat responses (teacher_gen), quiz generation, flashcard generation |
+| **Llama 3.1 8B Instruct** | 8B | Q4_K_M | Chat responses (teacher_gen), quiz generation, mind map / podcast scripting |
 | **Llama 3.2** | 3B | Default | Query analysis, learner-update extraction (lightweight structured output tasks) |
 
 ### 3.4 Embedding & Reranking Models (via fastembed)
@@ -146,13 +146,7 @@
 | **BAAI/bge-small-en-v1.5** | 384 | Dense text embeddings for semantic search |
 | **BAAI/bge-reranker-base** | — | Cross-encoder reranker for refining retrieved chunk relevance |
 
-### 3.5 NLP Models
-
-| Model | Library | Role |
-|---|---|---|
-| **en_core_web_sm** | spaCy | Named Entity Recognition + noun chunk extraction for flashcard concept mining |
-
-### 3.6 Infrastructure
+### 3.5 Infrastructure
 
 | Component | Image | Role |
 |---|---|---|
@@ -160,7 +154,7 @@
 | **Redis 7** | `redis:7-alpine` | Message broker for the arq background task queue |
 | **Qdrant** | `qdrant/qdrant:latest` | Vector database — one collection per conversation for isolated embedding retrieval |
 | **MinIO** | `minio/minio:latest` | S3-compatible object store for file uploads, parsed Markdown, and generated artifacts |
-| **Docker Compose** | — | Orchestrates all 9 services (Postgres, Redis, Qdrant, MinIO, backend, arq worker, teacher_gen, quiz_gen, flashcard_gen, frontend) |
+| **Docker Compose** | — | Orchestrates the full stack (Postgres, Redis, Qdrant, MinIO, backend, arq worker, teacher_gen, quiz_gen, mindmap_gen, podcast_gen, frontend) — 11 services in total |
 
 ---
 
@@ -191,13 +185,11 @@ teacherlm/
 │   ├── quiz_gen/                    # Quiz generator
 │   │   ├── pipeline.py             # Extract concepts → plan difficulty → generate questions → validate
 │   │   └── services/               # Bloom's taxonomy, distractor engine, quality validation
-│   ├── flashcard_gen/              # Flashcard generator
-│   │   ├── pipeline.py             # Mine concepts → prioritize → generate cards → SM-2 schedule
-│   │   └── services/               # Concept miner (spaCy), cloze deletion, SM-2 scheduler
-│   └── mindmap_gen/                # (Planned — not yet implemented)
+│   ├── mindmap_gen/                # Mind map generator (Mermaid hierarchy)
+│   └── podcast_gen/                # Two-host educational podcast generator
 │
 └── platform/
-    ├── docker-compose.yml          # Defines all 10 services
+    ├── docker-compose.yml          # Defines all 11 services
     ├── .env / .env.example         # Environment variables
     ├── backend/
     │   ├── main.py                 # FastAPI app creation + lifespan
@@ -241,7 +233,7 @@ When a query arrives, the **Retrieval Orchestrator** selects a retrieval mode ba
 | Output Type | Retrieval Mode | Strategy |
 |---|---|---|
 | `text` (chat) | `semantic_topk` | Top-K chunks closest to the query via hybrid retrieval |
-| `quiz`, `flashcards` | `coverage_broad` | MMR (Maximal Marginal Relevance) — balances relevance with diversity |
+| `quiz` | `coverage_broad` | MMR (Maximal Marginal Relevance) — balances relevance with diversity |
 | `report`, `presentation` | `topic_clusters` | K-means clustering on chunk embeddings; one representative per cluster |
 | `podcast` | `narrative_arc` | Intro-like + query-relevant middle + conclusion-like chunks |
 | `chart` | `relationship_dense` | Ranks chunks by entity + verb density (regex heuristic) |
@@ -286,7 +278,7 @@ After each interaction, the **Learner Tracker** updates the student's mastery mo
 - **Thresholds**: ≥ 0.7 → "understood"; ≤ 0.3 → "struggling"
 - **Turns since progress** is tracked to detect "stuck" students
 
-This state feeds back into future interactions — the teacher adapts its tone, quizzes focus on weak areas, and flashcards prioritise struggling concepts.
+This state feeds back into future interactions — the teacher adapts its tone and quizzes focus on weak areas.
 
 ---
 
@@ -378,33 +370,18 @@ All generators share a strict input/output schema defined in `teacherlm_core`:
 
 **Bloom's Taxonomy Integration**: Every concept is tagged with a Bloom's level. The difficulty adapter allocates questions across levels, pushing "understood" concepts to higher-order thinking (apply/analyze = "stretch") and reinforcing "struggling" concepts at lower levels (remember/understand).
 
-### 6.4 Flashcard Generator (`flashcard_gen`) — Port 8005
+### 6.4 Mind Map Generator (`mindmap_gen`) — Port 8008
 
-**Purpose**: Generate spaced-repetition flashcard decks with SM-2 scheduling, prioritised by learner weaknesses.
+**Purpose**: Build a hierarchical mind map (Mermaid) from the full uploaded corpus so students can see every theme at a glance.
 
-**Pipeline (8 steps):**
+### 6.5 Podcast Generator (`podcast_gen`) — Port 8007
 
-| Step | Service | Technique | Why |
-|---|---|---|---|
-| 1. **Concept Mining** | `concept_miner` | **spaCy NER** + noun chunks + regex definition patterns ("X is Y") | Extract candidate concepts from text without an LLM call (fast, deterministic) |
-| 2. **Boilerplate Filtering** | Regex patterns | Filter out authors, universities, copyright, page numbers, URLs | Course PDFs are full of metadata that shouldn't become flashcards |
-| 3. **Priority Selection** | `priority_selector` | Rank by: struggling concepts first → high-occurrence concepts → rest | Focus study effort where it's needed most |
-| 4. **Basic Card Generation** | `basic_card_gen` | LLM structured output → Q&A-style cards with source grounding | Classic flashcard format — question on front, answer on back |
-| 5. **Cloze Deletion Cards** | `cloze_card_gen` | Regex-based sentence transformation (blank key term) | Fill-in-the-blank cards test active recall differently than Q&A |
-| 6. **Deduplication** | `deduplicator` | Token-set overlap threshold | Remove near-duplicate cards |
-| 7. **SM-2 Scheduling** | `sm2_scheduler` | Attach SuperMemo 2 metadata (ease factor, interval, repetitions) | Enable spaced repetition — cards are due at scientifically optimal intervals |
-| 8. **Export** | `exporter` | JSON upload to MinIO | Downloadable deck for the frontend renderer |
+**Purpose**: Two-host educational podcasts. Local TTS via Piper (preferred, two distinct neural voices per language) → Kokoro → pyttsx3 fallback. Strict language enforcement honours the user's setting.
 
-**Card Types**: Basic (Q&A) and Cloze (fill-in-the-blank).
+### 6.6 Planned Generators (Not Yet Implemented)
 
-**SM-2 Algorithm**: Each card gets initial ease factor (2.5), interval (1 day), and a `due_at` timestamp. The frontend can later implement review sessions that update these values according to the SM-2 spaced repetition formula.
-
-### 6.5 Planned Generators (Not Yet Implemented)
-
-- **Mindmap Generator** — Concept relationship diagrams
 - **Report Generator** — Study reports on covered material
 - **Presentation Generator** — Slide-style output
-- **Podcast Generator** — Audio-style explainers
 - **Chart Generator** — Concept diagrams
 
 ---
@@ -473,7 +450,7 @@ A reusable Python package installed by every generator and the platform backend.
 | `DELETE` | `/api/conversations/{id}/files/{fid}` | Delete file + vectors |
 | `GET` | `/api/conversations/{id}/messages` | List message history |
 | `POST` | `/api/conversations/{id}/chat` | Send a message → SSE stream |
-| `POST` | `/api/conversations/{id}/generate` | Generate a specific output type (quiz, flashcards) → SSE stream |
+| `POST` | `/api/conversations/{id}/generate` | Generate a specific output type (quiz, mind map, podcast, …) → SSE stream |
 | `GET` | `/api/generators` | List available generators |
 | `GET` | `/api/health` | Health check |
 
@@ -518,10 +495,9 @@ Each status transition is persisted in PostgreSQL so the frontend can show real-
 | `ChatInput` | Message input with keyboard shortcuts and loading states |
 | `MessageList` | Renders conversation history with scroll-to-bottom |
 | `MessageBubble` | Renders a single message — user or assistant. Supports Markdown (react-markdown), math (KaTeX), and diagrams (Mermaid). |
-| `OutputTypeButtons` | Toolbar to generate quizzes, flashcards, etc. |
+| `OutputTypeButtons` | Toolbar to generate quizzes, mind maps, podcasts, etc. |
 | `GeneratorDialog` | Modal for configuring generation options (topic, count) |
 | `QuizRenderer` | Interactive quiz UI — MCQ radio buttons, true/false toggles, fill-in-the-blank inputs, score calculation |
-| `FlashcardRenderer` | Card-flip UI with swipe/keyboard navigation for reviewing flashcard decks |
 | `ArtifactRenderer` | Routes artifact types to the correct specialised renderer |
 | `FileDownload` | Handles binary artifact downloads |
 | `ChartRenderer` | Renders SVG/Mermaid charts with pan-zoom |
@@ -573,7 +549,8 @@ Docker services reach Ollama via `host.docker.internal:11434`.
 | Backend API | `8000` |
 | teacher_gen | `8001` |
 | quiz_gen | `8002` |
-| flashcard_gen | `8005` |
+| podcast_gen | `8007` |
+| mindmap_gen | `8008` |
 | PostgreSQL | `5432` |
 | Redis | `6379` |
 | Qdrant | `6333`/`6334` |
@@ -631,10 +608,6 @@ Different output types have fundamentally different information needs:
 - **Smaller dependency footprint** (no PyTorch required).
 - **CPU-optimised** via ONNX runtime — faster embedding on machines without a GPU.
 - **Includes a cross-encoder reranker** via `TextCrossEncoder` — one library for both embedding and reranking.
-
-### Why SM-2 for flashcards?
-
-The **SuperMemo 2 algorithm** is the foundation of modern spaced-repetition systems (Anki, SuperMemo). By attaching SM-2 metadata at generation time, the flashcards are ready for review scheduling — the frontend can implement timed review sessions where card intervals grow exponentially with successful recalls.
 
 ### Why LlamaCloud for parsing instead of local PDF extraction?
 

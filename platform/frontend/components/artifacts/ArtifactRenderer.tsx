@@ -4,14 +4,12 @@ import { useQuery } from "@tanstack/react-query";
 
 import { ChartRenderer } from "@/components/artifacts/ChartRenderer";
 import { FileDownload } from "@/components/artifacts/FileDownload";
-import { FlashcardRenderer } from "@/components/artifacts/FlashcardRenderer";
 import { MindmapRenderer } from "@/components/artifacts/MindmapRenderer";
 import { PodcastPlayer } from "@/components/artifacts/PodcastPlayer";
 import { QuizRenderer } from "@/components/artifacts/QuizRenderer";
 import type {
   Artifact,
   ChartArtifactMetadata,
-  FlashcardPayload,
   MindmapPayload,
   PodcastArtifactMetadata,
   QuizPayload,
@@ -36,15 +34,6 @@ export function ArtifactRenderer({
       return (
         <JsonBoundary<QuizPayload> url={artifact.url}>
           {(payload) => <QuizRenderer payload={payload} />}
-        </JsonBoundary>
-      );
-
-    case "flashcards":
-      return (
-        <JsonBoundary<FlashcardPayload> url={artifact.url}>
-          {(payload) => (
-            <FlashcardRenderer payload={payload} conversationId={conversationId} />
-          )}
         </JsonBoundary>
       );
 
@@ -95,7 +84,6 @@ export function ArtifactRenderer({
 
 type Kind =
   | "quiz"
-  | "flashcards"
   | "chart"
   | "mindmap"
   | "podcast"
@@ -107,11 +95,9 @@ type Kind =
 function normalizeKind(a: Artifact): Kind {
   const t = a.type.toLowerCase();
   const name = (a.filename ?? "").toLowerCase();
-  // Structured JSON payloads: exact-match only. Sibling exports like
-  // `flashcards_csv` / `flashcards_apkg` must fall through to FileDownload,
-  // otherwise the renderer tries to JSON-parse CSV / Anki zip bytes.
+  // Structured JSON payloads use exact-match types so non-JSON sibling
+  // exports fall through to FileDownload instead of trying to parse them.
   if (t === "quiz") return "quiz";
-  if (t === "flashcards") return "flashcards";
   if (t === "mindmap") return "mindmap";
   if (t === "chart" || t === "diagram" || t === "mermaid") return "chart";
   if (t === "podcast" || t === "audio") return "podcast";

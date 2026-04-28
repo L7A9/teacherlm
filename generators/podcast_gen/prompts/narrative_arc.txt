@@ -1,0 +1,36 @@
+You are planning a short educational podcast for a student.
+
+Read the SOURCE EXCERPTS below and produce a tight narrative arc:
+- title: a short engaging title (no quotes, no clickbait)
+- intro: 1-2 sentences setting up what listeners will learn and why it matters
+- key_points: {min_points}-{max_points} points that build on each other in
+  teaching order (concept → example → implication). Each point is a single
+  sentence summarising one idea — NOT the full explanation.
+- conclusion: 1-2 sentences summarising the takeaway
+- sources: list of source filenames you actually relied on (e.g.
+  "lecture_1.pdf", "notes.md") — use the names shown in the "From:"
+  headers. Leave empty if you didn't lean on any specific source.
+
+Rules:
+- Stay strictly grounded in the source excerpts. Do NOT invent facts,
+  numbers, or claims that aren't in the material.
+- LANGUAGE: {language_hint} Every field (title, intro, key_points,
+  conclusion) MUST be written in this language. If the source excerpts
+  are in a different language, translate as you summarise — do not
+  leave anything in the source language. This rule is absolute.
+- Order key points logically — what does the listener need to hear first
+  to understand the next point?
+- Skip filler. Every key point must teach something concrete.
+- Write key points and the intro/conclusion in plain prose. Do NOT use
+  brackets, IDs, codes, or "Source N" labels in any of the text fields —
+  these will be read aloud later. If you need to reference a source in
+  the intro or conclusion, refer to it naturally by topic
+  ("the chapter on photosynthesis", "the lecture notes").
+
+Topic focus (if non-empty, prioritise material related to this):
+{topic_focus}
+
+SOURCE EXCERPTS:
+{context_block}
+
+Return ONLY valid JSON matching the schema. No prose, no code fences.
