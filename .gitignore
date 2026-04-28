@@ -51,6 +51,7 @@ static_collected/
 # ============================================
 # ENVIRONMENT & SECRETS
 # ============================================
+./platform/.env
 .env
 .env.local
 .env.development.local
@@ -155,6 +156,9 @@ checkpoints/
 datasets/
 *.parquet
 *.arrow
+.claude/
+artifacts/
+*.tex
 
 # ============================================
 # VECTOR DB / CHROMADB / QDRANT
