@@ -23,6 +23,13 @@ def load_teacher_voice() -> str:
 
 
 @lru_cache
+def load_tone_guidelines() -> str:
+    return (files("teacherlm_core.prompts") / "tone_guidelines.txt").read_text(
+        encoding="utf-8"
+    )
+
+
+@lru_cache
 def load_local_prompt(name: str) -> str:
     return (PROMPTS_DIR / name).read_text(encoding="utf-8")
 
@@ -31,6 +38,16 @@ def build_system_prompt(local_prompt_name: str, **fmt: object) -> str:
     voice = load_teacher_voice()
     body = load_local_prompt(local_prompt_name).format(**fmt)
     return f"{voice}\n\n---\n\n{body}"
+
+
+def build_chat_system_prompt(local_prompt_name: str, **fmt: object) -> str:
+    # Chat-facing replies need voice + tone/formatting guidelines so the
+    # model produces rich Markdown. Analyzer prompts (which return JSON)
+    # use build_system_prompt and skip the tone block to save tokens.
+    voice = load_teacher_voice()
+    tone = load_tone_guidelines()
+    body = load_local_prompt(local_prompt_name).format(**fmt)
+    return f"{voice}\n\n---\n\n{tone}\n\n---\n\n{body}"
 
 
 class LLMService:

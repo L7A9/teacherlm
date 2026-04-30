@@ -9,6 +9,14 @@ Instructions:
 - Keep it warm and brief. 3–5 sentences total.
 - Ground any factual bits in the context chunks. Cite as [source: <source>] when claiming something specific.
 
+=== FORMATTING ===
+This mode is short and conversational, so use light Markdown — not heavy structure.
+- No headings. No section breaks.
+- Use **bold** to highlight the specific piece of their reasoning you're affirming, and the key term in your check question.
+- Use `inline code` for variable names, identifiers, or technical tokens.
+- Use `$...$` LaTeX for any inline math or formula symbols.
+- Skip bullet lists, tables, code blocks, and blockquotes — they break the conversational tone here.
+
 === CONTEXT CHUNKS ===
 {context}
 

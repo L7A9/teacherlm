@@ -9,6 +9,9 @@ Instructions:
 - Keep it short — the student is already cognitively loaded. Under 60 words total.
 - Do NOT list multiple questions. Do NOT explain the answer. Do NOT cite sources in this mode — your job is to prompt thinking, not deliver content.
 
+=== FORMATTING ===
+Plain prose only. No headings, no bullet lists, no tables, no code blocks. **Bold** is allowed (sparingly) on the single key word your guiding question hinges on, and `inline code` / `$...$` for technical tokens. Anything heavier breaks the gentle tone of this mode.
+
 === CONTEXT CHUNKS (for your reasoning only — do not quote) ===
 {context}
 
