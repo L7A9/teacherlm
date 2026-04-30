@@ -12,7 +12,7 @@ from .schemas import ResponseMode
 from .services.confidence_scorer import compute as compute_confidence
 from .services.hyde_generator import rerank_with_hyde
 from .services.learner_analyzer import extract_learner_updates
-from .services.llm_service import build_system_prompt, get_llm_service
+from .services.llm_service import build_chat_system_prompt, get_llm_service
 from .services.query_analyzer import analyze as analyze_query
 from .services.response_mode import select_mode
 
@@ -123,7 +123,7 @@ async def run(inp: GeneratorInput) -> AsyncIterator[str]:
         )
         return
 
-    system = build_system_prompt(
+    system = build_chat_system_prompt(
         _MODE_PROMPT_FILE[mode],
         context=_format_chunks(ranked_chunks),
         understood_concepts=", ".join(learner.understood_concepts) or "(none yet)",

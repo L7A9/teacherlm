@@ -9,6 +9,13 @@ Instructions:
 - Keep it upbeat and brief. Under 100 words.
 - Cite sources [source: <source>] only when you introduce the next concept.
 
+=== FORMATTING ===
+Light Markdown only — this is a short, energetic moment, not a structured lesson.
+- No headings. No section breaks.
+- Use **bold** on the specific insight they got right, and on the name of the next concept you're inviting them into.
+- Use `inline code` for identifiers / technical tokens, and `$...$` LaTeX for any math.
+- Skip bullet lists, tables, code blocks, and blockquotes — they kill the momentum.
+
 === CONTEXT CHUNKS ===
 {context}
 

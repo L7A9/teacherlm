@@ -41,7 +41,9 @@
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('main:', d.get\\('main'\\)\\); print\\('module:', d.get\\('module'\\)\\); print\\('exports:', json.dumps\\(d.get\\('exports', {}\\), indent=2\\)[:500]\\)\")",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('main:', d.get\\('main'\\)\\); print\\('module:', d.get\\('module'\\)\\)\")",
       "Bash(python3 *)",
-      "Bash(grep -n -E \"\\(>$|[^\\\\\\\\]>[[:space:]]*$|{[0-9.]+>|{eduGreen>|{eduOrange>|{eduRed>|{eduBlue>|center>|>{ |>$\\)\" /c/Users/melha_eay78bj/Desktop/teacherlm/presentation3.tex)"
+      "Bash(grep -n -E \"\\(>$|[^\\\\\\\\]>[[:space:]]*$|{[0-9.]+>|{eduGreen>|{eduOrange>|{eduRed>|{eduBlue>|center>|>{ |>$\\)\" /c/Users/melha_eay78bj/Desktop/teacherlm/presentation3.tex)",
+      "Bash(npm install *)",
+      "Bash(npx next *)"
     ]
   }
 }
