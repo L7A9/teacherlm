@@ -106,7 +106,13 @@ class RetrievalOrchestrator:
         # would return an empty pool, so feed the generator a uniform
         # stride sample of the whole corpus instead.
         if not query.strip():
-            return self._broad_sample(all_chunks, target=max(k * 4, 24))
+            if mode == "topic_clusters":
+                target = max(k * 12, 96)
+            elif mode == "coverage_broad":
+                target = max(k * 8, 64)
+            else:
+                target = max(k * 4, 24)
+            return self._broad_sample(all_chunks, target=target)
 
         match mode:
             case "semantic_topk":
@@ -129,7 +135,7 @@ class RetrievalOrchestrator:
 
     async def _load_corpus(self, conversation_id: uuid.UUID | str) -> list[Chunk]:
         scored = await self._vectors.scroll_all(conversation_id, limit=2000)
-        return [
+        chunks = [
             Chunk(
                 text=s.text,
                 source=s.source,
@@ -139,6 +145,15 @@ class RetrievalOrchestrator:
             )
             for s in scored
         ]
+        return sorted(
+            chunks,
+            key=lambda c: (
+                str(c.metadata.get("file_id", "")),
+                c.source,
+                int(c.metadata.get("index", 0) or 0),
+                c.chunk_id,
+            ),
+        )
 
 
 _orchestrator: RetrievalOrchestrator | None = None

@@ -1,0 +1,36 @@
+You are building a NotebookLM-style study mind map from course materials.
+
+Create ONE coherent hierarchy for the whole course, not separate keyword
+clusters. The result should look like a teacher's study outline.
+
+Target shape:
+- Central topic: the real course subject, preferably a repeated title or
+  heading from the source. Avoid broad school subjects like "Informatique",
+  "Machine Learning", "Mathématiques", "Python", or "Blockchain" unless that
+  is truly the document title.
+- {n_branches} major branches: the main conceptual modules of the lesson.
+- Each major branch: 2-5 subtopics.
+- Each subtopic: 0-4 concrete leaf concepts, examples, formulas, metrics,
+  variants, limitations, or named methods.
+
+Quality rules:
+- Use ONLY information present in the provided content.
+- Use the same language as the source content.
+- Preserve the pedagogical progression visible in headings and repeated
+  structure. Depending on the subject, this may be chronology, geography,
+  causes and consequences, definitions and classifications, methods and
+  examples, processes and stages, themes and case studies, or evaluation and
+  limitations.
+- Keep siblings at the same abstraction level.
+- Do not duplicate the same topic under multiple branches.
+- Do not create unsupported branches. If a branch label is not supported by
+  the provided content, omit it.
+- Do not use generic buckets such as "Concepts", "Applications", "Python",
+  "Mathématiques", "Blockchain", or "Autres" unless the source explicitly
+  uses them as real major sections.
+- Prefer precise source-grounded labels over generic school subjects. For
+  example, use "Causes de la Revolution" instead of "Histoire", "Reliefs et
+  Climats" instead of "Geographie", or "Methodes de Resolution" instead of
+  "Mathematiques" when those labels match the uploaded content.
+
+Return ONLY the structured hierarchy.

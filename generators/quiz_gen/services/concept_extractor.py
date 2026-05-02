@@ -20,6 +20,18 @@ _BOILERPLATE_TERMS = re.compile(
     re.IGNORECASE,
 )
 _WORD_RE = re.compile(r"[A-Za-z][A-Za-z'-]*")
+_COURSE_CONCEPT_HINTS = re.compile(
+    r"\b(concept|method|model|algorithm|approach|system|metric|measure|"
+    r"formula|definition|principle|process|classification|theory|law|"
+    r"cause|effect|impact|function|structure|property|relationship|"
+    r"methode|mod[eè]le|algorithme|approche|syst[eè]me|m[eé]trique|"
+    r"mesure|formule|d[eé]finition|principe|processus|classification|"
+    r"th[eé]orie|loi|cause|effet|impact|fonction|structure|propri[eé]t[eé]|"
+    r"relation|filtrage|apprentissage|recommandation|similarit[eé]|"
+    r"learning|filtering|factorization|decomposition|regression)\b|"
+    r"\b(?-i:[A-Z]{2,})\b",
+    re.IGNORECASE,
+)
 
 
 def _is_proper_noun_only(name: str) -> bool:
@@ -39,7 +51,7 @@ def _is_boilerplate_concept(card: ConceptCard) -> bool:
     haystack = f"{card.name}\n{card.description or ''}"
     if _BOILERPLATE_TERMS.search(haystack):
         return True
-    if _is_proper_noun_only(card.name):
+    if _is_proper_noun_only(card.name) and not _COURSE_CONCEPT_HINTS.search(haystack):
         return True
     return False
 

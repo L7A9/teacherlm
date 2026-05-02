@@ -6,8 +6,8 @@ from teacherlm_core.schemas.chunk import Chunk
 from ..schemas import MindMap, MindMapNode
 from .llm_service import get_llm_service
 
-_MAX_CHARS_PER_THEME = 12_000
-_MAX_CHUNKS_PER_THEME = 8
+_MAX_CHARS_PER_THEME = 18_000
+_MAX_CHUNKS_PER_THEME = 14
 
 _TOKEN_RE = re.compile(r"\w+", re.UNICODE)
 
@@ -30,8 +30,8 @@ def _filter_chunks_for_theme(
     if not theme_tokens:
         return chunks[:top_k]
 
-    scored: list[tuple[float, Chunk]] = []
-    for ch in chunks:
+    scored: list[tuple[float, int, Chunk]] = []
+    for idx, ch in enumerate(chunks):
         chunk_tokens = _tokenize(ch.text)
         if not chunk_tokens:
             continue
@@ -39,10 +39,44 @@ def _filter_chunks_for_theme(
         # Combine overlap with the chunk's own retrieval score so that
         # well-retrieved-but-low-overlap chunks still surface.
         score = overlap + 0.1 * ch.score
-        scored.append((score, ch))
+        scored.append((score, idx, ch))
 
     scored.sort(key=lambda pair: pair[0], reverse=True)
-    return [c for _, c in scored[:top_k]] or chunks[:top_k]
+    if not scored or scored[0][0] <= 0:
+        return _broad_sample(chunks, target=top_k)
+
+    selected: list[Chunk] = []
+    seen: set[str] = set()
+    for _, idx, chunk in scored[: max(4, top_k // 2)]:
+        for candidate in _with_neighbors(chunks, idx):
+            if candidate.chunk_id in seen:
+                continue
+            seen.add(candidate.chunk_id)
+            selected.append(candidate)
+            if len(selected) >= top_k:
+                return selected
+
+    return selected or _broad_sample(chunks, target=top_k)
+
+
+def _with_neighbors(chunks: list[Chunk], idx: int) -> list[Chunk]:
+    current = chunks[idx]
+    out: list[Chunk] = []
+    current_file = current.metadata.get("file_id")
+    for candidate_idx in (idx - 1, idx, idx + 1):
+        if candidate_idx < 0 or candidate_idx >= len(chunks):
+            continue
+        candidate = chunks[candidate_idx]
+        if candidate.metadata.get("file_id") == current_file:
+            out.append(candidate)
+    return out
+
+
+def _broad_sample(chunks: list[Chunk], target: int) -> list[Chunk]:
+    if len(chunks) <= target:
+        return list(chunks)
+    stride = max(1, len(chunks) // target)
+    return chunks[::stride][:target]
 
 
 def _combine(chunks: list[Chunk], max_chars: int = _MAX_CHARS_PER_THEME) -> str:

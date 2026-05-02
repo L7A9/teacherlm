@@ -6,7 +6,7 @@ from teacherlm_core.llm.ollama_client import OllamaClient
 from teacherlm_core.llm.structured import generate_structured
 
 from ..config import settings
-from ..schemas import SubtopicExpansion, ThemeList
+from ..schemas import CourseOutline, SubtopicExpansion, ThemeList
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
@@ -53,6 +53,44 @@ class LLMService:
             user_prompt=chunks_text,
         )
 
+    async def build_course_outline(
+        self, chunks_text: str, n_branches: int
+    ) -> CourseOutline:
+        system = _build_system_prompt(
+            "course_outline.txt", n_branches=n_branches
+        )
+        return await generate_structured(
+            client=self._client,
+            schema=CourseOutline,
+            system_prompt=system,
+            user_prompt=chunks_text,
+            options={"temperature": 0.15},
+        )
+
+    async def build_batch_outline(self, batch_text: str) -> CourseOutline:
+        system = _build_system_prompt("batch_outline.txt")
+        return await generate_structured(
+            client=self._client,
+            schema=CourseOutline,
+            system_prompt=system,
+            user_prompt=batch_text,
+            options={"temperature": 0.1},
+        )
+
+    async def synthesize_course_outline(
+        self, extracted_outlines: str, n_branches: int
+    ) -> CourseOutline:
+        system = _build_system_prompt(
+            "course_synthesis.txt", n_branches=n_branches
+        )
+        return await generate_structured(
+            client=self._client,
+            schema=CourseOutline,
+            system_prompt=system,
+            user_prompt=extracted_outlines,
+            options={"temperature": 0.1},
+        )
+
     async def expand_subtopic(
         self, theme: str, relevant_chunks: str
     ) -> SubtopicExpansion:
@@ -70,8 +108,11 @@ class LLMService:
                 {
                     "role": "system",
                     "content": (
-                        "What is the overall subject of these documents? "
-                        "Answer in 2-4 words. Return ONLY the subject, no prose."
+                        "Infer the overall course subject of these documents. "
+                        "Prefer an exact title, repeated heading, or central "
+                        "discipline from the source over a narrow subtopic. "
+                        "Answer in the source language, 2-6 words. Return ONLY "
+                        "the subject, no prose."
                     ),
                 },
                 {"role": "user", "content": chunks_text},

@@ -11,6 +11,9 @@ Requirements:
 HARD RULES:
 - The statement and the explanation must both be derivable from the chunk.
 - Do NOT make the false-statement false by inventing a contradiction the chunk never addresses. Pick something the chunk explicitly contradicts or clearly supports.
+- Do NOT ask whether a memorized worked-example result/output is true or false.
+  Test the concept, rule, relationship, or interpretation shown by the example
+  instead.
 
 Return ONLY the structured JSON object — no prose, no code fences.
 
