@@ -13,6 +13,9 @@ HARD RULES:
 - The blanked term must appear (or be unambiguously implied) in the chunk.
 - Avoid blanking common function words ("the", "and", "is"). Blank a content word that demonstrates understanding.
 - Do NOT make the blank ambiguous — the chunk should make exactly one answer correct.
+- Do NOT blank the exact numeric/text result of a worked example. Blank a
+  concept name, method, formula component, relationship, or interpretation
+  instead.
 
 Return ONLY the structured JSON object — no prose, no code fences.
 

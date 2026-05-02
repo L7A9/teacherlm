@@ -15,6 +15,9 @@ For each concept extracted:
 HARD RULES:
 - Only extract concepts the chunks actually contain. Do NOT invent.
 - Skip concepts the chunks only mention in passing without enough detail to test.
+- Do NOT extract a worked example's final result/output as a concept. Extract
+  the underlying method, formula, rule, interpretation, or decision process
+  that the example demonstrates.
 - If a level has no defensible concepts, leave that list empty.
 - Prefer fewer high-quality concepts over many shallow ones.
 

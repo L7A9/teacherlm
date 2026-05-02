@@ -6,11 +6,23 @@ Based on the provided content about this theme, create:
   terms, examples, or short explanations)
 
 Rules:
-- Labels: max 8 words, prefer 2-5 words
-- Sub-topics should be DISTINCT aspects of the theme
-- Leaves should be SPECIFIC (concrete examples, definitions, key terms)
+- Labels: max 9 words, prefer 2-6 words
+- Sub-topics should be DISTINCT aspects of the theme and at the same
+  abstraction level
+- Leaves should be SPECIFIC and sourced from the provided content:
+  concrete methods, definitions, formulas, metrics, examples, limitations,
+  or named techniques
+- Preserve course structure. If the source presents categories and examples,
+  use category -> example leaves rather than a flat keyword list
 - Use the same language as the source content
 - Do NOT repeat the theme name in sub-topics
 - Do NOT create sub-topics that are too abstract
+- Do NOT invent plausible concepts that are not in the provided content
+- Do NOT create generic buckets like "Python", "Mathematics", "Overview",
+  "Concepts", "Applications", or "Other" unless the source explicitly uses
+  that bucket as a real section
+- If a concept has important variants, dates, causes, examples, stages, or
+  classifications, put those as children instead of making unrelated sibling
+  branches
 
 Return ONLY the structured hierarchy.

@@ -220,6 +220,8 @@ const markdownComponents: Components = {
 };
 
 function AssistantMarkdown({ content }: { content: string }) {
+  const normalized = normalizeDisplayMath(content);
+
   return (
     <div className="prose prose-invert prose-slate max-w-none">
       <ReactMarkdown
@@ -227,10 +229,155 @@ function AssistantMarkdown({ content }: { content: string }) {
         rehypePlugins={[rehypeKatex]}
         components={markdownComponents}
       >
-        {content}
+        {normalized}
       </ReactMarkdown>
     </div>
   );
+}
+
+function normalizeDisplayMath(content: string): string {
+  const lines = content.split(/\r?\n/);
+  const out: string[] = [];
+  let inFence = false;
+  let inMathBlock = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("```")) {
+      inFence = !inFence;
+      out.push(line);
+      continue;
+    }
+    if (trimmed === "$$") {
+      inMathBlock = !inMathBlock;
+      out.push(line);
+      continue;
+    }
+    if (!inFence && !inMathBlock && isFormulaLine(trimmed)) {
+      out.push("$$", toLatexFormula(trimmed), "$$");
+      continue;
+    }
+    out.push(line);
+  }
+
+  return out.join("\n");
+}
+
+function isFormulaLine(line: string): boolean {
+  if (!line || line.includes("$") || line.endsWith(":") || line.length > 220) {
+    return false;
+  }
+  if (!/[=≈≤≥]/.test(line)) return false;
+  if (!/[√∑Σ∏πμσλΔδθαβγΩω^_]/.test(line)) return false;
+  const words = line.match(/[A-Za-zÀ-ÿ]{3,}/g) ?? [];
+  const proseWords = words.filter((word) => {
+    if (/^[A-Z]{2,}$/.test(word)) return false;
+    return !["sqrt", "sum", "min", "max", "log", "sin", "cos", "tan"].includes(
+      word.toLowerCase(),
+    );
+  });
+  return proseWords.length <= 2;
+}
+
+function toLatexFormula(line: string): string {
+  let expr = line
+    .replace(/\byi\b/g, "y_i")
+    .replace(/\bŷi\b/g, "\\hat{y}_i")
+    .replace(/ŷ/g, "\\hat{y}")
+    .replace(/([A-Za-z])\u0302/g, "\\hat{$1}")
+    .replace(/\*/g, "\\cdot ")
+    .replace(/≤/g, "\\le ")
+    .replace(/≥/g, "\\ge ")
+    .replace(/≈/g, "\\approx ")
+    .replace(/Σ/g, "\\Sigma")
+    .replace(/σ/g, "\\sigma")
+    .replace(/π/g, "\\pi")
+    .replace(/λ/g, "\\lambda")
+    .replace(/θ/g, "\\theta")
+    .replace(/μ/g, "\\mu")
+    .replace(/Δ/g, "\\Delta")
+    .replace(/δ/g, "\\delta")
+    .replace(/Ω/g, "\\Omega")
+    .replace(/ω/g, "\\omega");
+
+  expr = replaceSqrtGroups(expr);
+  expr = expr.replace(/∑/g, "\\sum ");
+  expr = expr.replace(/^([A-Z]{2,})\s*=/, "\\operatorname{$1} =");
+  expr = expr.replace(/\^([A-Za-z0-9]+)/g, "^{$1}");
+  expr = expr.replace(/_([A-Za-z0-9]+)/g, "_{$1}");
+  return expr.replace(/\s+/g, " ").trim();
+}
+
+function replaceSqrtGroups(input: string): string {
+  let out = "";
+  for (let i = 0; i < input.length; i += 1) {
+    if (input[i] !== "√" || input[i + 1] !== "(") {
+      out += input[i];
+      continue;
+    }
+    const close = findMatchingParen(input, i + 1);
+    if (close === -1) {
+      out += "\\sqrt";
+      continue;
+    }
+    const inner = input.slice(i + 2, close);
+    out += `\\sqrt{${formatSqrtInner(inner)}}`;
+    i = close;
+  }
+  return out;
+}
+
+function findMatchingParen(input: string, openIndex: number): number {
+  let depth = 0;
+  for (let i = openIndex; i < input.length; i += 1) {
+    if (input[i] === "(") depth += 1;
+    else if (input[i] === ")") {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+function formatSqrtInner(inner: string): string {
+  const normalized = inner
+    .replace(/\byi\b/g, "y_i")
+    .replace(/\bŷi\b/g, "\\hat{y}_i")
+    .replace(/ŷ/g, "\\hat{y}")
+    .replace(/([A-Za-z])\u0302/g, "\\hat{$1}")
+    .replace(/∑/g, "\\sum ")
+    .replace(/\*/g, "\\cdot ");
+
+  const leadingAverage = normalized.match(
+    /^\s*1\s*\/\s*([A-Za-z][A-Za-z0-9]*)\s*(?:\\cdot\s*)?(.+)$/,
+  );
+  if (leadingAverage) {
+    const [, denominator, rest] = leadingAverage;
+    if (denominator && rest) {
+      return `\\frac{1}{${denominator}} ${rest.trim()}`;
+    }
+  }
+
+  const fraction = splitTopLevel(normalized, "/");
+  if (fraction) {
+    return `\\frac{${fraction.left.trim()}}{${fraction.right.trim()}}`;
+  }
+  return normalized;
+}
+
+function splitTopLevel(input: string, separator: string) {
+  let depth = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    if (input[i] === "(") depth += 1;
+    else if (input[i] === ")") depth -= 1;
+    else if (input[i] === separator && depth === 0) {
+      return {
+        left: input.slice(0, i),
+        right: input.slice(i + 1),
+      };
+    }
+  }
+  return null;
 }
 
 function CodeBlock({ language, code }: { language: string; code: string }) {

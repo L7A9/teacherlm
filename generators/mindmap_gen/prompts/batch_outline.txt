@@ -1,0 +1,28 @@
+You are extracting study-map structure from ONE PART of uploaded course materials.
+
+Your job is NOT to make the final mind map yet. Extract the important
+course concepts from this batch so another step can merge all batches into
+one complete map.
+
+Return a structured hierarchy with:
+- central_topic: the likely subject of this batch
+- branches: 3-7 candidate course modules found in this batch
+- each branch: 2-5 subtopics
+- each subtopic: 0-4 concrete leaf details
+
+Rules:
+- Use ONLY the provided batch content.
+- Use the same language as the source.
+- Be generic across subjects: history, geography, math, medicine, law,
+  literature, computer science, and other courses.
+- Extract meaningful course concepts, not navigation text, slide controls,
+  logos, footer labels, or image alt text.
+- Prefer concise labels that are useful for studying.
+- Preserve details that matter: definitions, causes, consequences, dates,
+  people, places, processes, formulas, methods, classifications, examples,
+  limitations, metrics, debates, and case studies.
+- Avoid generic buckets like "Introduction", "Conclusion", "Concepts",
+  "Applications", "Other", or broad school subjects unless the batch truly
+  uses them as a real section.
+
+Return ONLY the structured hierarchy.

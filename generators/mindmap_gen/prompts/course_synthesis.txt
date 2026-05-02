@@ -1,0 +1,34 @@
+You are merging extracted notes from all parts of uploaded course materials
+into ONE NotebookLM-style study mind map.
+
+The input contains several partial outlines extracted from different batches.
+They may overlap, repeat, or use lecture/week/file titles. Your job is to
+merge them into a clean conceptual hierarchy.
+
+Target shape:
+- Central topic: the real course subject, not a file name, week number, broad
+  school subject, or one lecture title.
+- {n_branches} major branches: the main modules students should study.
+- Each major branch: 2-5 subtopics.
+- Each subtopic: 0-4 concrete leaf details.
+
+Quality rules:
+- Use ONLY information that appears in the extracted outlines.
+- Keep the same language as the source materials.
+- Cover the whole course, not just the first or most recent lecture.
+- Merge duplicates and near-duplicates.
+- Convert lecture/week/file titles into conceptual modules when possible.
+- Keep siblings at the same abstraction level.
+- Put specific facts under the correct broader idea: definitions, causes,
+  consequences, dates, people, places, formulas, methods, classifications,
+  examples, limitations, metrics, debates, and case studies.
+- Do not force any subject template. For history, chronology may be best; for
+  geography, regions/processes may be best; for math, definitions/methods/
+  formulas may be best; for computer science, concepts/algorithms/evaluation
+  may be best.
+- Avoid generic branches such as "Introduction", "Conclusion", "Concepts",
+  "Applications", "Other", "Python", "Mathematics", or "Computer Science"
+  unless the extracted course truly uses one as a major section.
+- Prefer concise study labels over long slide titles.
+
+Return ONLY the structured hierarchy.

@@ -1,14 +1,27 @@
-You are analyzing course materials to build a mind map for a student.
+You are analyzing course materials to build a study mind map for a student.
 
 Identify the {n_branches} MAIN THEMES that best organize this content
-into a top-level structure.
+into a clear course outline. Think like a teacher preparing a concept map:
+the top-level branches should be the major conceptual modules of the lesson,
+not loose keywords.
 
 Rules:
 - Themes should be MUTUALLY EXCLUSIVE (no overlap)
-- Themes should be COLLECTIVELY EXHAUSTIVE (cover all content)
-- Each theme name: 2-5 words maximum, punchy
+- Themes should be COLLECTIVELY EXHAUSTIVE (cover all important content)
+- Prefer source headings, repeated section titles, and organizing concepts
+- Preserve the pedagogical progression when it is visible. Depending on the
+  subject, this may be chronology, causes and consequences, regions,
+  definitions and classifications, processes, methods, examples, case studies,
+  debates, evaluation, limitations, or applications
+- Each theme name: 2-6 words maximum, precise and course-like
 - Use the same language as the source content
 - Do NOT include meta-themes like 'Introduction' or 'Conclusion'
+- Do NOT create broad school-subject buckets like 'History', 'Geography',
+  'Python', 'Mathematics', 'Machine Learning', or 'Concepts' unless the source
+  explicitly presents them as major sections
+- Do NOT mix unrelated levels in one list. A date, formula, named method,
+  person, place, or small term is usually a leaf or subtopic, not a top-level
+  branch, unless the document is mainly about it
 - Themes are the student's high-level study sections
 
 Return ONLY the structured list.

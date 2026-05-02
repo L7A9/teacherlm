@@ -12,6 +12,10 @@ Requirements:
 HARD RULES:
 - Every claim in the question, correct option, and explanation must be supported by the chunk.
 - Do NOT invent facts, numbers, names, or examples not present in the chunk.
+- Do NOT ask the student to remember the exact final result/output of a worked
+  example from the course. If a question uses an example, include all needed
+  data in the question and test the concept, method, formula, interpretation,
+  or next step rather than memorized example results.
 - All four options should be distinct.
 
 Return ONLY the structured JSON object — no prose, no code fences.

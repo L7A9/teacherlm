@@ -39,6 +39,22 @@ class ThemeList(BaseModel):
     themes: list[str] = Field(..., min_length=3, max_length=10)
 
 
+class CourseOutline(BaseModel):
+    """One-shot full-course outline for a coherent mind map."""
+
+    central_topic: str = Field(
+        ...,
+        max_length=60,
+        description="The central course subject",
+    )
+    branches: list[MindMapNode] = Field(
+        ...,
+        min_length=3,
+        max_length=10,
+        description="Major course modules with subtopics and leaf concepts",
+    )
+
+
 class SubtopicExpansion(BaseModel):
     """Intermediate: expanding one branch into subtopics + leaves."""
 
