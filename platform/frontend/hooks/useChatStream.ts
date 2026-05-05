@@ -117,16 +117,27 @@ function handleEvent(
   cb: HandleEventCallbacks,
 ) {
   switch (event.event) {
-    case "chunk": {
+    case "chunk":
+    case "token": {
       const text = extractText(event.data);
       if (text) cb.appendChunk(conversationId, text);
       break;
     }
-    case "sources":
-      if (Array.isArray(event.data)) {
-        cb.mergeSources(conversationId, event.data as SourceRef[]);
+    case "sources": {
+      let arr: unknown = event.data;
+      if (
+        arr &&
+        typeof arr === "object" &&
+        !Array.isArray(arr) &&
+        Array.isArray((arr as Record<string, unknown>).sources)
+      ) {
+        arr = (arr as Record<string, unknown>).sources;
+      }
+      if (Array.isArray(arr)) {
+        cb.mergeSources(conversationId, arr as SourceRef[]);
       }
       break;
+    }
     case "artifact":
       if (event.data && typeof event.data === "object") {
         cb.addArtifact(conversationId, event.data as Artifact);

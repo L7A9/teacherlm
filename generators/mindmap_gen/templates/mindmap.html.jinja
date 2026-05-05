@@ -41,13 +41,17 @@
 <body>
   <div class="header">
     <h1>{{ title }}</h1>
-    <button onclick="downloadSVG()">Download SVG</button>
+    <div style="display:flex;gap:8px;">
+      <button id="download-svg">Download SVG</button>
+      <button id="download-png">Download PNG</button>
+    </div>
   </div>
   <svg id="mm"></svg>
-  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
-  <script src="https://cdn.jsdelivr.net/npm/markmap-view@0.18/dist/browser/index.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/markmap-lib@0.18/dist/browser/index.js"></script>
-  <script>
+  <div id="error" style="display:none;padding:14px 18px;color:#fca5a5;font-size:13px;"></div>
+  <script type="module">
+    import { Transformer } from "https://cdn.jsdelivr.net/npm/markmap-lib@0.18/+esm";
+    import { Markmap } from "https://cdn.jsdelivr.net/npm/markmap-view@0.18/+esm";
+
     const markdown = {{ markdown | tojson }};
     const BRANCH_COLORS = [
       "#60a5fa","#4ade80","#f472b6","#fb923c",
@@ -55,42 +59,117 @@
       "#e879f9","#2dd4bf"
     ];
 
-    const { Transformer } = window.markmap;
-    const transformer = new Transformer();
-    const { root } = transformer.transform(markdown);
-
     const svg = document.querySelector('#mm');
-    window.markmap.Markmap.create(svg, {
-      duration: 400,
-      maxWidth: 260,
-      spacingHorizontal: 80,
-      spacingVertical: 6,
-      paddingX: 12,
-      autoFit: true,
-      style: () => `.markmap {
-        --markmap-text-color: #f1f5f9;
-        --markmap-circle-open-bg: #1e293b;
-        --markmap-font: 400 13px/1.5 system-ui, sans-serif;
-      }`,
-      color: (node) => {
-        const parts = String(node?.state?.path ?? "").split(".");
-        const branchIdx = parts.length >= 2 ? parseInt(parts[1]) || 0 : 0;
-        return BRANCH_COLORS[Math.abs(branchIdx) % BRANCH_COLORS.length];
-      },
-    }, root);
+    const errEl = document.querySelector('#error');
 
-    function downloadSVG() {
+    try {
+      const transformer = new Transformer();
+      const { root } = transformer.transform(markdown);
+
+      Markmap.create(svg, {
+        duration: 400,
+        maxWidth: 260,
+        spacingHorizontal: 80,
+        spacingVertical: 6,
+        paddingX: 12,
+        autoFit: true,
+        style: () => `.markmap {
+          --markmap-text-color: #f1f5f9;
+          --markmap-circle-open-bg: #1e293b;
+          --markmap-font: 400 13px/1.5 system-ui, sans-serif;
+        }`,
+        color: (node) => {
+          const parts = String(node?.state?.path ?? "").split(".");
+          const branchIdx = parts.length >= 2 ? parseInt(parts[1]) || 0 : 0;
+          return BRANCH_COLORS[Math.abs(branchIdx) % BRANCH_COLORS.length];
+        },
+      }, root);
+    } catch (err) {
+      svg.style.display = 'none';
+      errEl.style.display = 'block';
+      errEl.textContent = "Couldn't render mind map: " + (err?.message ?? err);
+      console.error(err);
+    }
+
+    // Build a self-contained <svg> string with the current rendered size
+    // baked in. Used by both the SVG and PNG download paths.
+    function serializeSvg() {
+      const rect = svg.getBoundingClientRect();
+      const width = Math.max(1, Math.ceil(rect.width));
+      const height = Math.max(1, Math.ceil(rect.height));
       const clone = svg.cloneNode(true);
       clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-      const blob = new Blob([new XMLSerializer().serializeToString(clone)],
-                            { type: 'image/svg+xml' });
+      clone.setAttribute('xmlns:xhtml', 'http://www.w3.org/1999/xhtml');
+      clone.setAttribute('width', String(width));
+      clone.setAttribute('height', String(height));
+      return {
+        width,
+        height,
+        text: new XMLSerializer().serializeToString(clone),
+      };
+    }
+
+    function triggerDownload(blob, filename) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = '{{ filename }}.svg';
+      a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
     }
+
+    document.querySelector('#download-svg').addEventListener('click', () => {
+      const { text } = serializeSvg();
+      triggerDownload(
+        new Blob([text], { type: 'image/svg+xml' }),
+        '{{ filename }}.svg',
+      );
+    });
+
+    document.querySelector('#download-png').addEventListener('click', async () => {
+      const btn = document.querySelector('#download-png');
+      const originalLabel = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Rendering…';
+      try {
+        const { width, height, text } = serializeSvg();
+        // Encode unicode → base64 safely (markmap text may contain non-ASCII).
+        const b64 = btoa(unescape(encodeURIComponent(text)));
+        const dataUrl = 'data:image/svg+xml;charset=utf-8;base64,' + b64;
+
+        const img = new Image();
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = () => reject(new Error('failed to rasterize SVG'));
+          img.src = dataUrl;
+        });
+
+        const scale = window.devicePixelRatio > 1 ? window.devicePixelRatio : 2;
+        const canvas = document.createElement('canvas');
+        canvas.width = width * scale;
+        canvas.height = height * scale;
+        const ctx = canvas.getContext('2d');
+        ctx.scale(scale, scale);
+        // Fill the dark theme background so PNG isn't transparent.
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const blob = await new Promise((resolve, reject) => {
+          canvas.toBlob(
+            (b) => (b ? resolve(b) : reject(new Error('canvas.toBlob returned null'))),
+            'image/png',
+          );
+        });
+        triggerDownload(blob, '{{ filename }}.png');
+      } catch (err) {
+        console.error(err);
+        alert("Couldn't export PNG: " + (err?.message ?? err));
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalLabel;
+      }
+    });
   </script>
 </body>
 </html>
