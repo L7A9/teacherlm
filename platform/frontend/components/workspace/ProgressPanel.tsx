@@ -4,12 +4,22 @@ import { useMemo } from "react";
 
 import { Package, Sparkles } from "lucide-react";
 
+import { ArtifactModalButton } from "@/components/artifacts/ArtifactModalButton";
 import { ArtifactRenderer } from "@/components/artifacts/ArtifactRenderer";
 import { LearnerProgress } from "@/components/progress/LearnerProgress";
 import { useMessages } from "@/hooks/useMessages";
 import type { Artifact, UUID } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useConversationStore } from "@/stores/conversationStore";
+
+// Mirrors MessageBubble: these output types render in the right rail as a
+// clickable button that opens a modal preview, and are NOT shown inline in
+// chat. Other output types (chart, report, presentation) stay inline here.
+const MODAL_OUTPUT_TYPES: ReadonlySet<string> = new Set([
+  "quiz",
+  "podcast",
+  "mindmap",
+]);
 
 interface Props {
   conversationId: UUID;
@@ -82,28 +92,38 @@ export function ProgressPanel({ conversationId, className }: Props) {
             </p>
           ) : (
             <div className="flex flex-col gap-3">
-              {groups.map((group) => (
-                <div
-                  key={group.messageId}
-                  className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-2"
-                >
-                  {group.outputType && (
-                    <div className="px-1 text-[11px] uppercase tracking-wide text-muted-foreground">
-                      {group.outputType}
+              {groups.map((group) =>
+                MODAL_OUTPUT_TYPES.has(group.outputType ?? "") ? (
+                  <ArtifactModalButton
+                    key={group.messageId}
+                    outputType={group.outputType ?? ""}
+                    artifacts={group.artifacts}
+                    conversationId={conversationId}
+                    createdAt={group.createdAt}
+                  />
+                ) : (
+                  <div
+                    key={group.messageId}
+                    className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-2"
+                  >
+                    {group.outputType && (
+                      <div className="px-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                        {group.outputType}
+                      </div>
+                    )}
+                    <div className="flex flex-col gap-2">
+                      {group.artifacts.map((a, idx) => (
+                        <ArtifactRenderer
+                          key={`${a.url}-${idx}`}
+                          artifact={a}
+                          siblings={group.artifacts.filter((_, i) => i !== idx)}
+                          conversationId={conversationId}
+                        />
+                      ))}
                     </div>
-                  )}
-                  <div className="flex flex-col gap-2">
-                    {group.artifacts.map((a, idx) => (
-                      <ArtifactRenderer
-                        key={`${a.url}-${idx}`}
-                        artifact={a}
-                        siblings={group.artifacts.filter((_, i) => i !== idx)}
-                        conversationId={conversationId}
-                      />
-                    ))}
                   </div>
-                </div>
-              ))}
+                ),
+              )}
             </div>
           )}
         </section>

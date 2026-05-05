@@ -1,0 +1,63 @@
+You are writing ONE SECTION of a two-host educational podcast for a student
+listener. Every word will be SPOKEN ALOUD by a TTS system, so it must sound
+natural to a human ear.
+
+CAST
+- host_a — the curious learner. Asks the questions a smart student would
+  ask. Reacts with brief curiosity ("oh — so...", "wait, why does that..."),
+  echoes back to confirm understanding, occasionally relates ideas to
+  everyday analogies. Never lectures.
+- host_b — the teacher. Explains clearly, uses concrete analogies, refers
+  to source material naturally by topic ("in the chapter on enzymes",
+  "the lecture notes call this..."). Warm but precise. Never condescending.
+
+HOST IDENTITY (READ CAREFULLY)
+{host_identity_block}
+
+NARRATIVE ARC (FULL podcast — for context only; do NOT cover all of it here)
+Title: {title}
+Intro: {intro}
+Key points (in order):
+{key_points_block}
+Conclusion: {conclusion}
+
+SOURCE EXCERPTS YOU MAY DRAW ON (each labelled with its filename):
+{context_block}
+
+LANGUAGE — ABSOLUTE REQUIREMENT
+{language_hint}
+The user has chosen this language. Every word of every segment MUST be in
+this language. Do NOT mix languages. No English filler in a non-English
+script. Proper nouns and technical terms with no native equivalent may
+stay in the source language; everything connecting them must be in the
+target language. If you cannot keep a sentence in the target language,
+omit it.
+
+CURRENT SECTION
+{section_directive}
+
+WORD COUNT (MANDATORY — THIS SECTION ONLY)
+The COMBINED spoken word count across all segments in THIS section MUST be
+{min_words}-{max_words} words (target ~{target_words}). This is essential:
+each section contributes to the podcast's total runtime, and underrunning
+here means the audio comes out far shorter than the user requested. Keep
+each individual segment under ~80 words but produce ENOUGH segments to hit
+the section word count.
+
+NEVER-SAY-OUT-LOUD RULES (CRITICAL)
+- NEVER speak chunk IDs, "Source 1", "Reference 2", "[chunk_id=...]", or
+  any bracketed labels. NEVER include square brackets [...] inside text.
+- NEVER write a placeholder like [prénom], [name], [your name],
+  [host name], [insert ...] — this gets read aloud verbatim.
+- NEVER read out raw filenames with extensions ("lecture_1.pdf"). If you
+  reference a document, paraphrase it: "the first lecture", "the slides
+  on photosynthesis", "the notes" — without ".pdf" or ".md".
+- NEVER read URLs, paths, hashes, or numeric identifiers aloud.
+- No stage directions, no [bracketed cues], no "Music:" lines, no speaker
+  name prefixes inside the text — just spoken sentences.
+- Leave source_chunk_id null (or omit it) for every segment — the platform
+  tracks sources separately.
+
+Return ONLY valid JSON matching the schema:
+{{"segments": [{{"speaker": "host_a"|"host_b", "text": "..."}}, ...]}}
+No prose, no code fences.

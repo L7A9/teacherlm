@@ -22,8 +22,17 @@ import "katex/dist/katex.min.css";
 
 import { ArtifactRenderer } from "@/components/artifacts/ArtifactRenderer";
 import { Badge } from "@/components/ui/Badge";
-import type { Message, UUID } from "@/lib/types";
+import type { Message, OutputType, UUID } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+// Output types whose generated artifacts live ONLY in the right-rail Progress
+// panel (as a clickable button that opens a modal). Keeping these out of the
+// chat flow keeps long-form generated outputs from cluttering the conversation.
+const SIDEBAR_ONLY_OUTPUT_TYPES: ReadonlySet<OutputType> = new Set([
+  "quiz",
+  "podcast",
+  "mindmap",
+]);
 
 interface Props {
   message: Message;
@@ -35,6 +44,12 @@ export function MessageBubble({ message, conversationId, streaming }: Props) {
   const isUser = message.role === "user";
   const hasArtifacts = message.artifacts.length > 0;
   const hasSources = message.sources.length > 0;
+  // Quiz / podcast / mind-map artifacts are surfaced in the right-rail panel
+  // only — see SIDEBAR_ONLY_OUTPUT_TYPES above. The teacher's text intro still
+  // shows in chat so the user has context for what was generated.
+  const showInlineArtifacts =
+    hasArtifacts &&
+    !SIDEBAR_ONLY_OUTPUT_TYPES.has(message.output_type as OutputType);
 
   return (
     <div
@@ -77,7 +92,7 @@ export function MessageBubble({ message, conversationId, streaming }: Props) {
           )}
         </div>
 
-        {hasArtifacts && (
+        {showInlineArtifacts && (
           <div className="flex w-full flex-col gap-3">
             {message.artifacts.map((a, idx) => (
               <ArtifactRenderer

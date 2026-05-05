@@ -77,12 +77,14 @@ class LLMService:
         system: str,
         user_message: str,
         schema: type[T],
+        options: dict | None = None,
     ) -> T:
         return await generate_structured(
             client=self.generation,
             schema=schema,
             system_prompt=system,
             user_prompt=user_message,
+            options=options,
         )
 
 
