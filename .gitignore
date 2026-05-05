@@ -157,7 +157,12 @@ datasets/
 *.parquet
 *.arrow
 .claude/
-artifacts/
+# Generator and backend artifact output directories. The pattern is scoped
+# (not bare `artifacts/`) so it doesn't accidentally swallow the React
+# source folder at platform/frontend/components/artifacts/.
+/artifacts/
+generators/*/artifacts/
+platform/backend/artifacts/
 *.tex
 
 # ============================================

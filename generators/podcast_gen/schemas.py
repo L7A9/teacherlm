@@ -34,6 +34,15 @@ class PodcastScript(BaseModel):
     segments: list[Segment]
 
 
+class ScriptSection(BaseModel):
+    """A single section's segments — used by per-section script generation
+    so each LLM call is bounded and the model is unable to satisfy the
+    schema with a near-empty response (the failure mode of small models in
+    JSON-structured mode for whole-script generation)."""
+
+    segments: list[Segment]
+
+
 class TTSResult(BaseModel):
     """Per-segment TTS output handed to the audio composer."""
 
