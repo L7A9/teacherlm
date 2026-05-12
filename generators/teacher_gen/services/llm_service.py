@@ -6,6 +6,11 @@ from typing import TypeVar
 
 from pydantic import BaseModel
 from teacherlm_core.llm.ollama_client import OllamaClient
+from teacherlm_core.llm.runtime import (
+    build_llm_client_kwargs,
+    get_current_llm_options,
+    has_llm_override,
+)
 from teacherlm_core.llm.structured import generate_structured
 
 from ..config import get_settings
@@ -51,11 +56,11 @@ def build_chat_system_prompt(local_prompt_name: str, **fmt: object) -> str:
 
 
 class LLMService:
-    def __init__(self) -> None:
+    def __init__(self, override: dict | None = None) -> None:
         s = get_settings()
-        self.chat = OllamaClient(s.ollama_host, s.chat_model)
-        self.analysis = OllamaClient(s.ollama_host, s.analysis_model)
-        self.extraction = OllamaClient(s.ollama_host, s.extraction_model)
+        self.chat = _client(s.ollama_host, s.chat_model, override)
+        self.analysis = _client(s.ollama_host, s.analysis_model, override)
+        self.extraction = _client(s.ollama_host, s.extraction_model, override)
         self._s = s
 
     async def stream_reply(
@@ -108,6 +113,27 @@ class LLMService:
         )
 
 
+def _client(base_url: str, model: str, override: dict | None) -> OllamaClient:
+    cfg = build_llm_client_kwargs(
+        default_base_url=base_url,
+        default_model=model,
+        options=override,
+    )
+    return OllamaClient(
+        str(cfg["base_url"]),
+        str(cfg["model"]),
+        provider=str(cfg["provider"]),
+        api_key=cfg["api_key"],
+    )
+
+
 @lru_cache
-def get_llm_service() -> LLMService:
+def _default_llm_service() -> LLMService:
     return LLMService()
+
+
+def get_llm_service() -> LLMService:
+    override = get_current_llm_options()
+    if has_llm_override(override):
+        return LLMService(override)
+    return _default_llm_service()

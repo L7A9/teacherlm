@@ -3,6 +3,16 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 
+async def safe_sse_stream(source: AsyncIterator[str]) -> AsyncIterator[str]:
+    """Forward preformatted SSE frames and turn exceptions into SSE errors."""
+
+    try:
+        async for frame in source:
+            yield frame
+    except Exception as exc:  # noqa: BLE001 - boundary converts to client error
+        yield format_sse({"message": _friendly_error(exc)}, event="error")
+
+
 async def stream_as_sse(
     async_iter: AsyncIterator[str | dict[str, Any]],
     event: str | None = None,
@@ -27,9 +37,13 @@ async def stream_as_sse(
     except Exception as exc:
         err_payload = json.dumps({"error": str(exc)}, ensure_ascii=False)
         yield _format_sse(err_payload, event="error")
-        raise
     else:
         yield _format_sse("{}", event="done")
+
+
+def format_sse(data: dict[str, Any] | str, event: str | None = None) -> str:
+    payload = data if isinstance(data, str) else json.dumps(data, ensure_ascii=False)
+    return _format_sse(payload, event=event)
 
 
 def _format_sse(data: str, event: str | None = None) -> str:
@@ -39,3 +53,10 @@ def _format_sse(data: str, event: str | None = None) -> str:
     for line in data.splitlines() or [""]:
         lines.append(f"data: {line}")
     return "\n".join(lines) + "\n\n"
+
+
+def _friendly_error(exc: Exception) -> str:
+    message = str(exc).strip()
+    if not message:
+        return "The model provider closed the stream before returning a response."
+    return message

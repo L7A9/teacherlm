@@ -3,6 +3,11 @@ from importlib.resources import files
 from pathlib import Path
 
 from teacherlm_core.llm.ollama_client import OllamaClient
+from teacherlm_core.llm.runtime import (
+    build_llm_client_kwargs,
+    get_current_llm_options,
+    has_llm_override,
+)
 from teacherlm_core.llm.structured import generate_structured
 
 from ..config import settings
@@ -37,8 +42,18 @@ class LLMService:
       - expand_subtopic:  sub-topics + leaves under one branch
     """
 
-    def __init__(self) -> None:
-        self._client = OllamaClient(settings.OLLAMA_URL, settings.MODEL_NAME)
+    def __init__(self, override: dict | None = None) -> None:
+        cfg = build_llm_client_kwargs(
+            default_base_url=settings.OLLAMA_URL,
+            default_model=settings.MODEL_NAME,
+            options=override,
+        )
+        self._client = OllamaClient(
+            str(cfg["base_url"]),
+            str(cfg["model"]),
+            provider=str(cfg["provider"]),
+            api_key=cfg["api_key"],
+        )
 
     async def extract_themes(
         self, chunks_text: str, n_branches: int
@@ -124,5 +139,12 @@ class LLMService:
 
 
 @lru_cache
-def get_llm_service() -> LLMService:
+def _default_llm_service() -> LLMService:
     return LLMService()
+
+
+def get_llm_service() -> LLMService:
+    override = get_current_llm_options()
+    if has_llm_override(override):
+        return LLMService(override)
+    return _default_llm_service()

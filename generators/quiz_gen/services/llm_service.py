@@ -6,6 +6,11 @@ from typing import TypeVar
 
 from pydantic import BaseModel
 from teacherlm_core.llm.ollama_client import OllamaClient
+from teacherlm_core.llm.runtime import (
+    build_llm_client_kwargs,
+    get_current_llm_options,
+    has_llm_override,
+)
 from teacherlm_core.llm.structured import generate_structured
 
 from ..config import get_settings
@@ -43,12 +48,12 @@ class LLMService:
       - generation: medium-temp structured generation (questions)
     """
 
-    def __init__(self) -> None:
+    def __init__(self, override: dict | None = None) -> None:
         s = get_settings()
         self._s = s
-        self.chat = OllamaClient(s.ollama_host, s.chat_model)
-        self.extraction = OllamaClient(s.ollama_host, s.extraction_model)
-        self.generation = OllamaClient(s.ollama_host, s.generation_model)
+        self.chat = _client(s.ollama_host, s.chat_model, override)
+        self.extraction = _client(s.ollama_host, s.extraction_model, override)
+        self.generation = _client(s.ollama_host, s.generation_model, override)
 
     async def stream_reply(
         self,
@@ -103,6 +108,27 @@ class LLMService:
         )
 
 
+def _client(base_url: str, model: str, override: dict | None) -> OllamaClient:
+    cfg = build_llm_client_kwargs(
+        default_base_url=base_url,
+        default_model=model,
+        options=override,
+    )
+    return OllamaClient(
+        str(cfg["base_url"]),
+        str(cfg["model"]),
+        provider=str(cfg["provider"]),
+        api_key=cfg["api_key"],
+    )
+
+
 @lru_cache
-def get_llm_service() -> LLMService:
+def _default_llm_service() -> LLMService:
     return LLMService()
+
+
+def get_llm_service() -> LLMService:
+    override = get_current_llm_options()
+    if has_llm_override(override):
+        return LLMService(override)
+    return _default_llm_service()

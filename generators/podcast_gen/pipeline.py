@@ -8,6 +8,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 from teacherlm_core.llm.language import set_current_language
+from teacherlm_core.llm.runtime import set_current_llm_options
 from teacherlm_core.schemas.generator_io import (
     GeneratorArtifact,
     GeneratorInput,
@@ -121,8 +122,9 @@ def _empty_response(reason: str) -> str:
 
 async def run(inp: GeneratorInput) -> AsyncIterator[str]:
     settings = get_settings()
-    llm = get_llm_service()
     options = dict(inp.options or {})
+    set_current_llm_options(options)
+    llm = get_llm_service()
     duration = _resolve_duration(options)
     topic = _resolve_topic(options, inp.user_message)
     language = _resolve_language(options)

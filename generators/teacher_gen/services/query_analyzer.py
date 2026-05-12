@@ -1,4 +1,5 @@
 import json
+import re
 from typing import Any
 
 from ..schemas import QueryAnalysis
@@ -37,8 +38,96 @@ async def analyze(
         chat_history=_format_history(chat_history),
         learner_state=_format_learner_state(learner_state),
     )
-    return await llm.analyze_structured(
-        system=system,
-        user_message=user_message,
-        schema=QueryAnalysis,
+    try:
+        return await llm.analyze_structured(
+            system=system,
+            user_message=user_message,
+            schema=QueryAnalysis,
+        )
+    except Exception:
+        return _fallback_analysis(user_message, chat_history)
+
+
+def _fallback_analysis(user_message: str, chat_history: list[dict]) -> QueryAnalysis:
+    text = user_message.strip()
+    lowered = text.lower()
+
+    confusion_markers = (
+        "i don't understand",
+        "i dont understand",
+        "i don't get",
+        "i dont get",
+        "i'm lost",
+        "im lost",
+        "confused",
+        "huh",
+        "what do you mean",
+        "not clear",
+        "doesn't make sense",
+        "doesnt make sense",
     )
+    confirmation_markers = (
+        "right?",
+        "is that correct",
+        "am i right",
+        "so ",
+        "does that mean",
+        "can i say",
+    )
+    clarification_markers = (
+        "explain again",
+        "rephrase",
+        "another way",
+        "more detail",
+        "clarify",
+        "example",
+    )
+
+    if any(marker in lowered for marker in confusion_markers):
+        intent = "confusion"
+        confusion_level = 0.85
+    elif any(marker in lowered for marker in clarification_markers) and chat_history:
+        intent = "clarification"
+        confusion_level = 0.45
+    elif any(marker in lowered for marker in confirmation_markers):
+        intent = "confirmation"
+        confusion_level = 0.25
+    elif chat_history and len(text.split()) < 12:
+        intent = "follow_up"
+        confusion_level = 0.2
+    else:
+        intent = "new_question"
+        confusion_level = 0.15
+
+    requires_direct_answer = bool(re.search(r"\?|what|why|how|define|explain", lowered))
+    return QueryAnalysis(
+        intent=intent,
+        confusion_level=confusion_level,
+        targets_concept=_guess_target_concept(text),
+        requires_direct_answer=requires_direct_answer,
+    )
+
+
+def _guess_target_concept(text: str) -> str | None:
+    words = re.findall(r"[\wÀ-ÿ'-]+", text)
+    stop = {
+        "what",
+        "why",
+        "how",
+        "is",
+        "are",
+        "the",
+        "a",
+        "an",
+        "can",
+        "you",
+        "explain",
+        "me",
+        "please",
+        "does",
+        "mean",
+    }
+    kept = [word for word in words if word.lower() not in stop]
+    if not kept:
+        return None
+    return " ".join(kept[:6])
