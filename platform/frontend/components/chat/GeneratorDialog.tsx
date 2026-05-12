@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { useConversationStore } from "@/stores/conversationStore";
 import {
   languageLabel,
+  modelSettingsToOptions,
   useSettingsStore,
 } from "@/stores/settingsStore";
 import { useUiStore } from "@/stores/uiStore";
@@ -52,6 +53,7 @@ export function GeneratorDialog() {
   const closeDialog = useUiStore((s) => s.closeGeneratorDialog);
   const activeConversationId = useConversationStore((s) => s.activeConversationId);
   const forcedLanguage = useSettingsStore((s) => s.forcedLanguage);
+  const modelSettings = useSettingsStore((s) => s.modelSettings);
   const runGenerate = useGenerateStream();
 
   if (!outputType) {
@@ -67,10 +69,13 @@ export function GeneratorDialog() {
     // Settings → forcedLanguage flows into every generator. Per-call
     // options can still override it (advanced power-user path), but the
     // dialog no longer surfaces a language picker.
-    const mergedOptions: Record<string, unknown> =
-      forcedLanguage && options.language === undefined
-        ? { ...options, language: forcedLanguage }
-        : options;
+    const mergedOptions: Record<string, unknown> = {
+      ...modelSettingsToOptions(modelSettings),
+      ...options,
+      ...(forcedLanguage && options.language === undefined
+        ? { language: forcedLanguage }
+        : {}),
+    };
     try {
       await runGenerate(activeConversationId, {
         output_type: outputType,
@@ -373,7 +378,7 @@ const FIELDS_BY_TYPE: Record<OutputType, FieldSpec[]> = {
     },
   ],
   presentation: [
-    { kind: "number", name: "slide_count", label: "Slides", default: 10, min: 3, max: 30 },
+    { kind: "number", name: "slide_count", label: "Slides", default: 15, min: 12, max: 40 },
     {
       kind: "select",
       name: "style",

@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 from teacherlm_core.llm.language import set_current_language
+from teacherlm_core.llm.runtime import set_current_llm_options
 from teacherlm_core.schemas.generator_io import (
     GeneratorArtifact,
     GeneratorInput,
@@ -249,6 +250,7 @@ def _refine_mindmap(mm: MindMap, chunks) -> MindMap:
 async def run(payload: GeneratorInput) -> AsyncIterator[str]:
     """SSE generator: yields `progress` events through the pipeline and a
     final `done` event with the full GeneratorOutput payload."""
+    set_current_llm_options(payload.options or {})
     set_current_language((payload.options or {}).get("language"))
     size_config = _resolve_size(payload.options.get("size", settings.DEFAULT_SIZE))
     max_nodes = int(

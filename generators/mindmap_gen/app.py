@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from teacherlm_core.llm.streaming import safe_sse_stream
 from teacherlm_core.schemas.generator_io import GeneratorInput
 
 from .config import settings
@@ -50,7 +51,7 @@ async def info() -> dict:
 @app.post("/run")
 async def run_endpoint(payload: GeneratorInput) -> StreamingResponse:
     return StreamingResponse(
-        pipeline_run(payload),
+        safe_sse_stream(pipeline_run(payload)),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

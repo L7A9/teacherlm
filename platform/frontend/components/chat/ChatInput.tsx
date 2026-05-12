@@ -17,7 +17,10 @@ import { useChatStream } from "@/hooks/useChatStream";
 import type { UUID } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useConversationStore } from "@/stores/conversationStore";
-import { useSettingsStore } from "@/stores/settingsStore";
+import {
+  modelSettingsToOptions,
+  useSettingsStore,
+} from "@/stores/settingsStore";
 
 export interface ChatInputHandle {
   focus: () => void;
@@ -45,6 +48,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
   );
   const abortStream = useConversationStore((s) => s.abortStream);
   const forcedLanguage = useSettingsStore((s) => s.forcedLanguage);
+  const modelSettings = useSettingsStore((s) => s.modelSettings);
 
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
@@ -62,9 +66,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
     const trimmed = value.trim();
     if (!trimmed || isStreaming) return;
     setValue("");
-    const options: Record<string, unknown> = forcedLanguage
-      ? { language: forcedLanguage }
-      : {};
+    const options: Record<string, unknown> = {
+      ...modelSettingsToOptions(modelSettings),
+      ...(forcedLanguage ? { language: forcedLanguage } : {}),
+    };
     try {
       await runChat(conversationId, { user_message: trimmed, options });
     } catch (err) {

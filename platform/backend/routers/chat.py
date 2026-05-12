@@ -111,6 +111,9 @@ async def _stream_chat(
                 done_payload = data
 
             yield {"event": event.event, "data": json.dumps(data, default=str)}
+
+            if event.event == "error":
+                return
     except Exception as exc:  # noqa: BLE001
         logger.exception("chat stream failed")
         yield {"event": "error", "data": json.dumps({"message": str(exc)})}

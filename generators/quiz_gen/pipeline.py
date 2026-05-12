@@ -4,6 +4,7 @@ import json
 from collections.abc import AsyncIterator
 
 from teacherlm_core.llm.language import set_current_language
+from teacherlm_core.llm.runtime import set_current_llm_options
 from teacherlm_core.schemas.chunk import Chunk
 from teacherlm_core.schemas.generator_io import (
     GeneratorArtifact,
@@ -136,9 +137,10 @@ async def _build_intro(
 
 async def run(inp: GeneratorInput) -> AsyncIterator[str]:
     settings = get_settings()
-    llm = get_llm_service()
 
     options = dict(inp.options or {})
+    set_current_llm_options(options)
+    llm = get_llm_service()
     set_current_language(options.get("language"))
     n_target = _resolve_question_count(options)
     allowed_kinds = _resolve_allowed_kinds(options)

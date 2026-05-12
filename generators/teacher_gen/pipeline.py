@@ -3,6 +3,7 @@ from collections.abc import AsyncIterator
 from functools import lru_cache
 
 from teacherlm_core.llm.language import set_current_language
+from teacherlm_core.llm.runtime import set_current_llm_options
 from teacherlm_core.retrieval.reranker import CrossEncoderReranker
 from teacherlm_core.schemas.chunk import Chunk
 from teacherlm_core.schemas.generator_io import GeneratorInput, LearnerUpdates
@@ -44,10 +45,11 @@ def _sse(event: str, data: dict) -> str:
 
 async def run(inp: GeneratorInput) -> AsyncIterator[str]:
     settings = get_settings()
+    options = dict(inp.options or {})
+    set_current_llm_options(options)
     llm = get_llm_service()
-    reranker = get_reranker()
 
-    set_current_language((inp.options or {}).get("language"))
+    set_current_language(options.get("language"))
 
     history = inp.chat_history or []
     learner = inp.learner_state
@@ -70,14 +72,17 @@ async def run(inp: GeneratorInput) -> AsyncIterator[str]:
         },
     )
 
-    ranked_chunks = await rerank_with_hyde(
-        user_message=inp.user_message,
-        chunks=inp.context_chunks,
-        top_k=settings.rerank_top_k,
-        reranker=reranker,
-        llm=llm,
-        enabled=settings.hyde_enabled,
-    )
+    if inp.context_chunks:
+        ranked_chunks = await rerank_with_hyde(
+            user_message=inp.user_message,
+            chunks=inp.context_chunks,
+            top_k=settings.rerank_top_k,
+            reranker=get_reranker(),
+            llm=llm,
+            enabled=settings.hyde_enabled,
+        )
+    else:
+        ranked_chunks = []
 
     yield _sse(
         "sources",

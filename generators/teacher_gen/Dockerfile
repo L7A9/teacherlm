@@ -31,8 +31,14 @@ ENV PYTHONPATH=/app/generators \
     TEACHER_GEN_PORT=8001 \
     HF_HOME=/opt/hf_cache
 
-# Pre-download the cross-encoder reranker so first /run doesn't stall on HF Hub.
-RUN python -c "from fastembed.rerank.cross_encoder import TextCrossEncoder; TextCrossEncoder(model_name='BAAI/bge-reranker-base')"
+# Optional: pre-download the cross-encoder reranker. This is disabled by
+# default because local full-stack builds can otherwise block on HF Hub.
+ARG TEACHER_GEN_PRELOAD_RERANKER=false
+RUN if [ "$TEACHER_GEN_PRELOAD_RERANKER" = "true" ]; then \
+        python -c "from fastembed.rerank.cross_encoder import TextCrossEncoder; TextCrossEncoder(model_name='BAAI/bge-reranker-base')"; \
+    else \
+        echo "Skipping teacher_gen reranker pre-download"; \
+    fi
 
 EXPOSE 8001
 
