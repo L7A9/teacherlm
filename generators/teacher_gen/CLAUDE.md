@@ -16,7 +16,7 @@ This IS the main chat experience. It must:
 ## Stack
 - FastAPI, ollama
 - teacherlm_core (shared package)
-- fastembed (for reranking, via teacherlm_core)
+- teacherlm_core schemas/prompts; retrieval and reranking are backend-owned
 - pydantic >=2.12
 
 ## Module Map
@@ -29,7 +29,6 @@ teacher_gen/
 ├── services/
 │   ├── query_analyzer.py          # classify intent + detect confusion
 │   ├── response_mode.py           # picks: explain | guide | quiz_back | affirm
-│   ├── hyde_generator.py          # hypothetical doc for retrieval boost
 │   ├── confidence_scorer.py       # uses teacherlm_core.confidence
 │   ├── learner_analyzer.py        # extracts updates from turn
 │   └── llm_service.py

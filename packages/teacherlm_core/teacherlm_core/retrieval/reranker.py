@@ -1,7 +1,5 @@
 import asyncio
 
-from fastembed.rerank.cross_encoder import TextCrossEncoder
-
 from teacherlm_core.schemas.chunk import Chunk
 
 
@@ -9,6 +7,8 @@ class CrossEncoderReranker:
     """Fastembed cross-encoder reranker for refining a retrieved candidate set."""
 
     def __init__(self, model_name: str = "BAAI/bge-reranker-base") -> None:
+        from fastembed.rerank.cross_encoder import TextCrossEncoder
+
         self.model_name = model_name
         self._encoder = TextCrossEncoder(model_name=model_name)
 

@@ -4,6 +4,10 @@ Your job is NOT to make the final mind map yet. Extract the important
 course concepts from this batch so another step can merge all batches into
 one complete map.
 
+The batch may contain a GLOBAL COURSE SEQUENCE plus one MODULE CONTENT block.
+Use the global sequence only to understand where this module belongs; extract
+the actual concepts from the module content.
+
 Return a structured hierarchy with:
 - central_topic: the likely subject of this batch
 - branches: 3-7 candidate course modules found in this batch
@@ -15,6 +19,10 @@ Rules:
 - Use the same language as the source.
 - Be generic across subjects: history, geography, math, medicine, law,
   literature, computer science, and other courses.
+- Infer the best organizing principle from the source itself: chronology for
+  history, regions/processes for geography, definitions/methods/formulas for
+  math and science, concepts/algorithms/evaluation for computing, themes or
+  arguments for literature/law, anatomy/pathology/treatment for medicine.
 - Extract meaningful course concepts, not navigation text, slide controls,
   logos, footer labels, or image alt text.
 - Prefer concise labels that are useful for studying.
@@ -24,5 +32,7 @@ Rules:
 - Avoid generic buckets like "Introduction", "Conclusion", "Concepts",
   "Applications", "Other", or broad school subjects unless the batch truly
   uses them as a real section.
+- Do not let one detailed subtopic become the whole module if the module has
+  several major headings.
 
 Return ONLY the structured hierarchy.

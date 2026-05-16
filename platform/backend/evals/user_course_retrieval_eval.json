@@ -1,0 +1,443 @@
+{
+  "conversation_id": "120ec0f7-4a63-4fd7-8d40-e7f4aacb9e2f",
+  "cases": [
+    {
+      "id": "general_001",
+      "query": "What is this course about? Give me a structured overview.",
+      "output_type": "text",
+      "relevant_source_contains": [
+        "Lecture_01_organized.pdf",
+        "Lecture_02.pdf",
+        "Lecture_03_V2_organized.pdf",
+        "Lecture_04_V2.pdf",
+        "Lecture_05.pdf"
+      ],
+      "answer_facts": [
+        "recommender systems",
+        "collaborative filtering",
+        "content-based filtering",
+        "deep learning",
+        "evaluation metrics"
+      ],
+      "metadata": {
+        "kind": "general_course_overview"
+      }
+    },
+    {
+      "id": "general_002",
+      "query": "Explique ce cours comme si j etais un etudiant qui commence.",
+      "output_type": "text",
+      "relevant_source_contains": [
+        "Lecture_01_organized.pdf",
+        "Lecture_02.pdf",
+        "Lecture_03_V2_organized.pdf",
+        "Lecture_04_V2.pdf",
+        "Lecture_05.pdf"
+      ],
+      "answer_facts": [
+        "syst?mes de recommandation",
+        "filtrage collaboratif",
+        "?valuation"
+      ],
+      "metadata": {
+        "kind": "general_course_overview"
+      }
+    },
+    {
+      "id": "general_003",
+      "query": "Summarize the uploaded lectures and the progression from week 1 to week 5.",
+      "output_type": "text",
+      "relevant_source_contains": [
+        "Lecture_01_organized.pdf",
+        "Lecture_02.pdf",
+        "Lecture_03_V2_organized.pdf",
+        "Lecture_04_V2.pdf",
+        "Lecture_05.pdf"
+      ],
+      "answer_facts": [
+        "week 1 foundations",
+        "week 2 collaborative filtering",
+        "week 3 content-based",
+        "week 4 deep learning",
+        "week 5 evaluation"
+      ],
+      "metadata": {
+        "kind": "general_course_overview"
+      }
+    },
+    {
+      "id": "l1_001",
+      "query": "Why do recommender systems matter in education?",
+      "output_type": "text",
+      "expected_source_document": "Lecture_01_organized.pdf",
+      "answer_facts": [
+        "information overload",
+        "educational resources",
+        "personalized learning"
+      ]
+    },
+    {
+      "id": "l1_002",
+      "query": "What is a recommender system and what are its main objectives?",
+      "output_type": "text",
+      "expected_source_document": "Lecture_01_organized.pdf",
+      "answer_facts": [
+        "suggest relevant items",
+        "filter information",
+        "diversity",
+        "serendipity"
+      ]
+    },
+    {
+      "id": "l1_003",
+      "query": "Explain explicit feedback versus implicit feedback in recommender systems.",
+      "output_type": "text",
+      "expected_source_document": "Lecture_01_organized.pdf",
+      "answer_facts": [
+        "ratings or likes",
+        "clicks or time spent",
+        "precise but rare",
+        "abundant but noisy"
+      ]
+    },
+    {
+      "id": "l1_004",
+      "query": "What are data sparsity and cold start in recommender systems?",
+      "output_type": "text",
+      "expected_source_document": "Lecture_01_organized.pdf",
+      "answer_facts": [
+        "user-item matrix sparse",
+        "new user",
+        "new item"
+      ]
+    },
+    {
+      "id": "l2_001",
+      "query": "Explain user-based collaborative filtering and its main steps.",
+      "output_type": "text",
+      "expected_source_document": "Lecture_02.pdf",
+      "answer_facts": [
+        "nearest neighbors",
+        "similar users",
+        "weighted average prediction"
+      ]
+    },
+    {
+      "id": "l2_002",
+      "query": "How is Pearson correlation used in collaborative filtering?",
+      "output_type": "text",
+      "expected_source_document": "Lecture_02.pdf",
+      "answer_facts": [
+        "similarity",
+        "co-rated items",
+        "mean-centered ratings"
+      ]
+    },
+    {
+      "id": "l2_003",
+      "query": "What is item-based collaborative filtering and why did Amazon use it?",
+      "output_type": "text",
+      "expected_source_document": "Lecture_02.pdf",
+      "answer_facts": [
+        "similar items",
+        "item similarities stable",
+        "performance"
+      ]
+    },
+    {
+      "id": "l2_004",
+      "query": "What does matrix factorization or SVD learn in recommendation systems?",
+      "output_type": "text",
+      "expected_source_document": "Lecture_02.pdf",
+      "answer_facts": [
+        "latent factors",
+        "P and Q matrices",
+        "predict ratings",
+        "sparsity"
+      ]
+    },
+    {
+      "id": "l3_001",
+      "query": "What is content-based filtering and how is it different from collaborative filtering?",
+      "output_type": "text",
+      "expected_source_document": "Lecture_03_V2_organized.pdf",
+      "answer_facts": [
+        "item characteristics",
+        "ignores other users",
+        "similar items"
+      ]
+    },
+    {
+      "id": "l3_002",
+      "query": "Describe the three components of a content-based filtering architecture.",
+      "output_type": "text",
+      "expected_source_document": "Lecture_03_V2_organized.pdf",
+      "answer_facts": [
+        "Content Analyzer",
+        "Profile Learner",
+        "Filtering Component"
+      ]
+    },
+    {
+      "id": "l3_003",
+      "query": "Explain TF-IDF and why it is useful for course descriptions.",
+      "output_type": "text",
+      "expected_source_document": "Lecture_03_V2_organized.pdf",
+      "answer_facts": [
+        "term frequency",
+        "inverse document frequency",
+        "rare terms",
+        "vector representation"
+      ]
+    },
+    {
+      "id": "l3_004",
+      "query": "What are the benefits and weaknesses of content-based filtering?",
+      "output_type": "text",
+      "expected_source_document": "Lecture_03_V2_organized.pdf",
+      "answer_facts": [
+        "explainable",
+        "new item cold start",
+        "overspecialization",
+        "needs features"
+      ]
+    },
+    {
+      "id": "l3_005",
+      "query": "How do hybrid recommender systems combine CF and CBF?",
+      "output_type": "text",
+      "expected_source_document": "Lecture_03_V2_organized.pdf",
+      "answer_facts": [
+        "combine approaches",
+        "weighted score",
+        "offset weaknesses"
+      ]
+    },
+    {
+      "id": "l4_001",
+      "query": "Why can deep learning improve beyond SVD in recommendation?",
+      "output_type": "text",
+      "expected_source_document": "Lecture_04_V2.pdf",
+      "answer_facts": [
+        "non-linear interactions",
+        "multiplicative interaction",
+        "complex relationships"
+      ]
+    },
+    {
+      "id": "l4_002",
+      "query": "What are embeddings in neural recommender systems?",
+      "output_type": "text",
+      "expected_source_document": "Lecture_04_V2.pdf",
+      "answer_facts": [
+        "dense vectors",
+        "dimension reduction",
+        "semantic similarity",
+        "learned representations"
+      ]
+    },
+    {
+      "id": "l4_003",
+      "query": "Explain the architecture of Neural Collaborative Filtering.",
+      "output_type": "text",
+      "expected_source_document": "Lecture_04_V2.pdf",
+      "answer_facts": [
+        "user ID",
+        "item ID",
+        "embedding layer",
+        "MLP",
+        "output prediction"
+      ]
+    },
+    {
+      "id": "l4_004",
+      "query": "What loss functions are used in NCF for explicit and implicit feedback?",
+      "output_type": "text",
+      "expected_source_document": "Lecture_04_V2.pdf",
+      "answer_facts": [
+        "MSE",
+        "binary cross entropy",
+        "BPR",
+        "pairwise ranking"
+      ]
+    },
+    {
+      "id": "l4_005",
+      "query": "How do RNNs help model sequential recommendation behavior?",
+      "output_type": "text",
+      "expected_source_document": "Lecture_04_V2.pdf",
+      "answer_facts": [
+        "temporal sequence",
+        "next item",
+        "variable length sequences"
+      ]
+    },
+    {
+      "id": "l5_001",
+      "query": "Why is RMSE not sufficient for evaluating recommender systems?",
+      "output_type": "text",
+      "expected_source_document": "Lecture_05.pdf",
+      "answer_facts": [
+        "ranking",
+        "top-N",
+        "position matters",
+        "first item"
+      ]
+    },
+    {
+      "id": "l5_002",
+      "query": "Define precision at k and recall at k for recommendations.",
+      "output_type": "text",
+      "expected_source_document": "Lecture_05.pdf",
+      "answer_facts": [
+        "relevant items in top k",
+        "all relevant items",
+        "top-k"
+      ]
+    },
+    {
+      "id": "l5_003",
+      "query": "Explain nDCG and why it is rank-aware.",
+      "output_type": "text",
+      "expected_source_document": "Lecture_05.pdf",
+      "answer_facts": [
+        "graded relevance",
+        "position discount",
+        "ideal ranking",
+        "normalization"
+      ]
+    },
+    {
+      "id": "l5_004",
+      "query": "What are filter bubbles and popularity bias in educational recommendation?",
+      "output_type": "text",
+      "expected_source_document": "Lecture_05.pdf",
+      "answer_facts": [
+        "filter bubble",
+        "easy content",
+        "popular items",
+        "invisible resources"
+      ]
+    },
+    {
+      "id": "l5_005",
+      "query": "How is A/B testing used after offline recommender evaluation?",
+      "output_type": "text",
+      "expected_source_document": "Lecture_05.pdf",
+      "answer_facts": [
+        "control group",
+        "test group",
+        "completion rate",
+        "real users"
+      ]
+    },
+    {
+      "id": "guide_001",
+      "query": "According to the student guide, how should we choose the right metric for educational recommendation?",
+      "output_type": "text",
+      "expected_source_document": "Guide_for_Students.pdf",
+      "answer_facts": [
+        "metric shapes behavior",
+        "nDCG",
+        "diversity",
+        "A/B test"
+      ]
+    },
+    {
+      "id": "guide_002",
+      "query": "What detailed example does the guide use to show that two systems can have the same RMSE but different educational impact?",
+      "output_type": "text",
+      "expected_source_document": "Guide_for_Students.pdf",
+      "answer_facts": [
+        "same RMSE",
+        "different order",
+        "Apprentissage Profond",
+        "rank"
+      ]
+    },
+    {
+      "id": "multi_001",
+      "query": "Compare collaborative filtering, content-based filtering, and deep-learning recommendation.",
+      "output_type": "text",
+      "relevant_source_contains": [
+        "Lecture_02.pdf",
+        "Lecture_03_V2_organized.pdf",
+        "Lecture_04_V2.pdf"
+      ],
+      "answer_facts": [
+        "interactions",
+        "item features",
+        "non-linear neural model"
+      ]
+    },
+    {
+      "id": "multi_002",
+      "query": "How does the course move from basic recommendation problems to deployment and ethics?",
+      "output_type": "text",
+      "relevant_source_contains": [
+        "Lecture_01_organized.pdf",
+        "Lecture_04_V2.pdf",
+        "Lecture_05.pdf"
+      ],
+      "answer_facts": [
+        "information overload",
+        "deep learning",
+        "bias",
+        "A/B testing"
+      ]
+    },
+    {
+      "id": "multi_003",
+      "query": "Explain how cold start appears in week 1 and how content-based or hybrid methods help later.",
+      "output_type": "text",
+      "relevant_source_contains": [
+        "Lecture_01_organized.pdf",
+        "Lecture_03_V2_organized.pdf"
+      ],
+      "answer_facts": [
+        "cold start",
+        "new item",
+        "content features",
+        "hybrid"
+      ]
+    },
+    {
+      "id": "negative_001",
+      "query": "What does the course say about photosynthesis in plants?",
+      "output_type": "text",
+      "relevant_source_contains": [
+        "Lecture_01_organized.pdf",
+        "Lecture_02.pdf",
+        "Lecture_03_V2_organized.pdf",
+        "Lecture_04_V2.pdf",
+        "Lecture_05.pdf",
+        "Guide_for_Students.pdf"
+      ],
+      "answer_facts": [
+        "not covered"
+      ],
+      "metadata": {
+        "kind": "out_of_scope"
+      }
+    },
+    {
+      "id": "negative_002",
+      "query": "Give me the Solidity code for a smart contract from these lectures.",
+      "output_type": "text",
+      "relevant_source_contains": [
+        "Lecture_01_organized.pdf",
+        "Lecture_02.pdf",
+        "Lecture_03_V2_organized.pdf",
+        "Lecture_04_V2.pdf",
+        "Lecture_05.pdf",
+        "Guide_for_Students.pdf"
+      ],
+      "answer_facts": [
+        "not enough information"
+      ],
+      "metadata": {
+        "kind": "out_of_scope"
+      }
+    }
+  ]
+}

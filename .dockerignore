@@ -23,6 +23,7 @@ venv/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
+**/.pytest_cache/
 
 # Node build artefacts (frontend Dockerfile reinstalls)
 **/node_modules

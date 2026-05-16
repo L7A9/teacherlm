@@ -1,0 +1,390 @@
+
+
+--- Page 1 ---
+Syst` emes de Recommandation et Blockchain
+Semaine 2 : Le Filtrage Collaboratif (CF) : Des Voisins aux
+Mod` eles Latents
+Pr. Abdelaaziz Hessane
+´Ecole Normale Sup´ erieure de Mekn` es
+Master ”Syst` emes Intelligents pour l’´Education”
+October 23, 2025
+
+--- Page 2 ---
+Plan de la s´ eance
+1.Introduction au Filtrage Collaboratif (CF) :L’intelligence
+collective au service de la recommandation.
+2.CF Bas´ e sur les Voisins (Memory-Based) :
+▶ Approche User-Based : ”Les utilisateurs qui vous ressemblent
+ont aim´ e...”
+▶ Exemple de calcul d´ etaill´ e
+▶ Approche Item-Based : ”Vous avez aim´ e ceci, vous aimerez
+aussi...”
+▶ Exemple de calcul d´ etaill´ e
+3.CF Bas´ e sur des Mod` eles (Model-Based) :
+▶ Introduction ` a la Factorisation de Matrices (SVD).
+▶ Exemple de pr´ ediction d´ etaill´ e
+4.Comparaison et Synth` ese :Avantages et inconv´ enients de
+chaque approche.
+
+--- Page 3 ---
+Le Principe du Filtrage Collaboratif (CF)
+Figure: Principe du filtrage collaboratif
+
+--- Page 4 ---
+Le Principe du Filtrage Collaboratif (CF)
+L’id´ ee fondamentale du CF est simple et intuitive :automatiser le
+”bouche-` a-oreille”.
+Principe
+Un utilisateur recevra des recommandations pour des items que
+des personnes aux goˆ uts similaires ont appr´ eci´ es.
+▶ Le CF ne n´ ecessite aucune connaissance sur les items
+eux-mˆ emes (pas de description, pas de genre).
+▶ Il se baseuniquementsur la matrice d’interactions
+utilisateur-itemR.
+▶ C’est l’approche la plus utilis´ ee et souvent la plus performante.
+
+--- Page 5 ---
+Les Deux Grandes Familles du CF
+1. Memory-Based (Bas´ e sur
+les Voisins)
+▶ Utilise directement la
+matrice d’interactions pour
+calculer les similarit´ es.
+▶ User-Based CF
+▶ Item-Based CF
+▶ Facile ` a comprendre et ` a
+impl´ ementer.
+▶ Peut souffrir de probl` emes
+de performance sur de
+grandes matrices.
+2. Model-Based (Bas´ e sur un
+Mod` ele)
+▶ Apprend un mod` ele pr´ edictif
+` a partir des donn´ ees
+d’interactions.
+▶ Factorisation de Matrices
+(SVD)
+▶ Approches par Deep
+Learning
+▶ Le mod` ele est souvent plus
+compact et plus rapide pour
+faire des pr´ edictions.
+▶ Peut mieux g´ erer la sparsit´ e.
+
+--- Page 6 ---
+Approche User-Based : Le Voisinage d’Utilisateurs
+Objectif :Pr´ edire la note de l’utilisateur actifupour un itemi.
+´Etapes :
+1.Trouver leskplus proches voisins :Identifier un ensemble
+Nd’utilisateurs qui sont les plus similaires ` a l’utilisateuruet
+qui ont not´ e l’itemi.
+2.Pr´ edire la note :Calculer la pr´ ediction ˆrui en se basant sur
+les notes donn´ ees par les voisins ` a l’itemi.
+
+--- Page 7 ---
+Exemple Illustratif : User-Based CF (1/5)
+Sc´ enario :Consid´ erons la matrice de notes suivante pour des
+cours en ligne (sur 5).
+R=
+Cours A Cours B Cours C Cours D Cours E
+Alice 5 3 ? 1 4
+Bob 4 ? 5 ? 2
+Carole ? 2 4 5 ?
+David 2 1 2 ? 3
+Objectif
+Pr´ edire la note qu’Alicedonnerait auCours C.
+
+--- Page 8 ---
+Rappel : Mesures de Similarit´ e
+La cl´ e est la fonction de similarit´ esim(a,b). Nous utiliserons la
+Corr´ elation de Pearson, qui g` ere bien les utilisateurs ”s´ ev` eres”
+ou ”indulgents”.
+sim(a,b) =
+P
+i∈I ab(rai −¯ra)(rbi −¯rb)qP
+i∈I ab(rai −¯ra)2
+qP
+i∈I ab(rbi −¯rb)2
+O` uIab est l’ensemble des items not´ es ` a la fois paraetb.
+´Etape 1 : Calculer les notes moyennes
+▶ ¯rAlice = (5 + 3 + 1 + 4)/4 = 3.25
+▶ ¯rBob = (4 + 5 + 2)/3 = 3.67
+▶ ¯rCarole = (2 + 4 + 5)/3 = 3.67
+▶ ¯rDavid = (2 + 1 + 2 + 3)/4 = 2.0
+
+--- Page 9 ---
+Exemple Illustratif : User-Based CF (2/5)
+´Etape 2 : Calculer la similarit´ e entre Alice et les autres
+utilisateurs qui ont not´ e le Cours C (Bob, Carole, David).
+sim(Alice, Bob)(items co-not´ es : A, E)
+▶ Num´ erateur : (5−3.25)(4−3.67) + (4−3.25)(2−3.67) =
+(1.75)(0.33) + (0.75)(−1.67) =−0.67
+▶ D´ enominateur :p
+(1.75)2 + (0.75)2 ×
+p
+(0.33)2 + (−1.67)2 = 1.9×1.7 = 3.23
+▶ sim(A, B) = -0.21
+sim(Alice, Carole)(items co-not´ es : B, D)
+▶ Num´ erateur : (3−3.25)(2−3.67) + (1−3.25)(5−3.67) =
+(−0.25)(−1.67) + (−2.25)(1.33) =−2.57
+▶ D´ enominateur :p
+(−0.25)2 + (−2.25)2 ×
+p
+(−1.67)2 + (1.33)2 =
+2.27×2.13 = 4.84
+▶ sim(A, C) = -0.53
+
+--- Page 10 ---
+Exemple Illustratif : User-Based CF (2/5)
+sim(Alice, David)(items co-not´ es : A, B, E)
+▶ Num´ erateur :
+(5−3.25)(2−2) + (3−3.25)(1−2) + (4−3.25)(3−2) =
+0 + 0.25 + 0.75 = 1.0
+▶ D´ enominateur :p
+(1.75)2 + (−0.25)2 + (0.75)2 ×
+p
+(0)2 + (−1)2 + (1)2 =
+1.91×1.41 = 2.69
+▶ sim(A, D) = 0.37
+
+--- Page 11 ---
+Exemple Illustratif : User-Based CF (3/5)
+´Etape 3 : S´ electionner leskplus proches voisins.Nous avons
+les similarit´ es suivantes avec Alice :
+▶ sim(Alice, David) =0.37
+▶ sim(Alice, Bob) = -0.21
+▶ sim(Alice, Carole) = -0.53
+Pour notre exemple, choisissonsk= 2. Les voisins les plus
+pertinents sont ceux avec la similarit´ e la plus ´ elev´ ee.
+Voisins
+Les 2 plus proches voisins d’Alice qui ont not´ e le Cours C sont
+DavidetBob.
+Note : On inclut Bob mˆ eme si sa similarit´ e est n´ egative. Certaines
+impl´ ementations ne consid` erent que les similarit´ es positives.
+
+--- Page 12 ---
+Exemple Illustratif : User-Based CF (4/5)
+´Etape 4 : Pr´ edire la note avec la formule de moyenne
+pond´ er´ ee.
+ˆrui = ¯ru +
+P
+v∈N sim(u,v)·(r vi −¯rv )P
+v∈N |sim(u,v)|
+Appliquons-la pour pr´ edire ˆrAlice, Cours C :
+▶ Utilisateur actifu: Alice (¯r Alice = 3.25)
+▶ Item ciblei: Cours C
+▶ VoisinsN:{Bob, David}
+Num´ erateur :sim(A,B)(r B,C −¯rB) +sim(A,D)(r D,C −¯rD)
+= (−0.21)(5−3.67) + (0.37)(2−2.0)
+= (−0.21)(1.33) + (0.37)(0) =−0.28
+D´ enominateur :| −0.21|+|0.37|= 0.21 + 0.37 = 0.58
+ˆrA,C = 3.25 + −0.28
+0.58 = 3.25−0.48 =2.77
+
+--- Page 13 ---
+Exemple Illustratif : User-Based CF (5/5)
+Conclusion de l’exemple :
+▶ La note pr´ edite pour Alice au Cours C est de2.77 sur 5.
+▶ Cette pr´ ediction est plus basse que la note moyenne d’Alice
+(3.25).
+▶ Pourquoi? Le voisin le plus influent (David, sim=0.37) a
+donn´ e une note neutre (2, ´ egale ` a sa moyenne). L’autre voisin
+(Bob, sim=-0.21) a donn´ e une note ´ elev´ ee (5), mais comme
+sa similarit´ e est n´ egative, il tire la pr´ ediction vers le bas.
+Synth` ese du processus
+1. Calculer les moyennes. 2. Calculer les similarit´ es. 3. Choisir les
+voisins. 4. Pr´ edire.
+
+--- Page 14 ---
+Approche Item-Based : Le Voisinage d’Items
+Objectif :Pr´ edire la note de l’utilisateur actifupour un itemi.
+´Etapes :
+1.Trouver leskplus proches voisins :Identifier un ensemble
+Nd’items qui sont les plus similaires ` a l’itemiet que
+l’utilisateurua d´ ej` a not´ es.
+2.Pr´ edire la note :Calculer la pr´ ediction ˆrui en se basant sur
+les notes que l’utilisateurua donn´ ees aux items voisins.
+Pourquoi Item-Based?
+D´ evelopp´ e par Amazon. Les similarit´ es entre items sont plus
+stables dans le temps que les similarit´ es entre utilisateurs. C’est
+souvent plus performant en pratique.
+
+--- Page 15 ---
+Exemple Illustratif : Item-Based CF (1/4)
+Sc´ enario :Nous utilisons la mˆ eme matrice et le mˆ eme objectif.
+R=
+Cours A Cours B Cours C Cours D Cours E
+Alice 5 3?1 4
+Bob 4 ? 5 ? 2
+Carole ? 2 4 5 ?
+David 2 1 2 ? 3
+Objectif
+Pr´ edire la note qu’Alicedonnerait auCours C, mais cette fois
+avec une approcheItem-Based.
+
+--- Page 16 ---
+Exemple Illustratif : Item-Based CF (2/4)
+´Etape 1 : Calculer la similarit´ e entre le Cours C et les autres
+items not´ es par Alice (A, B, D, E).On utilise la Corr´ elation de
+Pearson, mais cette fois sur les vecteurs colonnes.
+sim(Cours C, Cours A)(utilisateurs co-noteurs : Bob, David)
+▶ ¯rA = (5 + 4 + 2)/3 = 3.67, ¯rC = (5 + 4 + 2)/3 = 3.67
+▶ Num : (4−3.67)(5−3.67) + (2−3.67)(2−3.67) =
+(0.33)(1.33) + (−1.67)(−1.67) = 3.23
+▶ D´ en :
+p
+(0.33)2 + (−1.67)2 ×
+p
+(1.33)2 + (−1.67)2 =
+1.7×2.13 = 3.62
+▶ sim(C, A) = 0.89
+sim(Cours C, Cours B)(utilisateurs co-noteurs : Carole, David)
+▶ ¯rB = (3 + 2 + 1)/3 = 2.0, ¯rC = (5 + 4 + 2)/3 = 3.67
+▶ Num :
+(2−2)(4−3.67) + (1−2)(2−3.67) = 0 + (−1)(−1.67) = 1.67
+▶ D´ en :p
+(1)2 + (−1)2 ×
+p
+(0.33)2 + (−1.67)2 = 1.41×1.7 = 2.4
+▶ sim(C, B) = 0.70
+... calculs similaires pour sim(C, D) et sim(C, E)...
+
+--- Page 17 ---
+Exemple Illustratif : Item-Based CF (3/4)
+´Etape 2 : S´ electionner leskvoisins et pr´ edire.Supposons que
+nous ayons calcul´ e toutes les similarit´ es avec le Cours C :
+▶ sim(C, A) =0.89
+▶ sim(C, B) =0.70
+▶ sim(C, D) = 0.45 (valeur suppos´ ee)
+▶ sim(C, E) = -0.25 (valeur suppos´ ee)
+Choisissonsk= 2. Les voisins les plus similaires au Cours C (parmi
+ceux not´ es par Alice) sont leCours Aet leCours B.
+´Etape 3 : Pr´ edire la note avec une moyenne pond´ er´ ee simple.
+ˆrui =
+P
+j∈N sim(i,j)·r uj
+P
+j∈N |sim(i,j)|
+ˆrAlice, C = sim(C,A)·r A,A+sim(C,B)·r A,B
+|sim(C,A)|+|sim(C,B)|
+= (0.89·5)+(0.70·3)
+0.89+0.70 = 4.45+2.1
+1.59 = 6.55
+1.59 =4.12
+
+--- Page 18 ---
+Exemple Illustratif : Item-Based CF (4/4)
+Conclusion de l’exemple :
+▶ La note pr´ edite pour Alice au Cours C est de4.12 sur 5.
+▶ Cette pr´ ediction est bien plus ´ elev´ ee que celle obtenue avec
+l’approche User-Based (2.77).
+▶ Pourquoi? L’approche se base sur le fait qu’Alice a beaucoup
+aim´ e (5/5) le Cours A, qui est tr` es similaire au Cours C. Elle a
+aussi bien aim´ e (3/5) le Cours B, qui est ´ egalement similaire.
+L’algorithme conclut donc qu’elle aimera probablement le
+Cours C.
+Le¸ cons
+Le choix de l’approche (User-based vs. Item-based) peut
+radicalement changer le r´ esultat de la recommandation.
+
+--- Page 19 ---
+Limites des Approches Voisins et Transition
+Probl` emes des approches bas´ ees sur les voisins :
+▶ Scalabilit´ e :Le calcul des similarit´ es est coˆ uteux (O(m2) ou
+O(n 2)).
+▶ Sparsit´ e :Si deux items n’ont pas ´ et´ e co-not´ es, leur similarit´ e
+est nulle.
+Solution : les approches bas´ ees sur des mod` eles.
+▶ Id´ ee : Au lieu de comparer directement, on d´ ecouvre des
+caract´ eristiques cach´ ees (facteurs latents)qui expliquent
+les notes.
+▶ Pour les cours, ces facteurs pourraient ˆ etre ”Th´ eorique vs.
+Pratique”, ”Niveau Math´ ematique”, ”Orient´ e
+Programmation”, etc.
+▶ L’algorithme doitapprendreces facteurs ` a partir des notes.
+
+--- Page 20 ---
+Factorisation de Matrices (SVD)
+L’id´ ee est de d´ ecomposer la matrice de notesR(m×n) en deux
+matrices plus petites :
+▶ Une matrice d’utilisateursP(m×k)
+▶ Une matrice d’itemsQ(n×k)
+Tel queR≈P×Q T .
+▶ kest le nombre de facteurs latents (typiquement 20 ` a 100).
+▶ Chaque ligne deP( ⃗pu) repr´ esente un utilisateur dans l’espace
+deskfacteurs.
+▶ Chaque ligne deQ( ⃗qi) repr´ esente un item dans ce mˆ eme
+espace.
+
+--- Page 21 ---
+Exemple Illustratif : SVD (1/3)
+Sc´ enario :Supposons que l’algorithme SVD ait appris les matrices
+PetQ` a partir de notre matrice de notes, aveck= 2 facteurs
+latents.
+Interpr´ etation possible des facteurs :
+▶ Facteur 1 :Affinit´ e pour laTh´ eorie(valeur haute) vs. la
+Pratique(valeur basse).
+▶ Facteur 2 :Affinit´ e pour lesMaths(valeur haute) vs. la
+Programmation(valeur basse).
+Matrice P (Utilisateurs)
+F1 F2
+Alice 0.8−0.6
+Bob 0.9 0.5
+...
+Matrice Q (Items)
+F1 F2
+Cours A 0.7−0.5
+Cours B −0.8−0.4
+Cours C 0.6 0.8
+...
+
+--- Page 22 ---
+Exemple Illustratif : SVD (2/3)
+Objectif :Pr´ edire la note qu’Alicedonnerait auCours C.
+La pr´ ediction est le produit scalaire de leurs vecteurs latents :
+ˆrui = ⃗pu · ⃗qi =
+kX
+f=1
+puf ·q if
+Vecteur d’Alice : ⃗pAlice = [0.8,−0.6]
+▶ Interpr´ etation : Alice aime la th´ eorie (F1 haut) mais pas trop
+les maths (F 2 bas/n´ egatif).
+Vecteur du Cours C : ⃗qCours C = [0.6,0.8]
+▶ Interpr´ etation : Le Cours C est assez th´ eorique (F1 haut) et
+tr` es math´ ematique (F2 haut).
+ˆrAlice, C = ⃗pAlice · ⃗qCours C = (0.8×0.6) + (−0.6×0.8)
+= 0.48−0.48 =0
+
+--- Page 23 ---
+Exemple Illustratif : SVD (3/3)
+Un r´ esultat de 0 est peu informatif. Les mod` eles SVD modernes
+ajoutent desbiaispour ajuster la pr´ ediction.
+La formule compl` ete est :
+ˆrui =µ+b u +b i + ⃗pu · ⃗qi
+▶ µ: Note moyenne globale de toutes les notes. (Ex: 3.5)
+▶ bu : Biais de l’utilisateuru. (Ex: Alice note en moyenne 0.25
+point en dessous de la moyenne,b Alice =−0.25)
+▶ bi : Biais de l’itemi. (Ex: Le Cours C est not´ e en moyenne
+0.5 point au-dessus de la moyenne,b Cours C = +0.5)
+Nouvelle pr´ ediction :ˆrAlice, C = 3.5 + (−0.25) + (0.5) + 0 =3.75
+Conclusion
+La note pr´ edite est 3.75. Le SVD a captur´ e une ”incompatibilit´ e”
+de profil entre Alice et le Cours C sur la dimension ”Maths”
+(produit scalaire nul), mais les biais (le fait que le cours soit
+globalement bien not´ e) ont remont´ e la pr´ ediction ` a un niveau
+plausible.
+
+--- Page 24 ---
+Conclusion et Prochaines ´Etapes
+Ce qu’il faut retenir :
+▶ LeFiltrage Collaboratifest une famille puissante
+d’algorithmes qui se base sur les interactions pass´ ees.
+▶ Les approchesbas´ ees sur les voisins(User-based,
+Item-based) sont intuitives mais peuvent ˆ etre lentes et
+sensibles ` a la sparsit´ e.
+▶ Les approchesbas´ ees sur des mod` eles, comme la
+Factorisation de Matrices (SVD), apprennent des facteurs
+latents pour mieux g´ en´ eraliser et g´ erer la sparsit´ e.
+La semaine prochaine :
+▶ Nous explorerons leFiltrage Bas´ e sur le Contenuet les
+Syst` emes Hybrides.

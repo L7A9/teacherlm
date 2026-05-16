@@ -1,20 +1,34 @@
 \documentclass[aspectratio=169, 10pt]{beamer}
 
-% Theme
+% =====================================================================
+%  TeacherLM -- AI Tutor Grounded in Course Materials
+%  Detailed technical Beamer presentation:
+%   - Multi-agent / RAG architecture
+%   - Retrieval pipeline (hybrid, RRF, reranking, 5 modes)
+%   - Generators (teacher, quiz, mindmap, podcast)
+%   - Stack, infrastructure, learner model, design decisions
+% =====================================================================
+
+% ---------- Theme ----------
 \usetheme{Madrid}
 \usecolortheme{default}
 
-% Colors
+% ---------- Colors ----------
 \definecolor{eduBlue}{RGB}{25, 60, 130}
 \definecolor{eduGreen}{RGB}{34, 139, 84}
 \definecolor{eduOrange}{RGB}{230, 100, 20}
+\definecolor{eduRed}{RGB}{190, 50, 50}
+\definecolor{eduPurple}{RGB}{120, 60, 180}
 \definecolor{eduLightBlue}{RGB}{220, 235, 255}
+\definecolor{eduLightGreen}{RGB}{225, 245, 230}
+\definecolor{eduLightOrange}{RGB}{255, 235, 215}
 \definecolor{codeGray}{RGB}{245, 245, 245}
 \definecolor{nodeBlue}{RGB}{70,130,210}
 \definecolor{nodeGreen}{RGB}{50,160,90}
 \definecolor{nodeOrange}{RGB}{230,100,20}
 \definecolor{nodeRed}{RGB}{190,50,50}
 \definecolor{nodePurple}{RGB}{120,60,180}
+\definecolor{nodeTeal}{RGB}{30, 150, 160}
 
 \setbeamercolor{palette primary}{bg=eduBlue, fg=white}
 \setbeamercolor{palette secondary}{bg=eduBlue!80, fg=white}
@@ -22,17 +36,20 @@
 \setbeamercolor{block title}{bg=eduBlue, fg=white}
 \setbeamercolor{block body}{bg=eduLightBlue}
 \setbeamercolor{block title alerted}{bg=eduOrange, fg=white}
-\setbeamercolor{block body alerted}{bg=eduOrange!10}
+\setbeamercolor{block body alerted}{bg=eduLightOrange}
 \setbeamercolor{block title example}{bg=eduGreen, fg=white}
-\setbeamercolor{block body example}{bg=eduGreen!10}
+\setbeamercolor{block body example}{bg=eduLightGreen}
 \setbeamercolor{frametitle}{bg=eduBlue, fg=white}
+\setbeamercolor{section in toc}{fg=eduBlue}
 
-% Packages
+% ---------- Packages ----------
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 \usepackage{booktabs}
 \usepackage{tikz}
-\usetikzlibrary{arrows.meta, positioning, calc, shapes.geometric}
+\usetikzlibrary{arrows.meta, positioning, calc, shapes.geometric, fit,
+                backgrounds, decorations.pathreplacing, shadows.blur,
+                shapes.multipart}
 \usepackage{xcolor}
 \usepackage{listings}
 \usepackage{array}
@@ -40,686 +57,1595 @@
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{multicol}
+\usepackage{tcolorbox}
+\tcbuselibrary{skins, breakable}
 
-% Footer
+% ---------- Listings (code) ----------
+\lstdefinestyle{teacherlm}{
+  basicstyle=\ttfamily\scriptsize,
+  backgroundcolor=\color{codeGray},
+  keywordstyle=\color{eduBlue}\bfseries,
+  commentstyle=\color{gray}\itshape,
+  stringstyle=\color{eduGreen},
+  numbers=none,
+  showstringspaces=false,
+  breaklines=true,
+  frame=single,
+  framesep=4pt,
+  framerule=0pt,
+  xleftmargin=2pt,
+  xrightmargin=2pt,
+  columns=fullflexible,
+  keepspaces=true
+}
+\lstset{style=teacherlm}
+
+% ---------- Footer ----------
 \setbeamertemplate{footline}{%
   \leavevmode\hbox{%
-    \begin{beamercolorbox}[wd=.33\paperwidth,ht=2.25ex,dp=1ex,center]{palette secondary}%
+    \begin{beamercolorbox}[wd=.33\paperwidth,ht=2.4ex,dp=1ex,center]{palette secondary}%
       \usebeamerfont{author in head/foot}\insertshortauthor
     \end{beamercolorbox}%
-    \begin{beamercolorbox}[wd=.34\paperwidth,ht=2.25ex,dp=1ex,center]{palette primary}%
+    \begin{beamercolorbox}[wd=.34\paperwidth,ht=2.4ex,dp=1ex,center]{palette primary}%
       \usebeamerfont{title in head/foot}\insertshorttitle
     \end{beamercolorbox}%
-    \begin{beamercolorbox}[wd=.33\paperwidth,ht=2.25ex,dp=1ex,right]{palette secondary}%
-      \insertframenumber{} / \inserttotalframenumber\hspace{2ex}
-    \end{beamercolorbox}}\vskip0pt%
+    \begin{beamercolorbox}[wd=.33\paperwidth,ht=2.4ex,dp=1ex,center]{palette secondary}%
+      \insertframenumber{} / \inserttotalframenumber
+    \end{beamercolorbox}}%
 }
 \setbeamertemplate{navigation symbols}{}
 
-% Progress bar command
-\newcommand{\progressbar}[2]{%
-  \begin{tikzpicture}[baseline=-0.5ex]
-    \fill[gray!20] (0,0) rectangle (4cm, 0.35cm);
-    \fill[#2]      (0,0) rectangle (#1*0.04cm, 0.35cm);
-    \node[font=\scriptsize\bfseries, right] at (4.1cm, 0.175cm) {#1\,\%};
-  \end{tikzpicture}%
+% ---------- Custom TikZ styles ----------
+\tikzset{
+  svc/.style={
+    rectangle, rounded corners=2pt, draw=eduBlue, very thick,
+    fill=eduLightBlue, text=black, minimum width=2.6cm, minimum height=0.8cm,
+    align=center, font=\scriptsize\bfseries
+  },
+  svcgreen/.style={svc, draw=eduGreen, fill=eduLightGreen},
+  svcorange/.style={svc, draw=eduOrange, fill=eduLightOrange},
+  svcred/.style={svc, draw=eduRed, fill=eduRed!10},
+  svcpurple/.style={svc, draw=eduPurple, fill=eduPurple!10},
+  svcteal/.style={svc, draw=nodeTeal, fill=nodeTeal!10},
+  infra/.style={
+    rectangle, rounded corners=2pt, draw=black!60, thick,
+    fill=gray!10, minimum width=1.7cm, minimum height=0.7cm,
+    align=center, font=\scriptsize
+  },
+  agent/.style={
+    rectangle, rounded corners=4pt, draw=eduPurple, very thick,
+    fill=eduPurple!15, minimum width=2.3cm, minimum height=1cm,
+    align=center, font=\scriptsize\bfseries
+  },
+  step/.style={
+    rectangle, rounded corners=3pt, draw=eduBlue, thick,
+    fill=eduLightBlue, minimum width=2.8cm, minimum height=0.7cm,
+    align=center, font=\scriptsize
+  },
+  arr/.style={->, >=Stealth, thick, draw=eduBlue!70},
+  arrG/.style={->, >=Stealth, thick, draw=eduGreen!70},
+  arrO/.style={->, >=Stealth, thick, draw=eduOrange!80},
+  doc/.style={
+    rectangle, draw=black, thick, fill=white,
+    minimum width=1.2cm, minimum height=1.5cm
+  },
+  vec/.style={
+    circle, draw=eduGreen, very thick, fill=eduLightGreen,
+    minimum size=0.85cm, font=\tiny\bfseries
+  }
 }
 
-% Listings config
-\lstset{
-  basicstyle=\tiny\ttfamily,
-  backgroundcolor=\color{codeGray},
-  frame=single,
-  breaklines=true,
-  keywordstyle=\color{eduBlue}\bfseries,
-  commentstyle=\color{gray},
-  stringstyle=\color{eduGreen},
-}
-
-% Title
+% ---------- Title info ----------
 \title[TeacherLM]{TeacherLM}
-\subtitle{Rapport Final d'\'{E}tat d'Avancement\\De EduRAG \`{a} une Plateforme de Production}
-\author[Amine EL HANINE]{Amine EL HANINE}
-\date{Avril 2026}
-\institute{Encadr\'{e} par Pr. Abdelaaziz HESSANE}
+\subtitle{An Agent-Based, Locally-Hosted RAG Tutor \\ Grounded in Your Course Materials}
+\author[TeacherLM Team]{Project Technical Walkthrough}
+\institute[]{Multi-Agent Architecture $\bullet$ Hybrid Retrieval $\bullet$ Local LLMs}
+\date{\today}
 
+% =====================================================================
 \begin{document}
+% =====================================================================
 
-% Title slide
-{
-\setbeamertemplate{footline}{}
+% ---------- Title slide ----------
 \begin{frame}[plain]
-  \begin{tikzpicture}[remember picture, overlay]
-    \fill[eduBlue] (current page.north west) rectangle (current page.south east);
-    \fill[eduBlue!60] (current page.south west)
-        .. controls +(5,2) and +(-3,1.5) .. (current page.south east)
-        -- (current page.south east) -- (current page.south west) -- cycle;
-  \end{tikzpicture}
-  \vspace{1.5cm}
+  \titlepage
   \begin{center}
-    {\color{white}\fontsize{26}{30}\selectfont\textbf{TeacherLM}}\\[0.3cm]
-    {\color{white!85}\large Presentation d'\'{E}tat d'Avancement}\\[0.2cm]
-    {\color{white!75}\normalsize De EduRAG Prototype \`{a} Plateforme de Production}\\[0.7cm]
-    \begin{tikzpicture}
-      \draw[white, opacity=0.3, thick] (0,0) -- (7,0);
-    \end{tikzpicture}\\[0.4cm]
-    {\color{white!70}\small 
-      R\'{e}alis\'{e} par: EL HANINE AMINE\\
-      Encadr\'{e} par Pr. Abdelaaziz HESSANE\\
-      Avril 2026}
+    \scriptsize\itshape
+    ``Strict grounding, learner-aware adaptation, microservice-per-generator.''
   \end{center}
 \end{frame}
-}
 
-% Table of contents
-\begin{frame}{Sommaire}
+% ---------- Outline ----------
+\begin{frame}{Outline}
+  \scriptsize
   \begin{multicols}{2}
     \tableofcontents[hideallsubsections]
   \end{multicols}
 \end{frame}
 
-\section{Vue d'ensemble et \'{e}volution du projet}
+% =====================================================================
+\section{Project Overview}
+% =====================================================================
 
-\begin{frame}{Chronologie de l'\'{e}volution}
-  \textbf{EduRAG $\rightarrow$ TeacherLM : 4 phases majeures}
-  
-  \vspace{0.5cm}
-  \begin{columns}[T]
-    \begin{column}{0.48\textwidth}
-      \begin{block}{\'{E}volution technique}
-        \small
-        \begin{itemize}
-          \item \textbf{Phase 1:} RAG Classique (Mistral-7B + ChromaDB)
-          \item \textbf{Phase 2:} Syst\`{e}me Agentique (LangGraph + Hybrid Retrieval)
-          \item \textbf{Phase 3:} Architecture Microservices
-          \item \textbf{Phase 4:} Plateforme Production (TeacherLM)
-        \end{itemize}
-      \end{block}
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      \begin{exampleblock}{R\'{e}sultats cl\'{e}s}
-        \small
-        \begin{itemize}
-          \item Syst\`{e}me de production op\'{e}rationnel
-          \item Interface web compl\`{e}te (Next.js)
-          \item 5 g\'{e}n\'{e}rateurs de contenu
-          \item Suivi de progression des apprenants
-          \item Infrastructure Docker compl\`{e}te
-        \end{itemize}
-      \end{exampleblock}
-    \end{column}
-  \end{columns}
-\end{frame}
+\begin{frame}{What is TeacherLM?}
+  \begin{block}{One-line definition}
+    A full-stack, \textbf{multi-agent RAG} tutoring platform that turns
+    uploaded course documents into a personal AI teacher --- every answer
+    is grounded \textit{exclusively} in the uploaded files, never the LLM's
+    training data.
+  \end{block}
 
-\section{Architecture de la plateforme}
-
-\begin{frame}{Architecture globale}
-  \begin{center}
-  \begin{tikzpicture}[font=\scriptsize, node distance=0.8cm]
-    % Frontend
-    \node[draw, fill=nodeBlue!30, rounded corners, minimum width=10cm, minimum height=1cm] (frontend) 
-      {FRONTEND (Next.js 14)};
-    
-    % Backend
-    \node[draw, fill=nodeGreen!30, rounded corners, minimum width=10cm, minimum height=1.2cm, below=0.5cm of frontend] (backend) 
-      {BACKEND (FastAPI)};
-    
-    % Generators
-    \node[draw, fill=nodePurple!30, rounded corners, minimum width=2cm, below left=0.5cm and -1cm of backend] (teacher) 
-      {teacher\_gen};
-    \node[draw, fill=nodePurple!30, rounded corners, minimum width=2cm, right=0.3cm of teacher] (quiz) 
-      {quiz\_gen};
-    \node[draw, fill=nodePurple!30, rounded corners, minimum width=2cm, right=0.3cm of quiz] (podcast) 
-      {podcast\_gen};
-    \node[draw, fill=nodePurple!30, rounded corners, minimum width=2cm, right=0.3cm of podcast] (mindmap) 
-      {mindmap\_gen};
-    
-    % Arrows
-    \draw[->, thick] (frontend) -- (backend);
-    \draw[->, thick] (backend) -- (teacher);
-    \draw[->, thick] (backend) -- (quiz);
-    \draw[->, thick] (backend) -- (podcast);
-    \draw[->, thick] (backend) -- (mindmap);
-  \end{tikzpicture}
-  \end{center}
-\end{frame}
-
-\begin{frame}{Flux de donn\'{e}es}
-  \textbf{Sc\'{e}nario : L'\'{e}tudiant pose une question}
-  
-  \vspace{0.3cm}
-  \begin{enumerate}\small
-    \item Frontend envoie le message
-    \item Backend persiste dans PostgreSQL
-    \item Retrieval Orchestrator cherche chunks pertinents
-    \item Qdrant retourne r\'{e}sultats (hybrid retrieval)
-    \item LearnerState est charg\'{e}
-    \item Dispatcher route vers le g\'{e}n\'{e}rateur
-    \item G\'{e}n\'{e}rateur ex\'{e}cute son pipeline
-    \item Backend proxyse le stream SSE
-    \item Frontend affiche tokens en temps r\'{e}el
-    \item Backend persiste r\'{e}ponse + mises \`{a} jour
-  \end{enumerate}
-\end{frame}
-
-\section{Stack technologique}
-
-\begin{frame}{Stack Backend}
-  \begin{columns}[T]
-    \begin{column}{0.48\textwidth}
-      \small
-      \begin{tabular}{ll}
-        \toprule
-        \textbf{Composant} & \textbf{Technologie} \\
-        \midrule
-        Langage & Python 3.14+ \\
-        Framework & FastAPI 0.135+ \\
-        Validation & Pydantic V2 \\
-        ORM & SQLAlchemy 2.0 \\
-        LLM local & Ollama \\
-        Vecteurs & Qdrant \\
-        Embeddings & fastembed \\
-        \bottomrule
-      \end{tabular}
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      \small
-      \begin{tabular}{ll}
-        \toprule
-        \textbf{Composant} & \textbf{Technologie} \\
-        \midrule
-        Retrieval & rank-bm25 \\
-        Parsing & LlamaCloud \\
-        Stockage & MinIO \\
-        Queue & Redis + arq \\
-        HTTP & httpx \\
-        SSE & sse-starlette \\
-        \bottomrule
-      \end{tabular}
-    \end{column}
-  \end{columns}
-\end{frame}
-
-\begin{frame}{Stack Frontend}
-  \begin{columns}[T]
-    \begin{column}{0.48\textwidth}
-      \small
-      \begin{tabular}{ll}
-        \toprule
-        \textbf{Composant} & \textbf{Tech} \\
-        \midrule
-        Framework & Next.js 14 \\
-        UI & React 18.3 \\
-        Langage & TypeScript 5.6 \\
-        CSS & TailwindCSS \\
-        State & Zustand \\
-        \bottomrule
-      \end{tabular}
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      \small
-      \begin{tabular}{ll}
-        \toprule
-        \textbf{Composant} & \textbf{Tech} \\
-        \midrule
-        Markdown & react-markdown \\
-        Math & KaTeX \\
-        Diagrammes & Mermaid \\
-        Upload & react-dropzone \\
-        \bottomrule
-      \end{tabular}
-    \end{column}
-  \end{columns}
-\end{frame}
-
-\begin{frame}{Mod\`{e}les LLM}
-  \begin{columns}[T]
-    \begin{column}{0.48\textwidth}
-      \begin{block}{LLM via Ollama}
-        \small
-        \begin{tabular}{lcc}
-          \toprule
-          \textbf{Mod\`{e}le} & \textbf{Param} & \textbf{Quant} \\
-          \midrule
-          Llama 3.1 8B & 8B & Q4\_K\_M \\
-          Llama 3.2 & 3B & Default \\
-          \bottomrule
-        \end{tabular}
-      \end{block}
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      \begin{block}{Embeddings}
-        \small
-        \begin{tabular}{lc}
-          \toprule
-          \textbf{Mod\`{e}le} & \textbf{Dim} \\
-          \midrule
-          bge-small-en-v1.5 & 384 \\
-          bge-reranker-base & --- \\
-          \bottomrule
-        \end{tabular}
-      \end{block}
-    \end{column}
-  \end{columns}
-  
-  \vspace{0.3cm}
-  \begin{alertblock}{Avantages LLM local}
-    \small
-    Confidentialit\'{e} + Co\^{u}t z\'{e}ro + Hors ligne + Transparence
-  \end{alertblock}
-\end{frame}
-
-\section{Pipeline RAG avanc\'{e}}
-
-\begin{frame}{Pipeline d'ingestion}
-  \textbf{Upload $\rightarrow$ Parse $\rightarrow$ Chunk $\rightarrow$ Embed $\rightarrow$ Ready}
-  
-  \vspace{0.3cm}
+  \vspace{0.2cm}
+  \textbf{What a student can do:}
   \begin{itemize}
-    \item Worker asynchrone (arq)
-    \item LlamaCloud pour parsing PDF
-    \item fastembed pour embeddings
-    \item Stockage dans Qdrant
-    \item Progression en temps r\'{e}el
+    \setlength\itemsep{1pt}
+    \item \textbf{Upload} course files (PDFs, slides, documents).
+    \item \textbf{Chat} with a warm, encouraging AI teacher.
+    \item \textbf{Generate} quizzes, mind maps, podcasts from the materials.
+    \item \textbf{Track progress} per-concept, automatically.
   \end{itemize}
-\end{frame}
 
-\begin{frame}{Retrieval hybride : 5 modes}
-  \small
-  \begin{tabular}{lp{4cm}c}
-    \toprule
-    \textbf{Mode} & \textbf{Description} & \textbf{k} \\
-    \midrule
-    semantic\_topk & Dense + BM25 + RRF & 12 \\
-    coverage\_broad & MMR (diversit\'{e}) & 15 \\
-    topic\_clusters & K-means sur embeddings & Var \\
-    metadata\_filtered & Filtrage attributs & 10 \\
-    contextual\_expansion & Chunks voisins & Var \\
-    \bottomrule
-  \end{tabular}
-\end{frame}
-
-\begin{frame}{Reciprocal Rank Fusion (RRF)}
-  \begin{columns}[T]
-    \begin{column}{0.48\textwidth}
-      \textbf{BM25 (sparse):}
-      \begin{itemize}\small
-        \item Tokenisation
-        \item Scoring BM25Okapi
-        \item k = 25 candidats
-        \item Excellent pour termes exacts
-      \end{itemize}
-      
-      \vspace{0.3cm}
-      \textbf{S\'{e}mantique (dense):}
-      \begin{itemize}\small
-        \item Embeddings bge-small
-        \item Similarit\'{e} cosinus
-        \item k = 30+ candidats
-        \item Excellent pour paraphrases
-      \end{itemize}
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      \textbf{Formule RRF:}
-      \[
-        \text{RRF}(d) = \sum_{r} \frac{1}{k + \text{rank}_r(d)}
-      \]
-      
-      \vspace{0.3cm}
-      \textbf{Avantages:}
-      \begin{itemize}\small
-        \item Sans param\`{e}tres
-        \item Robuste
-        \item Combine forces compl\'{e}mentaires
-        \item Performance sup\'{e}rieure
-      \end{itemize}
-    \end{column}
-  \end{columns}
-\end{frame}
-
-\section{Architecture multi-agents}
-
-\begin{frame}{G\'{e}n\'{e}rateurs sp\'{e}cialis\'{e}s}
-  \small
-  \begin{tabular}{lp{5cm}c}
-    \toprule
-    \textbf{G\'{e}n\'{e}rateur} & \textbf{Description} & \textbf{Port} \\
-    \midrule
-    teacher\_gen & R\'{e}ponses conversationnelles & 8001 \\
-    quiz\_gen & QCM, vrai/faux, compl\'{e}ter & 8002 \\
-    flashcard\_gen & Cartes m\'{e}moire & 8005 \\
-    podcast\_gen & Script $\rightarrow$ MP3 & 8007 \\
-    mindmap\_gen & Carte mentale JSON & 8008 \\
-    \bottomrule
-  \end{tabular}
-  
-  \vspace{0.3cm}
-  \textbf{Avantages:} Scaling ind\'{e}pendant, d\'{e}ploiement ind\'{e}pendant, isolation pannes
-\end{frame}
-
-\begin{frame}{Pipeline g\'{e}n\'{e}rateur}
-  \textbf{Flux multi-\'{e}tapes avec streaming SSE}
-  
-  \vspace{0.3cm}
-  \begin{enumerate}
-    \item Analysis (Llama 3.2)
-    \item Reranking (bge-reranker)
-    \item Generation (Llama 3.1 stream)
-    \item Learner Update (Llama 3.2)
-  \end{enumerate}
-  
-  \vspace{0.3cm}
-  \begin{alertblock}{R\`{e}gle d'ancrage}
-    Base your response EXCLUSIVELY on the COURSE MATERIAL. Never fabricate information.
-  \end{alertblock}
-\end{frame}
-
-\section{Suivi de l'apprenant}
-
-\begin{frame}{LearnerState}
-  \begin{columns}[T]
-    \begin{column}{0.48\textwidth}
-      \textbf{Structure:}
-      \begin{itemize}\small
-        \item understood\_concepts
-        \item struggling\_concepts
-        \item mastery\_scores
-        \item question\_history
-        \item last\_updated
-      \end{itemize}
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      \textbf{Extraction:}
-      \begin{itemize}\small
-        \item Analyse post-r\'{e}ponse
-        \item JSON structur\'{e}
-        \item Fusion avec \'{e}tat existant
-        \item Persistance PostgreSQL
-      \end{itemize}
-    \end{column}
-  \end{columns}
-\end{frame}
-
-\begin{frame}{Adaptation p\'{e}dagogique}
-  \textbf{Quiz:}
-  \begin{itemize}\small
-    \item Difficult\'{e} progressive
-    \item Focus struggling concepts
-    \item \'{E}vite concepts ma\^{i}tris\'{e}s
-  \end{itemize}
-  
-  \vspace{0.3cm}
-  \textbf{R\'{e}ponses:}
-  \begin{itemize}\small
-    \item Ton encourag\'{e}ant
-    \item R\'{e}f\'{e}rences concepts connus
-    \item Indices socratiques
-  \end{itemize}
-\end{frame}
-
-\section{G\'{e}n\'{e}rateurs de contenu}
-
-\begin{frame}{Quiz Generator}
-  \begin{columns}[T]
-    \begin{column}{0.48\textwidth}
-      \textbf{Types:}
-      \begin{itemize}\small
-        \item MCQ (4 choix)
-        \item Vrai/Faux
-        \item Compl\'{e}ter
-      \end{itemize}
-      
-      \vspace{0.3cm}
-      \textbf{Strat\'{e}gie:}
-      \begin{itemize}\small
-        \item Retrieval coverage\_broad
-        \item Filtrage struggling concepts
-        \item JSON structur\'{e}
-        \item Validation
-      \end{itemize}
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      \textbf{Interface:}
-      \begin{itemize}\small
-        \item Affichage interactif
-        \item Score temps r\'{e}el
-        \item Explications
-      \end{itemize}
-    \end{column}
-  \end{columns}
-\end{frame}
-
-\begin{frame}{Podcast Generator}
-  \textbf{Pipeline:}
-  \begin{enumerate}\small
-    \item Retrieval topic\_clusters
-    \item Script dialogue (2 voix)
-    \item TTS synth\`{e}se
-    \item Mixing audio
-    \item Export MP3
-  \end{enumerate}
-  
-  \vspace{0.3cm}
-  \textbf{Param\`{e}tres:} Dur\'{e}e 5-30 min, Niveau technique, Multilingue
-\end{frame}
-
-\begin{frame}{Mind Map Generator}
-  \textbf{Hi\'{e}rarchie JSON:}
-  \begin{itemize}\small
-    \item root: nœud central
-    \item branches: concepts principaux
-    \item leaves: d\'{e}tails, exemples
-    \item connections: liens transversaux
-  \end{itemize}
-  
-  \vspace{0.3cm}
-  \textbf{Rendu:} Visualisation interactive (D3.js/Mermaid), Zoom/pan, Export SVG/PNG
-\end{frame}
-
-\section{Infrastructure}
-
-\begin{frame}{D\'{e}ploiement Docker}
-  \begin{columns}[T]
-    \begin{column}{0.48\textwidth}
-      \small
-      \begin{tabular}{lc}
-        \toprule
-        \textbf{Service} & \textbf{Port} \\
-        \midrule
-        Frontend & 3000 \\
-        Backend & 8000 \\
-        teacher\_gen & 8001 \\
-        quiz\_gen & 8002 \\
-        PostgreSQL & 5432 \\
-        Redis & 6379 \\
-        Qdrant & 6333 \\
-        MinIO & 9000 \\
-        \bottomrule
-      \end{tabular}
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      \textbf{Volumes:}
-      \begin{itemize}\small
-        \item postgres\_data
-        \item qdrant\_data
-        \item minio\_data
-        \item fastembed\_cache
-        \item hf\_cache
-      \end{itemize}
-    \end{column}
-  \end{columns}
-  
-  \vspace{0.3cm}
-  \begin{alertblock}{Pr\'{e}requis}
-    Ollama sur h\^{o}te avec llama3.1:8b et llama3.2
-  \end{alertblock}
-\end{frame}
-
-\begin{frame}{Base PostgreSQL}
-  \textbf{Tables:}
-  \begin{itemize}\small
-    \item users, conversations, messages
-    \item files, learner\_states
-    \item artifacts, concept\_mastery
-  \end{itemize}
-  
-  \vspace{0.3cm}
-  \textbf{Migrations:} Alembic pour versioning et rollback
-\end{frame}
-
-\section{\'{E}tat d'avancement}
-
-\begin{frame}{\'{E}tat d'avancement global}
-  \textbf{Avancement par composant:}
-  
-  \vspace{0.4cm}
-  \begin{tabular}{l l}
-    Backend (FastAPI) & \progressbar{95}{eduGreen} \\[4pt]
-    Frontend (Next.js) & \progressbar{90}{eduGreen} \\[4pt]
-    Pipeline RAG & \progressbar{100}{eduGreen} \\[4pt]
-    Generators & \progressbar{80}{eduGreen} \\[4pt]
-    Learner Tracking & \progressbar{65}{eduGreen} \\[4pt]
-    Infrastructure & \progressbar{95}{eduGreen} \\[4pt]
-  \end{tabular}
-  
-  \vspace{0.1cm}
-  \begin{exampleblock}{Avancement global: 79\%}
-    Syst\`{e}me de production fonctionnel
+  \vspace{0.2cm}
+  \begin{exampleblock}{Why this matters}
+    Generic chatbots hallucinate, ignore the actual course context, and
+    don't adapt to the student. TeacherLM enforces \textbf{groundedness}
+    and \textbf{adaptive teaching} as first-class system properties.
   \end{exampleblock}
 \end{frame}
 
+\begin{frame}{The Four Core Principles}
+  \begin{tcolorbox}[colback=eduLightBlue, colframe=eduBlue, title=\textbf{1. Strict Grounding}]
+    Every factual claim must trace back to a retrieved chunk. If the
+    material doesn't cover it, the teacher politely refuses --- it never
+    falls back to training data.
+  \end{tcolorbox}
 
-\section{Comparaison}
+  \begin{tcolorbox}[colback=eduLightGreen, colframe=eduGreen, title=\textbf{2. Learner-Aware}]
+    A per-conversation \texttt{LearnerState} tracks understood vs.
+    struggling concepts, mastery scores, and session turns.
+    Every generator receives this state and adapts.
+  \end{tcolorbox}
 
-\begin{frame}{Phase 1 vs Phase 4}
+  \begin{tcolorbox}[colback=eduPurple!10, colframe=eduPurple, title=\textbf{3. Multi-Agent / Plugin Architecture}]
+    Each output type is an independent FastAPI microservice (a
+    \textit{generator}) registered in a JSON manifest. The backend is a
+    thin orchestrator. Adding an agent = one new service + one JSON entry.
+  \end{tcolorbox}
+
+  \begin{tcolorbox}[colback=eduLightOrange, colframe=eduOrange, title=\textbf{4. Fully Local LLM}]
+    All inference runs through \textbf{Ollama} on the host machine ---
+    no OpenAI, no cloud APIs. Course materials never leave the box.
+  \end{tcolorbox}
+\end{frame}
+
+% =====================================================================
+\section{High-Level System Architecture}
+% =====================================================================
+
+\begin{frame}{System Architecture --- Bird's-Eye View}
+  \centering
+  \begin{tikzpicture}[node distance=0.35cm and 0.4cm]
+
+    % Layer 1: Frontend
+    \node[svc, fill=nodeBlue!20, draw=nodeBlue, minimum width=10cm] (fe)
+      {Frontend (Next.js 14 + React 18 + TS) --- Chat UI, File Upload, Renderers};
+
+    % Layer 2: Backend orchestrator
+    \node[svc, below=of fe, fill=eduBlue!20, minimum width=10cm] (be)
+      {Backend (FastAPI 0.135+) --- Routers $\bullet$ Dispatcher $\bullet$ Retrieval Orch.\ $\bullet$ Learner Tracker};
+
+    % Layer 3: Workers + retrieval
+    \node[svcgreen, below left=of be, xshift=-0.3cm] (worker)
+      {\textbf{Ingestion Worker}\\(arq, Redis)};
+    \node[svcorange, below=of be]
+      (retr) {\textbf{Retrieval Orch.}\\(5 modes + RRF)};
+    \node[svcpurple, below right=of be, xshift=0.3cm] (disp)
+      {\textbf{Dispatcher}\\(Registry + Adapters)};
+
+    % Layer 4: Generators (agents)
+    \node[agent, below=1.2cm of worker, xshift=0cm] (teach)
+      {teacher\_gen\\:8001};
+    \node[agent, right=of teach] (quiz) {quiz\_gen\\:8002};
+    \node[agent, right=of quiz] (mind) {mindmap\_gen\\:8008};
+    \node[agent, right=of mind] (pod)  {podcast\_gen\\:8007};
+
+    % Layer 5: Infrastructure
+    \node[infra, below=1.0cm of teach, xshift=-1.2cm] (pg)  {Postgres 16};
+    \node[infra, right=of pg]                 (redis){Redis 7};
+    \node[infra, right=of redis]              (qd)  {Qdrant};
+    \node[infra, right=of qd]                 (mn)  {MinIO};
+    \node[infra, right=of mn]                 (oll) {Ollama (host)};
+
+    % Arrows
+    \draw[arr] (fe) -- (be) node[midway, right, font=\tiny] {HTTP / SSE};
+    \draw[arr] (be.south) -- (retr.north);
+    \draw[arr] (be.south west) -- (worker.north);
+    \draw[arr] (be.south east) -- (disp.north);
+
+    \draw[arrG] (disp.south) -- ++(0,-0.4) -| (teach.north);
+    \draw[arrG] (disp.south) -- ++(0,-0.4) -| (quiz.north);
+    \draw[arrG] (disp.south) -- ++(0,-0.4) -| (mind.north);
+    \draw[arrG] (disp.south) -- ++(0,-0.4) -| (pod.north);
+
+    \draw[arrO, dashed] (worker.south) |- (pg.west);
+    \draw[arrO, dashed] (retr.south) -| (qd.north);
+    \draw[arrO, dashed] (teach.south) -- ++(0,-0.3) -| (oll.north);
+    \draw[arrO, dashed] (pod.south)  -- ++(0,-0.3) -| (oll.north);
+
+  \end{tikzpicture}
+
+  \vspace{0.15cm}
+  \footnotesize
+  \textcolor{eduBlue}{$\rightarrow$ data plane (HTTP/SSE)} \quad
+  \textcolor{eduGreen}{$\rightarrow$ generator dispatch} \quad
+  \textcolor{eduOrange}{$\dashrightarrow$ persistence / inference}
+\end{frame}
+
+\begin{frame}{Data Flow for a Single Chat Message}
   \scriptsize
-  \begin{tabular}{lcc}
+  \begin{enumerate}
+    \item Frontend $\xrightarrow{\textsf{POST /api/conversations/\{id\}/chat}}$ Backend.
+    \item Backend persists the user turn in \textbf{PostgreSQL} (\texttt{Message} table).
+    \item \textbf{Retrieval Orchestrator} picks a mode (e.g.\ \texttt{semantic\_topk} for chat)
+          and queries \textbf{Qdrant} via hybrid (dense + BM25) retrieval, fused with RRF.
+    \item Optional \textbf{cross-encoder reranking} (\texttt{bge-reranker-base}).
+    \item Backend loads the \textbf{LearnerState} and assembles a \texttt{GeneratorInput}.
+    \item The \textbf{Dispatcher} resolves the target generator via the JSON registry and
+          calls its \texttt{/run} endpoint (HTTP + SSE).
+    \item The generator runs its multi-step pipeline and \textbf{streams SSE events}:
+          \texttt{analysis} $\to$ \texttt{sources} $\to$ \texttt{token}* $\to$ \texttt{done}.
+    \item Backend proxies the SSE stream back to the frontend and persists the
+          assistant turn + \textbf{learner state updates} on completion.
+  \end{enumerate}
+\end{frame}
+
+% =====================================================================
+\section{Technology Stack}
+% =====================================================================
+
+\begin{frame}{Backend Stack}
+  \tiny
+  \renewcommand{\arraystretch}{1.15}
+  \begin{tabular}{p{2.8cm} p{1.5cm} p{8.5cm}}
     \toprule
-    \textbf{Aspect} & \textbf{Phase 1} & \textbf{Phase 4} \\
+    \rowcolor{eduBlue!20}\textbf{Technology} & \textbf{Version} & \textbf{Role and rationale} \\
     \midrule
-    Architecture & Monolithe & Microservices \\
-    Framework & LangChain & FastAPI + Next.js \\
-    Retrieval & S\'{e}mantique seul & Hybride RRF \\
-    LLM & Mistral-7B & Llama 3.1/3.2 \\
-    Vecteurs & ChromaDB & Qdrant \\
-    Outputs & Chat seul & 5 types \\
-    Interface & CLI & Web app \\
-    Tracking & Aucun & LearnerState \\
-    D\'{e}ploiement & Local & Docker \\
+    Python              & 3.14+   & Modern async, strict typing (\texttt{type[T]}), no Pydantic-V1 warnings. \\
+    FastAPI             & $\geq 0.135$ & Async REST + SSE, auto-OpenAPI, Pydantic-native dependency injection. \\
+    Pydantic V2         & $\geq 2.12$  & Strict schemas. \texttt{model\_json\_schema()} feeds Ollama's \texttt{format=} for JSON. \\
+    SQLAlchemy 2.0      & $\geq 2.0.36$ & Async ORM with \texttt{mapped\_column} + \texttt{asyncpg}. \\
+    Alembic             & $\geq 1.14$  & Schema migrations (course content, learner state, summaries). \\
+    Ollama (py)         & $\geq 0.4$  & Local LLM inference; native \texttt{format=} for structured outputs (no LangChain). \\
+    Qdrant (client)     & $\geq 1.12$ & Vector DB; one collection per conversation (\texttt{conv\_\{id\}}). \\
+    fastembed           & $\geq 0.4$  & ONNX embeddings + cross-encoder reranker; CPU-friendly. \\
+    rank-bm25           & $\geq 0.2$  & BM25Okapi sparse retrieval (the other half of hybrid). \\
+    LlamaCloud          & $\geq 1.0$  & PDF/slide $\to$ Markdown parsing (NOT deprecated llama-parse). \\
+    MinIO SDK           & $\geq 7.2$  & S3-compatible storage for uploads + parsed Markdown + artifacts. \\
+    Redis 7 + arq       & $\geq 0.26$ & Background ingestion task queue. \\
+    httpx + httpx-sse   & $\geq 0.28$ & Dispatcher $\to$ generator SSE streaming. \\
+    sse-starlette       & $\geq 2.1$  & SSE event streams back to the frontend. \\
+    \bottomrule
+  \end{tabular}
+
+  \vspace{0.15cm}
+  \begin{alertblock}{Non-negotiable compatibility rules}
+    \tiny No LangChain / LangGraph (Pydantic V1 warnings on 3.14) $\bullet$
+    No \texttt{llama-parse} / \texttt{llama-cloud-services} (deprecated May 2026) $\bullet$
+    Pydantic V2 only.
+  \end{alertblock}
+\end{frame}
+
+\begin{frame}{Frontend Stack}
+  \tiny
+  \renewcommand{\arraystretch}{1.15}
+  \begin{tabular}{p{2.6cm} p{1.3cm} p{8.5cm}}
+    \toprule
+    \rowcolor{eduBlue!20}\textbf{Technology} & \textbf{Version} & \textbf{Role} \\
+    \midrule
+    Next.js                  & 14   & App Router, server components, file-based routing. \\
+    React                    & 18.3 & Hook-based UI. \\
+    TypeScript               & 5.6+ & Compile-time safety across all UI / API client code. \\
+    TailwindCSS              & 3.4  & Utility-first styling, dark-mode-first design system. \\
+    Zustand                  & 5.0  & Stores: \texttt{conversationStore}, \texttt{progressStore}, \texttt{uiStore}, \texttt{settingsStore}. \\
+    TanStack React Query     & 5.59 & Server-state caching + refetch (conversations, files, messages). \\
+    Radix UI                 & ---  & Accessible headless primitives (Dialog, Tooltip, Slot). \\
+    react-markdown           & 9.0  & Renders teacher Markdown with KaTeX + Mermaid plugins. \\
+    KaTeX                    & 0.16 & Renders LaTeX math in responses. \\
+    Mermaid                  & 11.4 & Renders diagrams + mind maps inside the chat. \\
+    react-dropzone           & 14.3 & Drag-and-drop file upload. \\
+    Lucide React             & 0.46 & SVG icon set. \\
+    Sonner                   & 1.7  & Toast notifications. \\
     \bottomrule
   \end{tabular}
 \end{frame}
 
-\section{Prochaines \'{e}tapes}
+\begin{frame}{Models --- Ollama + fastembed}
+  \begin{block}{LLMs via Ollama (host network)}
+    \scriptsize
+    \begin{tabular}{p{4.5cm} p{1.4cm} p{6.5cm}}
+      \toprule
+      \textbf{Model} & \textbf{Size} & \textbf{Where it's used} \\
+      \midrule
+      \texttt{llama3.1:8b-instruct-q4\_K\_M} & 8B Q4 & Main chat replies, quiz / mindmap / podcast scripting. \\
+      \texttt{llama3.2:latest}               & 3B    & Query analysis + learner-update extraction (lightweight). \\
+      \bottomrule
+    \end{tabular}
+  \end{block}
 
-\begin{frame}{Optimisations}
-  \begin{columns}[T]
-    \begin{column}{0.48\textwidth}
-      \textbf{Techniques:}
-      \begin{enumerate}\small
-        \item Chunking s\'{e}mantique
-        \item Cache retrieval (Redis)
-        \item Traitement async
-        \item Formats PPTX/DOCX
-        \item Embeddings sp\'{e}cialis\'{e}s
-      \end{enumerate}
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      \textbf{P\'{e}dagogiques:}
-      \begin{enumerate}\small
-        \item Adaptation dynamique
-        \item Parcours personnalis\'{e}s
-        \item D\'{e}tection lacunes
-        \item Feedbacks enrichis
-        \item Gamification
-      \end{enumerate}
-    \end{column}
-  \end{columns}
+  \begin{block}{Embeddings + Reranker via fastembed (ONNX)}
+    \scriptsize
+    \begin{tabular}{p{4.5cm} p{1.4cm} p{6.5cm}}
+      \toprule
+      \textbf{Model} & \textbf{Dim} & \textbf{Role} \\
+      \midrule
+      \texttt{BAAI/bge-small-en-v1.5}     & 384 & Dense embeddings for semantic search (Qdrant). \\
+      \texttt{BAAI/bge-reranker-base}     & --- & Cross-encoder reranking of fused candidates. \\
+      \bottomrule
+    \end{tabular}
+  \end{block}
+
+  \begin{exampleblock}{Design choice}
+    \scriptsize
+    \texttt{fastembed} runs both bi-encoder (\texttt{TextEmbedding}) and
+    cross-encoder (\texttt{TextCrossEncoder}) on CPU via ONNX --- no
+    PyTorch dependency, no GPU required.
+  \end{exampleblock}
 \end{frame}
 
-\begin{frame}{Vision long terme}
-  \begin{columns}[T]
-    \begin{column}{0.48\textwidth}
-      \textbf{Multi-agents avanc\'{e}:}
-      \begin{itemize}\small
-        \item Agents sp\'{e}cialis\'{e}s par r\^{o}le
-        \item Communication inter-agents
-      \end{itemize}
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      \textbf{Fonctionnalit\'{e}s:}
-      \begin{itemize}\small
-        \item Repports generator
-        \item Presentations generator
-        \item M\'{e}moire long terme
-        \item Profil \'{e}tudiant complet
-        \item Analytics avanc\'{e}s
-        \item Mobile app
-      \end{itemize}
-    \end{column}
-  \end{columns}
+\begin{frame}{Infrastructure (Docker Compose, 11 services)}
+  \centering
+  \scriptsize
+  \renewcommand{\arraystretch}{1.2}
+  \begin{tabular}{p{2.6cm} p{4.6cm} p{4.3cm}}
+    \toprule
+    \rowcolor{eduBlue!20}\textbf{Component} & \textbf{Image} & \textbf{Role} \\
+    \midrule
+    PostgreSQL 16        & \texttt{postgres:16-alpine}      & Conversations, messages, files, learner state, course content. \\
+    Redis 7              & \texttt{redis:7-alpine}          & Broker for the arq ingestion queue. \\
+    Qdrant               & \texttt{qdrant/qdrant:latest}    & Vector DB, one collection per conversation. \\
+    MinIO                & \texttt{minio/minio:latest}      & S3-style object storage (uploads, Markdown, artifacts). \\
+    Ollama               & host service                     & Reached at \texttt{host.docker.internal:11434}. \\
+    Backend              & FastAPI                          & API + dispatcher + retrieval orchestrator. \\
+    Ingestion Worker     & arq process                      & Parse $\to$ chunk $\to$ embed pipeline. \\
+    teacher\_gen         & FastAPI :8001                    & Chat agent. \\
+    quiz\_gen            & FastAPI :8002                    & Quiz agent. \\
+    podcast\_gen         & FastAPI :8007                    & Two-host podcast agent. \\
+    mindmap\_gen         & FastAPI :8008                    & Hierarchical mind map agent. \\
+    Frontend             & Next.js :3000                    & Web UI. \\
+    \bottomrule
+  \end{tabular}
+
+  \vspace{0.1cm}
+  \footnotesize Five persistent volumes: \texttt{postgres\_data},
+  \texttt{qdrant\_data}, \texttt{minio\_data}, \texttt{fastembed\_cache},
+  \texttt{hf\_cache}.
 \end{frame}
 
+% =====================================================================
+\section{The RAG Pipeline}
+% =====================================================================
 
-\section{Conclusion}
+\begin{frame}{End-to-End RAG Pipeline}
+  \centering
+  \begin{tikzpicture}[node distance=0.35cm and 0.3cm]
+    \node[step, fill=eduLightBlue]    (a) {1.\ Upload\\(MinIO + Postgres)};
+    \node[step, fill=eduLightGreen, right=of a] (b) {2.\ Parse\\(LlamaCloud $\to$ MD)};
+    \node[step, fill=eduLightOrange, right=of b] (c) {3.\ Clean +\\Structure};
+    \node[step, fill=eduPurple!15, right=of c]   (d) {4.\ Chunk\\(512 tok, 50 overlap)};
+    \node[step, fill=eduRed!15, right=of d]      (e) {5.\ Embed +\\Upsert (Qdrant)};
 
-\begin{frame}{Synth\`{e}se}
-  \begin{columns}[T]
-    \begin{column}{0.48\textwidth}
-      \begin{exampleblock}{R\'{e}sultats}
-        \small
-        \begin{itemize}
-          \item Syst\`{e}me production
-          \item Microservices scalable
-          \item 5 g\'{e}n\'{e}rateurs
-          \item Interface moderne
-          \item Suivi p\'{e}dagogique
-          \item Infrastructure Docker
-          \item LLM local
-        \end{itemize}
-      \end{exampleblock}
-    \end{column}
-    \begin{column}{0.48\textwidth}
-      \begin{block}{Contributions}
-        \small
-        \begin{itemize}
-          \item Pipeline RAG \'{e}ducatif
-          \item Hybrid retrieval
-          \item LearnerState tracking
-          \item Plugin architecture
-          \item Ollama production
-          \item SSE streaming
-          \item Multi-modal outputs
-        \end{itemize}
-      \end{block}
-    \end{column}
-  \end{columns}
-\end{frame}
+    \node[step, fill=eduLightBlue, below=of a]      (f) {6.\ Query Analysis\\(LLM, structured)};
+    \node[step, fill=eduLightGreen, below=of b]     (g) {7.\ Hybrid Retrieve\\(Dense + BM25 / RRF)};
+    \node[step, fill=eduLightOrange, below=of c]    (h) {8.\ Rerank\\(cross-encoder)};
+    \node[step, fill=eduPurple!15, below=of d]      (i) {9.\ Generate\\(streaming LLM)};
+    \node[step, fill=eduRed!15, below=of e]         (j) {10.\ Score +\\Learner Update};
 
-% Closing slide
-{
-\setbeamertemplate{footline}{}
-\begin{frame}[plain]
-  \begin{tikzpicture}[remember picture, overlay]
-    \fill[eduBlue] (current page.north west) rectangle (current page.south east);
-    \fill[eduBlue!60] (current page.south west)
-        .. controls +(5,2) and +(-3,1.5) .. (current page.south east)
-        -- (current page.south east) -- (current page.south west) -- cycle;
+    \draw[arr] (a) -- (b);
+    \draw[arr] (b) -- (c);
+    \draw[arr] (c) -- (d);
+    \draw[arr] (d) -- (e);
+    \draw[arr] (e.south) -- ++(0, -0.4) -| (f.north);
+    \draw[arrG] (f) -- (g);
+    \draw[arrG] (g) -- (h);
+    \draw[arrG] (h) -- (i);
+    \draw[arrG] (i) -- (j);
   \end{tikzpicture}
+
+  \vspace{0.4cm}
+  \footnotesize
+  \begin{tabular}{ll}
+    \textcolor{eduBlue}{\textbf{Top row}}    & one-time \textbf{ingestion} when files are uploaded \\
+    \textcolor{eduGreen}{\textbf{Bottom row}} & every-message \textbf{query path} (chat or button-triggered)
+  \end{tabular}
+\end{frame}
+
+\begin{frame}{Step 1--4: Ingestion (run on background workers)}
+  \scriptsize
+  \begin{block}{1. Upload}
+    File persisted in \textbf{MinIO}, row inserted in PostgreSQL with status
+    \texttt{uploaded}. An \textbf{arq} job is enqueued in Redis.
+  \end{block}
+
+  \begin{block}{2. Parse}
+    The worker streams raw bytes to \textbf{LlamaCloud} ($\geq 1.0$),
+    which returns clean Markdown. The Markdown is written back to MinIO.
+    \textit{Why LlamaCloud?} PDF layouts (multi-column, tables, equations,
+    headers/footers) defeat local PDF extractors --- noisy Markdown
+    degrades chunking and retrieval downstream.
+  \end{block}
+
+  \begin{block}{3. Cleaning + Structure extraction}
+    \texttt{DocumentCleaningService} strips noise (logos, page numbers).
+    \texttt{CourseStructureExtractor} produces a \texttt{CourseDocument}
+    with hierarchical \texttt{CourseSection}s (heading paths, summaries,
+    equations, tables, timeline events, key concepts).
+  \end{block}
+
+  \begin{block}{4. Chunking --- structured, not naive}
+    \texttt{ChunkingService.chunk\_course\_document} walks each section:
+    \begin{itemize}
+      \setlength\itemsep{0pt}
+      \item Split section text by paragraphs $\to$ sentences (regex on
+            \texttt{[.!?]} + sentence-start lookahead). Preserves structured blocks (tables, lists, \texttt{\$\$...\$\$}).
+      \item Greedy-merge sentences into chunks targeting
+            \texttt{chunk\_max\_tokens = 512} with
+            \texttt{chunk\_overlap\_tokens = 50}.
+      \item Token approximation: $\mathrm{tokens}(t) \approx 1.3 \cdot |\mathrm{words}(t)|$ --- no tokenizer load.
+      \item Each chunk carries metadata: \texttt{document\_id},
+            \texttt{section\_id}, \texttt{heading\_path},
+            \texttt{section\_summary}, \texttt{key\_concepts},
+            \texttt{prev\_/next\_chunk\_id} for neighbor expansion.
+    \end{itemize}
+  \end{block}
+\end{frame}
+
+\begin{frame}{Step 5: Embedding \& Indexing in Qdrant}
+  \centering
+  \begin{tikzpicture}[node distance=0.5cm]
+    \node[doc] (c1) {\tiny chunk\_1};
+    \node[doc, right=of c1] (c2) {\tiny chunk\_2};
+    \node[doc, right=of c2] (c3) {\tiny chunk\_3};
+    \node[doc, right=of c3] (c4) {\tiny chunk\_n};
+
+    \node[svc, below=0.8cm of c2, xshift=1cm, fill=eduGreen!15, draw=eduGreen, minimum width=4cm]
+      (emb) {\textbf{fastembed (BGE-small)}\\ONNX, 384-dim};
+
+    \node[vec, below=0.9cm of c1, xshift=2cm]      (v1) {$\vec{v}_1$};
+    \node[vec, right=of v1] (v2) {$\vec{v}_2$};
+    \node[vec, right=of v2] (v3) {$\vec{v}_3$};
+    \node[vec, right=of v3] (v4) {$\vec{v}_n$};
+
+    \draw[arr] (c1.south) -- (emb.north -| c1);
+    \draw[arr] (c2.south) -- (emb.north -| c2);
+    \draw[arr] (c3.south) -- (emb.north -| c3);
+    \draw[arr] (c4.south) -- (emb.north -| c4);
+
+    \node[svc, below=2.3cm of emb, fill=eduOrange!20, draw=eduOrange, minimum width=7cm]
+      (qd) {\textbf{Qdrant collection \texttt{conv\_\{conversation\_id\}}}\\
+            (payload indices on \texttt{source}, \texttt{file\_id})};
+
+    \draw[arrO] (v1) -- (qd.north -| v1);
+    \draw[arrO] (v2) -- (qd.north -| v2);
+    \draw[arrO] (v3) -- (qd.north -| v3);
+    \draw[arrO] (v4) -- (qd.north -| v4);
+  \end{tikzpicture}
+
+  \vspace{0.15cm}
+  \scriptsize
+  \begin{itemize}
+    \setlength\itemsep{0pt}
+    \item Per-conversation \textbf{isolation}: each conversation gets its
+          own collection $\Rightarrow$ no cross-leakage, easy GC on delete.
+    \item Each point payload preserves the full chunk metadata so the
+          retriever can rebuild a \texttt{Chunk} object from a hit.
+    \item Embedding model is \textit{warmed} at startup (downloaded into
+          the \texttt{fastembed\_cache} volume).
+  \end{itemize}
+\end{frame}
+
+% =====================================================================
+\section{Hybrid Retrieval and RRF}
+% =====================================================================
+
+\begin{frame}{Hybrid Retrieval --- Two Signals, One Ranking}
+  \centering
+  \begin{tikzpicture}[node distance=0.5cm and 0.6cm]
+    \node[svc, fill=eduLightBlue, minimum width=3cm] (q) {\textbf{User query}};
+
+    \node[svcgreen, below left=1cm and 0.5cm of q, minimum width=3.2cm]
+      (dense) {\textbf{Dense} (fastembed)\\Qdrant top-K=20};
+    \node[svcorange, below right=1cm and 0.5cm of q, minimum width=3.2cm]
+      (sparse){\textbf{Sparse / BM25}\\(rank-bm25 Okapi)};
+
+    \node[svcpurple, below=1.5cm of q, minimum width=4.5cm] (rrf)
+      {\textbf{Reciprocal Rank Fusion}\\$K=60$, parameter-free};
+
+    \node[svc, fill=eduRed!15, draw=eduRed, below=of rrf, minimum width=4.5cm] (out)
+      {\textbf{Fused top-K chunks}};
+
+    \draw[arr] (q.south) -- (dense.north);
+    \draw[arr] (q.south) -- (sparse.north);
+    \draw[arrG] (dense.south) -- (rrf.north -| dense);
+    \draw[arrG] (sparse.south) -- (rrf.north -| sparse);
+    \draw[arrG] (rrf) -- (out);
+  \end{tikzpicture}
+
+  \vspace{0.1cm}
+  \scriptsize
+  \textbf{Why both?} Dense models capture \textit{semantics} (``causes of
+  photosynthesis'' $\sim$ ``light-dependent reactions''); BM25 captures
+  \textit{exact tokens} (Henderson--Hasselbalch, RMSE, nDCG). The fusion
+  ensures both are surfaced --- and it's tuning-free.
+\end{frame}
+
+\begin{frame}{Reciprocal Rank Fusion --- The Math}
+  \begin{block}{Definition}
+    For each candidate document $d$ that appears in any ranking list
+    $L_i$ at rank $r_i(d)$ (counting from 1):
+    \[
+      \mathrm{score}(d) \;=\; \sum_{i=1}^{n} \frac{1}{K + r_i(d)},
+      \qquad K = 60.
+    \]
+  \end{block}
+
+  \begin{itemize}
+    \setlength\itemsep{1pt}
+    \item \textbf{Parameter-free} (the constant $K=60$ comes from the
+          original Cormack et al.\ paper and is robust in practice).
+    \item Does \textbf{not} require score normalisation across rankers ---
+          BM25 scores and cosine similarities live on different scales.
+    \item Documents not present in a list contribute $0$ from that list.
+    \item Implemented in \texttt{teacherlm\_core/retrieval/hybrid\_retriever.py}
+          as \texttt{\_rrf\_fuse(rankings, top\_k)}.
+  \end{itemize}
+
+  \begin{exampleblock}{Tiny worked example}
+    \scriptsize
+    Doc $A$ at rank 1 in Dense, rank 5 in BM25:
+    $\frac{1}{61} + \frac{1}{65} \approx 0.0317$.\\
+    Doc $B$ at rank 2 in Dense, missing in BM25:
+    $\frac{1}{62} \approx 0.0161$.\\
+    Doc $C$ rank 10 in both: $2/70 \approx 0.0286$. $\Rightarrow A > C > B$.
+  \end{exampleblock}
+\end{frame}
+
+\begin{frame}[fragile]{HybridRetriever --- Implementation Sketch}
+\begin{lstlisting}[language=Python]
+class HybridRetriever:
+    async def retrieve(self, query: str, top_k: int = 20) -> list[Chunk]:
+        dense_hits  = await self._dense_search(query, limit=self.dense_top_k)
+        sparse_hits = self._sparse_search(query, limit=self.sparse_top_k)
+        return _rrf_fuse([dense_hits, sparse_hits], top_k=top_k)
+
+def _rrf_fuse(rankings: list[list[Chunk]], top_k: int) -> list[Chunk]:
+    fused: dict[str, float] = {}
+    by_id: dict[str, Chunk] = {}
+    for ranking in rankings:
+        for rank, chunk in enumerate(ranking):
+            fused[chunk.chunk_id] = (
+                fused.get(chunk.chunk_id, 0.0) + 1.0 / (RRF_K + rank + 1)
+            )
+            by_id.setdefault(chunk.chunk_id, chunk)
+    ordered = sorted(fused.items(), key=lambda kv: kv[1], reverse=True)
+    return [Chunk(..., score=score) for cid, score in ordered[:top_k]]
+\end{lstlisting}
+\scriptsize
+Each fused chunk's \texttt{score} carries the RRF score; the original
+dense / BM25 magnitudes are discarded after fusion.
+\end{frame}
+
+\begin{frame}{Cross-Encoder Reranking}
+  \begin{block}{The two-stage retrieval pattern}
+    \scriptsize
+    \begin{itemize}
+      \setlength\itemsep{1pt}
+      \item \textbf{Stage 1 (recall)}: bi-encoder embeddings + BM25 fetch
+            $\sim$20--30 candidates quickly --- they're cheap because the
+            query and chunks are encoded independently.
+      \item \textbf{Stage 2 (precision)}: a \textbf{cross-encoder}
+            (\texttt{BAAI/bge-reranker-base}) scores each
+            \texttt{(query, chunk)} pair \textit{jointly}, attending across
+            the two texts. Much slower per pair, but vastly more accurate.
+    \end{itemize}
+  \end{block}
+
+  \begin{exampleblock}{Reranker code (\texttt{teacherlm\_core/retrieval/reranker.py})}
+    \tiny
+\begin{verbatim}
+class CrossEncoderReranker:
+    def __init__(self, model_name="BAAI/bge-reranker-base"):
+        from fastembed.rerank.cross_encoder import TextCrossEncoder
+        self._encoder = TextCrossEncoder(model_name=model_name)
+
+    async def rerank(self, query, chunks, top_k=5):
+        scores = await asyncio.to_thread(
+            self._score, query, [c.text for c in chunks]
+        )
+        ranked = sorted(zip(scores, chunks), reverse=True)[:top_k]
+        return [Chunk(text=c.text, source=c.source, score=float(s),
+                      chunk_id=c.chunk_id, metadata=c.metadata)
+                for s, c in ranked]
+\end{verbatim}
+  \end{exampleblock}
+
+  \scriptsize
+  The backend's \texttt{RetrievalOrchestrator} also supports
+  \textit{group-aware} reranking for comparison queries: it splits hits
+  by \texttt{matched\_query\_term} metadata and round-robins ranked
+  per-term groups so each term keeps representation.
+\end{frame}
+
+% =====================================================================
+\section{The Five Retrieval Modes}
+% =====================================================================
+
+\begin{frame}{One Retriever, Five Strategies}
+  \scriptsize
+  Each output type has different information needs --- the
+  \texttt{RetrievalOrchestrator} dispatches on \texttt{output\_type}:
+
+  \vspace{0.1cm}
+  \renewcommand{\arraystretch}{1.3}
+  \begin{tabular}{p{2.0cm} p{2.4cm} p{8.5cm}}
+    \toprule
+    \rowcolor{eduBlue!20}\textbf{Output type} & \textbf{Mode} & \textbf{Strategy} \\
+    \midrule
+    \texttt{text} (chat)            & \texttt{semantic\_topk}     & Top-K closest to query, after hybrid + rerank. \\
+    \texttt{quiz}                   & \texttt{coverage\_broad}    & MMR (Jaccard-token) --- relevance vs.\ diversity. \\
+    \texttt{report}, \texttt{mindmap}, \texttt{presentation}
+                                    & \texttt{topic\_clusters}    & K-means on chunk embeddings; one representative per cluster. \\
+    \texttt{podcast}                & \texttt{narrative\_arc}     & Intro-like chunk + relevant middle + conclusion-like chunk. \\
+    \texttt{chart}                  & \texttt{relationship\_dense}& Ranks by entity + verb regex density. \\
+    \bottomrule
+  \end{tabular}
+
+  \vspace{0.2cm}
+  \begin{block}{Why this matters}
+    Chat needs the \textbf{single most relevant} answer. A quiz needs
+    \textbf{breadth} so questions don't repeat. A podcast needs
+    \textbf{narrative shape}. A chart needs chunks dense in
+    \textbf{entities and relations}. Same vectors, five lenses.
+  \end{block}
+\end{frame}
+
+\begin{frame}{Mode 1: \texttt{semantic\_topk} (Chat)}
+  \scriptsize
+  Plain hybrid retrieval over the conversation's collection, capped to
+  \texttt{retrieval\_top\_k}.
+
+  \begin{exampleblock}{Backend chat-overview special-case}
+    \scriptsize
+    If the query looks like ``what is this course about?'' / ``r\'esume
+    le cours'' the orchestrator skips top-K and instead returns:
+    \begin{itemize}
+      \setlength\itemsep{0pt}
+      \item the \textbf{course study guide} chunk (if present), plus
+      \item \textbf{representative} chunks across the corpus, plus
+      \item the \textbf{full course outline}.
+    \end{itemize}
+    Intent + course-target keywords are detected with multilingual sets
+    (EN / FR / Arabic) and phrase regexes.
+  \end{exampleblock}
+\end{frame}
+
+\begin{frame}{Mode 2: \texttt{coverage\_broad} (Quizzes) --- MMR}
+  \begin{block}{Maximal Marginal Relevance}
+    \scriptsize
+    Pool a wider candidate set, then greedily pick chunks balancing
+    \textbf{query relevance} against \textbf{diversity} from already-picked:
+    \[
+      \mathrm{MMR}(c) \;=\; \lambda \, \mathrm{rel}(c, q) \;-\; (1-\lambda)\,
+      \max_{c' \in S} \mathrm{sim}(c, c'),
+    \]
+    where $\lambda = 0.7$ (relevance bias). Similarities are
+    \textbf{Jaccard} over BM25 tokens.
+  \end{block}
+
+  \scriptsize
+  \textbf{Why for quizzes?} A naive top-K returns 20 near-duplicates of
+  the same paragraph. MMR forces the question generator to see
+  \textbf{different facets} of the material --- the quiz then spans more
+  concepts and Bloom levels.
+\end{frame}
+
+\begin{frame}{Mode 3: \texttt{narrative\_arc} (Podcasts)}
+  \scriptsize
+  Heuristically picks chunks shaped like a podcast story:
+  \begin{itemize}
+    \setlength\itemsep{0pt}
+    \item \textbf{Intro}: 2 chunks containing keywords
+          \texttt{introduction / overview / preface / abstract}, falling back
+          to the first 10\,\% of the document.
+    \item \textbf{Middle}: hybrid retrieval (top-6 against the query).
+    \item \textbf{Conclusion}: 2 chunks containing
+          \texttt{conclusion / summary / in summary / final thoughts}, falling
+          back to the last 10\,\%.
+  \end{itemize}
+  De-duped by \texttt{chunk\_id}. The podcast generator then has a real
+  beginning / middle / end to script around.
+\end{frame}
+
+\begin{frame}{Mode 4: \texttt{topic\_clusters} (Mind maps, Reports)}
+  \begin{block}{Algorithm}
+    \scriptsize
+    \begin{enumerate}
+      \setlength\itemsep{0pt}
+      \item Hybrid-retrieve a wide pool ($\geq 30$ candidates).
+      \item Re-embed the pool with fastembed.
+      \item Run K-means (\texttt{n\_clusters}, default 6, max 20 iters).
+      \item For each cluster, return the chunk \textbf{closest to the centroid}.
+    \end{enumerate}
+  \end{block}
+
+  \scriptsize
+  \textbf{Why for mind maps?} A mind map needs a balanced spread of
+  themes --- not 6 chunks all about ``Android intents''. K-means
+  partitions the semantic space; centroid chunks are the most
+  representative anchors.
+\end{frame}
+
+\begin{frame}{Mode 5: \texttt{relationship\_dense} (Charts)}
+  \begin{block}{Density heuristic}
+    \scriptsize
+    For each candidate chunk:
+    \[
+      \mathrm{density}(c) \;=\; \frac{\#\textsf{entities}(c) + \#\textsf{verbs}(c)}{\#\textsf{tokens}(c)}.
+    \]
+    Entities $\sim$ \texttt{\textbackslash b(?:[A-Z][a-z]+)(?:\textbackslash s+[A-Z][a-z]+)+\textbackslash b}\\
+    Verbs $\sim$ \texttt{\textbackslash b\textbackslash w+(?:ed|ing|es)\textbackslash b}
+  \end{block}
+
+  \scriptsize
+  Chunks dense in proper-noun pairs and action verbs make better
+  inputs for entity-relation diagrams than narrative prose. Chart
+  generation is wired to this mode in \texttt{generators\_registry.json}
+  but the generator itself is on the roadmap.
+\end{frame}
+
+% =====================================================================
+\section{Generators: The Agents}
+% =====================================================================
+
+\begin{frame}{Generators \emph{are} the Agents}
+  \begin{block}{Naming convention (from root \texttt{CLAUDE.md})}
+    \scriptsize
+    ``Agent'' terminology is internal. User-facing: \emph{output types}.
+    Backend code uses \emph{generator} consistently. Every output type
+    (chat, quiz, mind map, podcast, $\dots$) is a self-contained FastAPI
+    microservice with its own Docker container, prompts, and pipeline.
+  \end{block}
+
+  \centering
+  \begin{tikzpicture}[node distance=0.5cm and 0.7cm]
+    \node[svc, fill=eduBlue!20, minimum width=4cm] (be) {\textbf{Backend / Dispatcher}};
+    \node[agent, below left=of be, xshift=-2.5cm] (t) {teacher\_gen\\:8001\\\textit{chat default}};
+    \node[agent, right=of t] (q) {quiz\_gen\\:8002};
+    \node[agent, right=of q] (m) {mindmap\_gen\\:8008};
+    \node[agent, right=of m] (p) {podcast\_gen\\:8007};
+
+    \node[agent, below=1.2cm of t, draw=black!40, fill=gray!10] (r) {report\_gen\\(disabled)};
+    \node[agent, right=of r, draw=black!40, fill=gray!10] (pres){presentation\\(disabled)};
+    \node[agent, right=of pres, draw=black!40, fill=gray!10] (c)  {chart\_gen\\(disabled)};
+
+    \draw[arrG] (be) -- (t.north);
+    \draw[arrG] (be) -- (q.north);
+    \draw[arrG] (be) -- (m.north);
+    \draw[arrG] (be) -- (p.north);
+    \draw[arrG, dashed] (be) -- (r.north);
+    \draw[arrG, dashed] (be) -- (pres.north);
+    \draw[arrG, dashed] (be) -- (c.north);
+  \end{tikzpicture}
+
+  \scriptsize
+  Dashed: declared in the registry, currently \texttt{enabled: false}.
+\end{frame}
+
+\begin{frame}[fragile]{Generator I/O Contract (immutable)}
+\textbf{Input:} \texttt{GeneratorInput}
+\begin{lstlisting}[language=json]
+{
+  "conversation_id": "uuid",
+  "user_message": "string",
+  "context_chunks": [{"text", "source", "score", "chunk_id"}],
+  "learner_state": {
+    "understood_concepts": [], "struggling_concepts": [],
+    "mastery_scores": {}, "session_turns": 0
+  },
+  "chat_history": [{"role", "content"}],
+  "options": {}
+}
+\end{lstlisting}
+
+\textbf{Output:} \texttt{GeneratorOutput}
+\begin{lstlisting}[language=json]
+{
+  "response": "markdown string (teacher voice)",
+  "generator_id": "teacher_gen",
+  "output_type": "text|quiz|report|presentation|chart|podcast|mindmap",
+  "artifacts": [{"type", "url", "filename"}],
+  "sources": [{"text", "source", "score"}],
+  "learner_updates": {
+    "concepts_covered": [],
+    "concepts_demonstrated": [],
+    "concepts_struggled": []
+  },
+  "metadata": {}
+}
+\end{lstlisting}
+\end{frame}
+
+% =====================================================================
+\subsection*{Teacher Generator}
+% =====================================================================
+
+\begin{frame}{Teacher Generator (\texttt{teacher\_gen :8001})}
+  \scriptsize
+  \textbf{Mission.} The main chat agent. Warm, supportive,
+  always-grounded teacher voice. Detects confusion, switches modes,
+  cites sources, returns a confidence score, and reports learner updates.
+
+  \centering
+  \begin{tikzpicture}[node distance=0.35cm]
+    \node[step, fill=eduLightBlue]                    (s1) {1. Query Analyzer (LLM, structured)};
+    \node[step, fill=eduLightGreen, right=of s1]      (s2) {2. Response Mode picker};
+    \node[step, fill=eduLightOrange, right=of s2]     (s3) {3. Off-topic guard (top score)};
+    \node[step, fill=eduPurple!15, below=of s1]       (s4) {4. Special-case handlers};
+    \node[step, fill=eduRed!15, right=of s4]          (s5) {5. Streaming LLM reply};
+    \node[step, fill=nodeTeal!20, right=of s5]        (s6) {6. Confidence + LearnerUpdates};
+
+    \draw[arr] (s1) -- (s2);
+    \draw[arr] (s2) -- (s3);
+    \draw[arr] (s3.south) -- ++(0,-0.3) -| (s4.north);
+    \draw[arr] (s4) -- (s5);
+    \draw[arr] (s5) -- (s6);
+  \end{tikzpicture}
+
+  \vspace{0.1cm}
+  \textbf{LLMs used:}
+  \begin{itemize}
+    \setlength\itemsep{0pt}
+    \item \texttt{llama3.1:8b-instruct-q4\_K\_M} --- main streamed reply.
+    \item \texttt{llama3.2:latest} --- query analysis \& learner-update extraction.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Teacher Generator --- Step 1: Query Analysis}
+  \scriptsize
+  \texttt{services/query\_analyzer.py} calls
+  \texttt{generate\_structured[QueryAnalysis](\dots)} which uses
+  Ollama's \texttt{format=} parameter with the Pydantic JSON schema.
+  No LangChain --- just \texttt{ollama.AsyncClient} + automatic
+  retry + self-repair on validation failure.
+
+  \begin{block}{\texttt{QueryAnalysis} schema (Pydantic V2)}
+    \scriptsize
+    \begin{itemize}
+      \setlength\itemsep{0pt}
+      \item \texttt{intent}: one of \{\texttt{ask\_explanation},
+            \texttt{ask\_definition}, \texttt{ask\_example},
+            \texttt{seek\_confirmation}, \texttt{express\_confusion},
+            \texttt{demonstrate\_understanding}, \texttt{off\_topic}\}.
+      \item \texttt{confusion\_level}: \texttt{low / medium / high}.
+      \item \texttt{targets\_concept}: short concept string or null.
+    \end{itemize}
+  \end{block}
+
+  This structured output \emph{drives the rest of the pipeline}: mode
+  selection, the optional off-topic refusal, the choice of system
+  prompt, and the eventual \texttt{LearnerUpdates}.
+\end{frame}
+
+\begin{frame}{Teacher Generator --- Step 2: Response Mode}
+  \scriptsize
+  \texttt{services/response\_mode.py} is a rule-based decision tree
+  over the analysis + \texttt{LearnerState}. It selects one of four
+  mode-specific system prompts:
+
+  \begin{tcolorbox}[colback=eduLightBlue, colframe=eduBlue, title=\texttt{explain}]
+    Direct explanation from the materials. Default for fresh
+    questions or ``stuck'' students (high \texttt{turns\_since\_progress}).
+  \end{tcolorbox}
+  \begin{tcolorbox}[colback=eduLightGreen, colframe=eduGreen, title=\texttt{guide} (Socratic)]
+    The teacher asks leading questions instead of giving the answer
+    directly --- triggered when \texttt{confusion\_level == "medium"} or
+    the student is exploring.
+  \end{tcolorbox}
+  \begin{tcolorbox}[colback=eduLightOrange, colframe=eduOrange, title=\texttt{quiz\_back}]
+    The teacher tests the student's understanding before confirming
+    --- triggered when intent is \texttt{seek\_confirmation} but mastery
+    on the target concept is unclear.
+  \end{tcolorbox}
+  \begin{tcolorbox}[colback=eduPurple!10, colframe=eduPurple, title=\texttt{affirm}]
+    Validates correct understanding and advances. Triggered when the
+    student \texttt{demonstrates\_understanding} on a concept above the
+    mastery threshold.
+  \end{tcolorbox}
+\end{frame}
+
+\begin{frame}{Teacher Generator --- Steps 3--4: Guards \& Special Cases}
+  \scriptsize
+  \begin{block}{Off-topic guard}
+    Before any LLM call, the pipeline checks
+    \texttt{ranked\_chunks[0].score < min\_relevance\_score}. If true,
+    it streams a polite refusal explaining the question isn't covered
+    by the uploaded files and returns. \textbf{This is a hard
+    anti-hallucination gate.}
+  \end{block}
+
+  \begin{block}{Special-case handlers (deterministic before LLM)}
+    \begin{itemize}
+      \setlength\itemsep{0pt}
+      \item \texttt{\_is\_formula\_question(\dots)} --- if the user
+            asks about a formula / equation / RMSE / nDCG, the pipeline
+            extracts \texttt{\$\$\dots\$\$} blocks and symbol definitions
+            via regex from chunks, builds a deterministic
+            \textbf{formula card} (formula + symbol meanings + plain-language
+            note), and returns it with confidence = 1.0.
+      \item \texttt{\_is\_course\_overview\_question(\dots)} --- detects
+            ``what is this course about?'' (multilingual). Uses the
+            study-guide chunk if present, else extracts modules via
+            \texttt{\textasciicircum Module \textbackslash d+:} regex.
+            Returns a structured Big Picture / Main Modules / How To Study
+            Markdown response.
+    \end{itemize}
+  \end{block}
+  These short-circuits give crisp, source-citing answers when LLM
+  generation would risk paraphrase noise.
+\end{frame}
+
+\begin{frame}{Teacher Generator --- Steps 5--6: Generation \& Scoring}
+  \scriptsize
+  \textbf{Streaming reply.}
+  \texttt{llm.stream\_reply(system, chat\_history, user\_message)} wraps
+  \texttt{ollama.AsyncClient.chat(stream=True)} and yields token deltas.
+  Each delta is emitted as an SSE \texttt{token} event, then
+  concatenated into the full response.
+
+  \textbf{Confidence scoring (\texttt{teacherlm\_core.confidence}).}
+  \begin{itemize}
+    \setlength\itemsep{0pt}
+    \item \textbf{Groundedness}: mean over sentences of
+          \[
+            g(s) \;=\; \frac{|\textsf{tokens}(s) \setminus \textsf{stop} \,\cap\, \bigcup_c \textsf{tokens}(c)|}{|\textsf{tokens}(s) \setminus \textsf{stop}|}.
+          \]
+          Near 1.0 $\Rightarrow$ well-grounded; near 0 $\Rightarrow$ possible
+          hallucination.
+    \item \textbf{Coverage}: fraction of distinct \textit{query} content
+          tokens that appear across the retrieved chunks.
+  \end{itemize}
+
+  \textbf{Learner-update extraction.} \texttt{learner\_analyzer.py}
+  runs another structured-output LLM call --- output schema:
+  \texttt{covered}, \texttt{demonstrated\_understanding}, \texttt{showed\_confusion}.
+  These become the \texttt{LearnerUpdates} returned to the backend.
+\end{frame}
+
+% =====================================================================
+\subsection*{Quiz Generator}
+% =====================================================================
+
+\begin{frame}{Quiz Generator (\texttt{quiz\_gen :8002}) --- 7-Step Pipeline}
+  \centering
+  \scriptsize
+  \begin{tikzpicture}[node distance=0.35cm]
+    \node[step, fill=eduLightBlue]                  (s1) {1. Concept Extraction (Bloom's)};
+    \node[step, fill=eduLightGreen, right=of s1]    (s2) {2. Difficulty Planner};
+    \node[step, fill=eduLightOrange, right=of s2]   (s3) {3. Question Generation};
+    \node[step, fill=eduPurple!15, below=of s1]     (s4) {4. Distractor Enhancement};
+    \node[step, fill=eduRed!15, right=of s4]        (s5) {5. Quality Validation};
+    \node[step, fill=nodeTeal!20, right=of s5]      (s6) {6. Adaptive Intro};
+    \node[step, fill=eduGreen!25, below=of s4]      (s7) {7. Artifact Export (MinIO)};
+
+    \draw[arr] (s1) -- (s2);
+    \draw[arr] (s2) -- (s3);
+    \draw[arr] (s3.south) -- ++(0,-0.3) -| (s4.north);
+    \draw[arr] (s4) -- (s5);
+    \draw[arr] (s5) -- (s6);
+    \draw[arr] (s6.south) -- ++(0,-0.3) -| (s7.north);
+  \end{tikzpicture}
+\end{frame}
+
+\begin{frame}{Quiz Gen --- Step 1: Bloom's Taxonomy Extraction}
+  \begin{block}{What it produces}
+    \scriptsize
+    \texttt{services/concept\_extractor.py} prompts the LLM with a
+    Pydantic schema \texttt{ExtractedConcepts}: lists of
+    \texttt{ConceptCard}s grouped by Bloom's level
+    \texttt{\{remember, understand, apply, analyze\}}. Each card carries
+    \texttt{name}, \texttt{description}, and the
+    \texttt{source\_chunk\_ids} it came from.
+  \end{block}
+
+  \begin{exampleblock}{Bloom's pyramid (used downstream)}
+    \scriptsize
+    \begin{tabular}{l p{7cm}}
+      \texttt{remember}   & Factual recall (terms, dates) \\
+      \texttt{understand} & Paraphrase, summarize \\
+      \texttt{apply}      & Use a procedure in a new situation \\
+      \texttt{analyze}    & Compare, contrast, decompose \\
+    \end{tabular}
+  \end{exampleblock}
+
+  \scriptsize
+  Mapping concept $\to$ source chunk IDs is preserved so the
+  question generator can quote the right passage when scripting a
+  question.
+\end{frame}
+
+\begin{frame}{Quiz Gen --- Step 2: Learner-Aware Difficulty Planner}
+  \scriptsize
+  \texttt{services/difficulty\_adapter.py} allocates slots over
+  Bloom's levels using the \texttt{LearnerState}:
+
+  \begin{tcolorbox}[colback=eduLightOrange, colframe=eduOrange, title=Slot allocation]
+    \scriptsize
+    \begin{tabular}{p{2.8cm} p{2.2cm} p{6cm}}
+      \toprule
+      \textbf{Slot type} & \textbf{Share} & \textbf{Purpose} \\
+      \midrule
+      Struggling-concept & 60\,\%        & Reinforce weak areas at \texttt{remember/understand}. \\
+      Coverage           & 30\,\%        & New breadth across the material. \\
+      Stretch            & 10\,\%        & Push understood concepts to \texttt{apply/analyze}. \\
+      \bottomrule
+    \end{tabular}
+  \end{tcolorbox}
+
+  Each slot also carries a \texttt{QuestionKind} (\texttt{mcq},
+  \texttt{true\_false}, \texttt{fill\_blank}). The frontend can
+  restrict allowed kinds via the \texttt{options.question\_types} field;
+  the planner respects those filters.
+\end{frame}
+
+\begin{frame}{Quiz Gen --- Steps 3--5: Generate, Enhance, Validate}
+  \scriptsize
+  \begin{block}{3. Generate (structured)}
+    \texttt{services/question\_generator.py} runs one LLM call per slot
+    with the Pydantic schema for that question kind (MCQ / TF / FillBlank).
+    Each question carries \texttt{bloom\_level}, \texttt{concept},
+    \texttt{explanation}, and \texttt{source\_chunk\_id} so the UI can
+    cite the grounding chunk.
+  \end{block}
+
+  \begin{block}{4. Enhance distractors (MCQs only)}
+    \texttt{services/distractor\_engine.py} re-prompts the LLM for
+    \textit{plausibly wrong} options drawn from the same context
+    chunks. Better distractors $\to$ higher pedagogical value.
+  \end{block}
+
+  \begin{block}{5. Validate}
+    \texttt{services/quality\_validator.py} performs:
+    \begin{itemize}
+      \setlength\itemsep{0pt}
+      \item Pydantic schema validation per question.
+      \item Deduplication on normalized question text.
+      \item Concept-label repair (e.g.\ \texttt{intent} $\to$
+            ``Definition of Intent'').
+      \item Bloom-distribution check.
+      \item \textbf{Top-up}: if survivors $<$ target, synthesize
+            grounded \texttt{TrueFalse} questions ``The source X covers
+            concept Y'' to guarantee a full-length quiz.
+    \end{itemize}
+  \end{block}
+\end{frame}
+
+\begin{frame}{Quiz Gen --- Steps 6--7: Intro \& Artifact}
+  \scriptsize
+  \begin{block}{Adaptive intro (teacher voice)}
+    \texttt{adaptive\_guidance.txt} prompt is rendered with the
+    learner's struggling \& understood lists, the total question count,
+    and the Bloom mix. Produces messages like:
+    \emph{``Let's test what you know! I've focused on things we've been
+    working on: \texttt{intents}, \texttt{activity lifecycle}. Ready?''}
+  \end{block}
+
+  \begin{block}{Artifact export}
+    The final \texttt{QuizOutput} (intro + questions + bloom
+    distribution) is serialised to JSON, uploaded to MinIO via
+    \texttt{ArtifactStore}, and exposed via a presigned URL inside the
+    \texttt{GeneratorArtifact} returned to the frontend. The frontend's
+    \texttt{QuizRenderer} consumes that JSON to render interactive
+    radios / inputs / score calculation.
+  \end{block}
+
+  \scriptsize
+  The whole run streams SSE \texttt{progress} events:
+  \texttt{extracting\_concepts} $\to$ \texttt{concepts\_extracted} $\to$
+  \texttt{planned} $\to$ \texttt{generated} $\to$
+  \texttt{distractors\_enhanced} $\to$ \texttt{validated} $\to$
+  \texttt{done}, so the UI can show real-time progress.
+\end{frame}
+
+% =====================================================================
+\subsection*{Mind Map Generator}
+% =====================================================================
+
+\begin{frame}{Mind Map Generator (\texttt{mindmap\_gen :8008})}
+  \scriptsize
+  \textbf{Mission.} Birds-eye view of the entire uploaded corpus.
+  Central topic + 3--7 main branches + 2--5 sub-branches + leaves.
+
+  \begin{block}{Key architectural decision}
+    Unlike LLM-generated raw Mermaid (error-prone), this generator asks the
+    LLM for a \textbf{structured hierarchy} (recursive Pydantic
+    \texttt{MindMapNode}) and then \textbf{programmatically compiles} the
+    tree into Mermaid markdown $\Rightarrow$ \textit{guaranteed-valid
+    output}.
+  \end{block}
+
+  \begin{exampleblock}{Multi-strategy pipeline with cascading fallbacks}
+    \scriptsize
+    \begin{enumerate}
+      \setlength\itemsep{0pt}
+      \item \textbf{Module pack} build (if backend provided
+            \texttt{mindmap\_module\_pack} chunks) --- no LLM, purely
+            structural.
+      \item Otherwise: per-batch LLM outline extraction $\to$
+            \textbf{course synthesis} LLM call to merge partial outlines.
+      \item Whole-course outline LLM fallback.
+      \item Parsed-Markdown structural fallback.
+      \item Theme-by-theme legacy expansion (last resort).
+    \end{enumerate}
+    Each stage emits SSE \texttt{progress} events with sub-stages and
+    keep-alives (every 1\,s while a long LLM call runs, until
+    \texttt{LLM\_CALL\_TIMEOUT\_S}).
+  \end{exampleblock}
+
+  \scriptsize
+  Post-processing: \texttt{balancer.balance(\dots)} caps the node count
+  and rebalances depth; \texttt{markdown\_compiler.compile(\dots)}
+  produces Markmap-compatible markdown; \texttt{html\_renderer.render}
+  produces an interactive standalone HTML (Mermaid.js) artifact.
+\end{frame}
+
+% =====================================================================
+\subsection*{Podcast Generator}
+% =====================================================================
+
+\begin{frame}{Podcast Generator (\texttt{podcast\_gen :8007})}
+  \scriptsize
+  \textbf{Mission.} Two-host educational podcast --- one host plays the
+  student (asks questions), the other plays the teacher (explains
+  clearly). Strictly grounded in the materials.
+
+  \centering
+  \begin{tikzpicture}[node distance=0.4cm]
+    \node[step, fill=eduLightBlue]                  (a) {Resolve duration / language / voices};
+    \node[step, fill=eduLightGreen, right=of a]     (b) {Narrative arc extractor (LLM)};
+    \node[step, fill=eduLightOrange, right=of b]    (c) {Script generator (two-host)};
+    \node[step, fill=eduPurple!15, below=of a]      (d) {Language drift check + retranslate};
+    \node[step, fill=eduRed!15, right=of d]         (e) {TTS synthesis};
+    \node[step, fill=nodeTeal!20, right=of e]       (f) {Audio composition + MP3 upload};
+
+    \draw[arr] (a) -- (b);
+    \draw[arr] (b) -- (c);
+    \draw[arr] (c.south) -- ++(0,-0.3) -| (d.north);
+    \draw[arr] (d) -- (e);
+    \draw[arr] (e) -- (f);
+  \end{tikzpicture}
+
+  \vspace{0.1cm}
+  \begin{block}{TTS backend probe order}
+    \scriptsize
+    \texttt{piper-tts} (preferred --- two distinct neural voices per
+    language, FR / ES / DE / EN, \dots) $\to$ \texttt{kokoro-onnx} $\to$
+    \texttt{pyttsx3} (offline last-resort). When a language only ships
+    one voice, the generator applies a \textbf{pitch + speed shift} so
+    the two hosts still sound clearly different.
+  \end{block}
+
+  \scriptsize
+  Always uploads a \texttt{.txt} transcript (even if TTS fails) plus an
+  \texttt{.mp3} when synthesis succeeded. Uses \texttt{pydub + ffmpeg}
+  for stitching and \texttt{langdetect} to verify the script didn't
+  drift out of the target language --- on drift, the LLM is asked to
+  re-translate.
+\end{frame}
+
+% =====================================================================
+\section{Platform Backend Deep Dive}
+% =====================================================================
+
+\begin{frame}[fragile]{Backend Module Map}
+  \scriptsize
+\begin{verbatim}
+backend/
+  main.py                  # FastAPI lifespan: registry reload, MinIO bucket,
+                           #   reranker warmup, arq Redis pool
+  config.py                # Pydantic BaseSettings (env-driven)
+  db/
+    models.py              # Conversation, Message, UploadedFile,
+                           #   LearnerState, CourseDocument, CourseSection, Chunk
+    session.py             # async session_scope() context manager
+    migrations/            # Alembic (0001..0004+)
+  routers/
+    conversations.py, files.py, chat.py (SSE), generate.py (SSE),
+    generators.py, health.py
+  services/
+    parsing_service.py             # LlamaCloud wrapper
+    document_cleaning_service.py
+    course_structure_service.py    # heading / section / equation / table extractor
+    chunking_service.py            # structured chunking
+    course_content_store.py        # DB persistence of sections + chunks
+    vector_service.py              # Qdrant client wrapper
+    storage_service.py             # MinIO
+    retrieval_orchestrator.py      # mode selection + rerank + expansion
+    course_context_service.py      # special context packs (study guide, modules)
+    learner_tracker.py             # mastery math
+  dispatcher/
+    registry.py                    # generators_registry.json loader
+    router.py                      # output_type -> generator
+    adapters/api_adapter.py, mcp_adapter.py
+  workers/
+    ingestion_worker.py            # arq job: parse->clean->chunk->embed->upsert
+\end{verbatim}
+\end{frame}
+
+\begin{frame}{Dispatcher --- The Plugin Mechanism}
+  \scriptsize
+  \begin{block}{Three pieces}
+    \begin{enumerate}
+      \setlength\itemsep{0pt}
+      \item \textbf{Registry JSON} (\texttt{generators\_registry.json}) --- a
+            top-level manifest of every agent with \texttt{id},
+            \texttt{type} (\texttt{api} or \texttt{mcp}),
+            \texttt{endpoint}, \texttt{output\_type}, \texttt{enabled},
+            \texttt{is\_chat\_default}, \texttt{icon}, \texttt{description}.
+      \item \textbf{Registry loader} (\texttt{dispatcher/registry.py}) ---
+            caches the JSON, indexes by \texttt{id} and \texttt{output\_type}.
+      \item \textbf{Router + Adapters} (\texttt{router.py},
+            \texttt{adapters/api\_adapter.py},
+            \texttt{adapters/mcp\_adapter.py}) --- resolves a target by
+            \texttt{output\_type} and dispatches through the right transport.
+    \end{enumerate}
+  \end{block}
+
+  \begin{exampleblock}{Adding a new generator =}
+    \scriptsize
+    \texttt{(1)} build a microservice exposing
+    \texttt{POST /run} (SSE-streaming \texttt{GeneratorOutput}). \quad
+    \texttt{(2)} add one entry to \texttt{generators\_registry.json}. \quad
+    \textbf{Zero backend code changes.}
+  \end{exampleblock}
+
+  \scriptsize
+  The \texttt{McpAdapter} is a placeholder for future MCP (Model Context
+  Protocol) integration, so the same dispatcher can talk to MCP servers
+  as easily as HTTP services.
+\end{frame}
+
+\begin{frame}{API Surface}
+  \tiny
+  \renewcommand{\arraystretch}{1.15}
+  \begin{tabular}{l p{5cm} p{6cm}}
+    \toprule
+    \rowcolor{eduBlue!20}\textbf{Verb} & \textbf{Path} & \textbf{Purpose} \\
+    \midrule
+    POST   & \texttt{/api/conversations}                                    & Create a conversation \\
+    GET    & \texttt{/api/conversations}                                    & List conversations \\
+    GET    & \texttt{/api/conversations/\{id\}}                             & Single conversation \\
+    PATCH  & \texttt{/api/conversations/\{id\}}                             & Update title \\
+    DELETE & \texttt{/api/conversations/\{id\}}                             & Delete + drop Qdrant collection \\
+    POST   & \texttt{/api/conversations/\{id\}/files}                       & Upload file $\Rightarrow$ enqueue ingestion \\
+    GET    & \texttt{/api/conversations/\{id\}/files}                       & List files w/ ingestion status \\
+    DELETE & \texttt{/api/conversations/\{id\}/files/\{fid\}}               & Delete file + its vectors \\
+    GET    & \texttt{/api/conversations/\{id\}/messages}                    & Chat history \\
+    POST   & \texttt{/api/conversations/\{id\}/chat}                        & \textbf{SSE} chat stream (teacher\_gen) \\
+    POST   & \texttt{/api/conversations/\{id\}/generate}                    & \textbf{SSE} button output (quiz / mindmap / podcast / \dots) \\
+    GET    & \texttt{/api/generators}                                       & List enabled generators (for UI buttons) \\
+    GET    & \texttt{/api/health}                                           & Liveness probe \\
+    \bottomrule
+  \end{tabular}
+\end{frame}
+
+\begin{frame}{Ingestion Worker (arq)}
+  \scriptsize
+  Separate process, same Docker network. Subscribes to Redis for jobs
+  enqueued by the \texttt{files} router.
+
+  \begin{block}{Status state machine (persisted on \texttt{UploadedFile})}
+    \scriptsize
+    \texttt{uploaded} $\to$ \texttt{parsing} $\to$ \texttt{chunking} $\to$
+    \texttt{embedding} $\to$ \texttt{ready}.\\[2pt]
+    On failure: $\to$ \texttt{failed} with \texttt{error} populated.
+  \end{block}
+
+  \begin{block}{Crash-safety}
+    \scriptsize
+    On worker startup, \texttt{\_recover\_interrupted\_uploads} finds any
+    rows stuck in \texttt{parsing / chunking / embedding}, resets them to
+    \texttt{uploaded}, and re-enqueues the \texttt{ingest\_file} job.
+    No human action required after a restart.
+  \end{block}
+
+  \begin{block}{Each transition is observable}
+    \scriptsize
+    The frontend polls \texttt{GET /files}; the progress store
+    surfaces per-file status badges in the sidebar. Failures show the
+    exception message inline.
+  \end{block}
+\end{frame}
+
+% =====================================================================
+\section{LearnerState - Adaptive Tutoring}
+% =====================================================================
+
+\begin{frame}{LearnerState --- What Makes the Teacher Adaptive}
+  \scriptsize
+  Stored in Postgres (\texttt{LearnerState(conversation\_id PK, state\_json, updated\_at)}).
+  Loaded by the backend on every dispatch, passed in
+  \texttt{GeneratorInput.learner\_state}, mutated by
+  \texttt{learner\_updates} returned by the generator.
+
+  \begin{block}{Schema (\texttt{teacherlm\_core/schemas/learner\_state.py})}
+    \scriptsize
+    \begin{itemize}
+      \setlength\itemsep{0pt}
+      \item \texttt{understood\_concepts: list[str]} --- mastery $\geq 0.7$.
+      \item \texttt{struggling\_concepts: list[str]} --- mastery $\leq 0.3$.
+      \item \texttt{mastery\_scores: dict[str, float]} --- per-concept $\in [0,1]$.
+      \item \texttt{session\_turns: int} --- conversation length.
+      \item \texttt{turns\_since\_progress: int} --- detects ``stuck'' students.
+    \end{itemize}
+  \end{block}
+
+  \begin{exampleblock}{Mastery update math (in \texttt{learner\_tracker.py})}
+    \scriptsize
+    On each generator return:
+    \begin{itemize}
+      \setlength\itemsep{0pt}
+      \item For $c \in$ \texttt{concepts\_demonstrated}:\
+            $m_c \leftarrow m_c + 0.2\,(1 - m_c)$.
+      \item For $c \in$ \texttt{concepts\_struggled}:\
+            $m_c \leftarrow 0.7 \cdot m_c$.
+      \item Thresholds: $m_c \geq 0.7$ promotes to \emph{understood};
+            $m_c \leq 0.3$ flags \emph{struggling}.
+    \end{itemize}
+  \end{exampleblock}
+
+  \scriptsize
+  This state \textbf{loops back} into every subsequent
+  generation --- the teacher changes tone, quizzes focus on weak areas,
+  introductions reference specific past struggles.
+\end{frame}
+
+% =====================================================================
+\section{Frontend Architecture}
+% =====================================================================
+
+\begin{frame}{Frontend Architecture}
+  \scriptsize
+  \begin{block}{Stack \& patterns}
+    \begin{itemize}
+      \setlength\itemsep{0pt}
+      \item Next.js 14 App Router, dark-mode design system in Tailwind.
+      \item Global state in Zustand: \texttt{conversationStore},
+            \texttt{progressStore} (ingestion), \texttt{uiStore} (sidebar
+            visibility), \texttt{settingsStore} (model + language).
+      \item Server state via TanStack React Query (cache,
+            optimistic updates, refetch).
+      \item Custom SSE client (\texttt{lib/sse.ts}) parses
+            \texttt{event: <name>\textbackslash ndata: \{json\}}.
+    \end{itemize}
+  \end{block}
+
+  \begin{block}{Key components}
+    \begin{itemize}
+      \setlength\itemsep{0pt}
+      \item \texttt{ChatInput} / \texttt{MessageList} / \texttt{MessageBubble}
+            with react-markdown + KaTeX + Mermaid for math + diagrams.
+      \item \texttt{OutputTypeButtons} / \texttt{GeneratorDialog} ---
+            launches button-triggered outputs (quiz, mindmap, podcast).
+      \item \texttt{ArtifactRenderer} routes by \texttt{artifact.type}:
+            \begin{itemize}\setlength\itemsep{0pt}
+              \item \texttt{QuizRenderer} --- interactive MCQ / TF / FillBlank,
+                    auto-scoring.
+              \item \texttt{ChartRenderer} --- SVG / Mermaid with pan-zoom.
+              \item \texttt{PodcastPlayer} --- audio player + transcript.
+              \item \texttt{FileDownload} --- generic binary artifacts.
+            \end{itemize}
+    \end{itemize}
+  \end{block}
+\end{frame}
+
+\begin{frame}{Chat Data Flow (frontend $\leftrightarrow$ backend)}
+  \centering
+  \begin{tikzpicture}[node distance=0.4cm]
+    \node[svc, fill=nodeBlue!20]                       (ui)  {\textbf{ChatInput}};
+    \node[svc, fill=nodeBlue!10, right=of ui]          (hook){\textbf{useChatStream}};
+    \node[svc, fill=eduBlue!20, right=of hook]         (be)  {\textbf{POST /chat (SSE)}};
+    \node[svc, fill=eduPurple!15, right=of be]         (disp){\textbf{Dispatcher}};
+    \node[agent, right=of disp]                        (gen) {teacher\_gen};
+
+    \node[svc, fill=eduGreen!15, below=of be, minimum width=8cm]
+      (events) {SSE events: \texttt{analysis} $\to$ \texttt{sources} $\to$ \texttt{token}* $\to$ \texttt{done}};
+
+    \node[svc, fill=nodeBlue!20, below=of ui, minimum width=3cm]
+      (bubble) {\textbf{MessageBubble}\\(streams tokens)};
+
+    \draw[arr] (ui) -- (hook);
+    \draw[arr] (hook) -- (be);
+    \draw[arr] (be) -- (disp);
+    \draw[arr] (disp) -- (gen);
+    \draw[arrG] (gen.south) |- (events.east);
+    \draw[arrG] (events.west) -| (bubble.east);
+  \end{tikzpicture}
+
+  \vspace{0.15cm}
+  \scriptsize
+  On \texttt{done} the assistant turn + sources + metadata (mode,
+  confidence, learner updates) are committed to the conversation store.
+\end{frame}
+
+% =====================================================================
+\section{Key Design Decisions}
+% =====================================================================
+
+\begin{frame}{Why Local LLMs (Ollama)?}
+  \begin{itemize}
+    \item \textbf{Privacy.} Student course materials never leave the
+          machine.
+    \item \textbf{Cost.} No per-token API charges --- unlimited usage on
+          provisioned hardware.
+    \item \textbf{Reproducibility.} Fully transparent, no vendor lock-in.
+    \item \textbf{Offline.} Works after the models are pulled.
+    \item \textbf{Structured outputs.} Ollama's native \texttt{format=}
+          accepts a JSON schema --- Pydantic V2's
+          \texttt{model\_json\_schema()} plugs in directly, replacing
+          the whole LangChain ``output parser'' stack with one
+          \texttt{ollama.chat(\dots, format=schema)} call plus a
+          retry-on-validation-error wrapper.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Why \emph{Not} LangChain / LangGraph?}
+  \begin{itemize}
+    \item Pydantic V1 deprecation warnings break strict mode on
+          Python 3.14.
+    \item Heavy abstraction for our actual surface area --- a thin
+          \texttt{OllamaClient} + an \texttt{HTTPX} dispatcher already
+          cover everything.
+    \item Direct LLM calls = direct debugging. Each call is a single
+          stack frame, not five chained Runnables.
+    \item No surprises around prompt mutation, memory back-stores, or
+          tool-call autoflow. The pipelines are explicit step-functions.
+  \end{itemize}
+
+  \begin{alertblock}{Other non-negotiables (root \texttt{CLAUDE.md})}
+    \scriptsize
+    No \texttt{llama-parse} / \texttt{llama-cloud-services} (deprecated
+    May 2026). Use \texttt{llama-cloud} $\geq 1.0$ instead. Pydantic V2
+    only. FastAPI $\geq 0.135$. \texttt{fastembed} where avoidable
+    instead of \texttt{sentence-transformers}.
+  \end{alertblock}
+\end{frame}
+
+\begin{frame}{Why Microservice-per-Generator?}
+  \begin{itemize}
+    \item \textbf{Independent scaling.} \texttt{teacher\_gen} streams
+          tokens and wants low latency; \texttt{quiz\_gen} runs many
+          sequential LLM calls and tolerates much higher latency.
+    \item \textbf{Independent deployment.} Ship a new quiz pipeline
+          without restarting the chat service.
+    \item \textbf{Independent models.} Each generator owns its own
+          Ollama client and can pick a different model for different
+          steps (teacher uses 3 model configurations in one pipeline).
+    \item \textbf{Plug-in extensibility.} Adding a generator =
+          1 microservice + 1 JSON entry. No backend changes.
+    \item \textbf{Failure isolation.} A panicking quiz generator
+          doesn't take down chat.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Why RRF (and Why Hybrid)?}
+  \begin{itemize}
+    \item Dense models miss \textbf{exact matches} on domain terms
+          (RMSE, nDCG, Henderson--Hasselbalch).
+    \item BM25 misses \textbf{paraphrase} (``causes of photosynthesis''
+          $\not\rightarrow$ ``light-dependent reactions'').
+    \item RRF requires \textbf{no normalisation} between the two scoring
+          scales --- just ranks. It's parameter-free and robust
+          (Cormack et al., 2009).
+    \item Re-ranking with a cross-encoder afterwards gives precision
+          while keeping recall cheap.
+  \end{itemize}
+
+  \begin{exampleblock}{Why 5 retrieval modes?}
+    \scriptsize
+    Different output types have different information needs ---
+    \textbf{the same vector store is queried under five different
+    lenses}. Chat needs the most relevant chunks; quizzes need broad
+    coverage; podcasts need narrative shape; reports need topical
+    clusters; charts need entity-dense chunks.
+  \end{exampleblock}
+\end{frame}
+
+\begin{frame}{Why fastembed (not sentence-transformers)?}
+  \begin{itemize}
+    \item Smaller dependency footprint --- no PyTorch.
+    \item CPU-optimised via ONNX runtime --- a real win on machines
+          without a GPU.
+    \item Single library covers both bi-encoder (\texttt{TextEmbedding})
+          and cross-encoder (\texttt{TextCrossEncoder}) --- no second
+          dependency for reranking.
+    \item Models warmed into a Docker-managed volume (\texttt{fastembed\_cache})
+          so subsequent rebuilds are fast.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Why LlamaCloud (and not local PDF extraction)?}
+  \begin{itemize}
+    \item Course PDFs are full of \textbf{multi-column text}, tables,
+          embedded images, equations, headers/footers --- everything
+          local parsers struggle with.
+    \item LlamaCloud (the \texttt{llama-cloud $\geq 1.0$} SDK, not the
+          deprecated \texttt{llama-parse}) returns clean \textbf{Markdown}
+          that preserves hierarchy.
+    \item Better Markdown $\Rightarrow$ better section extraction
+          $\Rightarrow$ better chunks $\Rightarrow$ better retrieval.
+          Garbage in, hallucinations out.
+    \item All other moving parts (embedding, retrieval, generation)
+          remain fully local --- only parsing is offloaded.
+  \end{itemize}
+\end{frame}
+
+% =====================================================================
+\section{Conclusion}
+% =====================================================================
+
+\begin{frame}{Summary --- What Makes TeacherLM Different}
+  \begin{itemize}
+    \item \textbf{Strict grounding} as a system property, enforced by
+          off-topic guards, groundedness scoring, and refusal paths ---
+          not just a prompt suggestion.
+    \item \textbf{Hybrid retrieval} (dense + BM25 + RRF) plus
+          \textbf{cross-encoder reranking}, plus \textbf{five retrieval
+          modes} chosen per output type.
+    \item \textbf{Multi-agent} architecture: every output type is its
+          own FastAPI microservice with its own pipeline, prompts, and
+          models, registered via one JSON file.
+    \item \textbf{Adaptive} via a per-conversation \texttt{LearnerState}
+          updated after every turn and fed back into every generator.
+    \item \textbf{Fully local} inference (Ollama + fastembed) and
+          \textbf{strict modern Python} (3.14, Pydantic V2, FastAPI 0.135,
+          no LangChain, no llama-parse).
+    \item \textbf{Operational maturity}: SSE everywhere, crash-safe
+          ingestion worker, per-conversation Qdrant collections, MinIO
+          artifacts, Alembic migrations.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Roadmap}
+  \scriptsize
+  Declared in \texttt{generators\_registry.json} with
+  \texttt{enabled: false} --- the wiring is in place; only the
+  microservice implementations are pending:
+  \begin{itemize}
+    \item \texttt{report\_gen} (port 8003) --- topic-clustered study reports.
+    \item \texttt{presentation\_gen} (port 8004) --- slide-style output with
+          equation + table pulls from the structure extractor.
+    \item \texttt{chart\_gen} (port 8006) --- entity-relation diagrams
+          using the \texttt{relationship\_dense} retrieval mode.
+  \end{itemize}
+
+  Future infrastructure:
+  \begin{itemize}
+    \item \texttt{McpAdapter} $\to$ full Model Context Protocol support
+          so external tools can be registered like internal generators.
+    \item Evaluation harness already scaffolded in
+          \texttt{packages/teacherlm\_core/teacherlm\_core/retrieval/evaluation.py}
+          and \texttt{platform/backend/evals/}.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[plain]
   \begin{center}
-    \vspace{1.2cm}
-    {\color{white}\fontsize{22}{26}\selectfont\textbf{Merci}}\\[0.5cm]
-    \begin{tikzpicture}
-      \draw[white, opacity=0.3, thick] (0,0) -- (7,0);
-    \end{tikzpicture}\\[0.4cm]
-    {\color{white!70}\normalsize
-      \textbf{TeacherLM} -- Plateforme de Tutorat IA\\[0.3cm]
-      \small
-      Amine El Hanine | Encadr\'{e} par Pr. Abdelaaziz HESSANE\\
-      Avril 2026
-    }
+    {\Huge \color{eduBlue}\textbf{Thank you}}\\[1.2em]
+    {\large TeacherLM --- Grounded. Adaptive. Local.}\\[0.6em]
+    \scriptsize
+    \texttt{./run.sh up} $\Rightarrow$ \texttt{http://localhost:3000}\\
+    Backend OpenAPI: \texttt{http://localhost:8000/docs}\\
+    Repo root: \texttt{CLAUDE.md} $\bullet$ \texttt{README.md} $\bullet$ \texttt{generators\_registry.json}
   \end{center}
 \end{frame}
-}
 
 \end{document}

@@ -47,9 +47,19 @@ def _normalize_to_slot(question: Question, slot: QuestionSlot, chunk_id: str) ->
     The model tends to drift on these fields even with format= constraints, so
     we overwrite to keep the analytics + sourcing honest.
     """
+    generated_concept = str(getattr(question, "concept", "") or "").strip()
+    generated_text = f"{question.question} {question.explanation}".casefold()
+    slot_concept = slot.concept
+    if (
+        generated_concept
+        and generated_concept.casefold() in generated_text
+        and slot.concept.casefold() not in generated_text
+    ):
+        slot_concept = generated_concept
+
     return question.model_copy(
         update={
-            "concept": slot.concept,
+            "concept": slot_concept,
             "source_chunk_id": chunk_id,
             "bloom_level": slot.bloom_level,
         }

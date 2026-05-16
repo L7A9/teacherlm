@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import re
 
+from teacherlm_core.schemas.chunk import Chunk
+
 from ..schemas import FillBlank, MCQ, Question, TrueFalse
 
 
 _WS_RE = re.compile(r"\s+")
 
 
-def _is_valid_mcq(q: MCQ) -> bool:
+def _is_valid_mcq(q: MCQ, chunks_by_id: dict[str, Chunk] | None = None) -> bool:
     if len(q.options) < 2:
         return False
     if not (0 <= q.correct_index < len(q.options)):
@@ -21,7 +23,24 @@ def _is_valid_mcq(q: MCQ) -> bool:
         return False
     if not q.question.strip() or not q.explanation.strip():
         return False
+    if chunks_by_id and _is_ambiguous_list_mcq(q, chunks_by_id):
+        return False
     return True
+
+
+def _is_ambiguous_list_mcq(q: MCQ, chunks_by_id: dict[str, Chunk]) -> bool:
+    if not re.search(r"\b(which|which of the following|listed|shown|mentioned)\b", q.question, re.IGNORECASE):
+        return False
+    chunk = chunks_by_id.get(q.source_chunk_id)
+    if chunk is None:
+        return False
+    source_text = chunk.text.casefold()
+    mentioned_options = [
+        opt
+        for opt in q.options
+        if len(opt.strip()) >= 4 and opt.strip().casefold() in source_text
+    ]
+    return len({opt.strip().casefold() for opt in mentioned_options}) > 1
 
 
 def _is_valid_true_false(q: TrueFalse) -> bool:
@@ -44,9 +63,9 @@ def _is_valid_fill_blank(q: FillBlank) -> bool:
     return True
 
 
-def is_valid(question: Question) -> bool:
+def is_valid(question: Question, chunks_by_id: dict[str, Chunk] | None = None) -> bool:
     if isinstance(question, MCQ):
-        return _is_valid_mcq(question)
+        return _is_valid_mcq(question, chunks_by_id)
     if isinstance(question, TrueFalse):
         return _is_valid_true_false(question)
     if isinstance(question, FillBlank):
@@ -54,12 +73,16 @@ def is_valid(question: Question) -> bool:
     return False
 
 
-def validate_questions(questions: list[Question]) -> tuple[list[Question], list[dict]]:
+def validate_questions(
+    questions: list[Question],
+    chunks: list[Chunk] | None = None,
+) -> tuple[list[Question], list[dict]]:
     """Drop invalid questions and return them alongside per-question rejection notes."""
+    chunks_by_id = {chunk.chunk_id: chunk for chunk in chunks or []}
     kept: list[Question] = []
     dropped: list[dict] = []
     for q in questions:
-        if is_valid(q):
+        if is_valid(q, chunks_by_id):
             kept.append(q)
         else:
             dropped.append(

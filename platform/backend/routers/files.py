@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models import Conversation, UploadedFile as UploadedFileModel
+from db.models import Conversation, CourseDocumentRecord, UploadedFile as UploadedFileModel
 from db.session import get_db
 from schemas.file import UploadedFileList, UploadedFileRead
 from services.storage_service import get_storage
@@ -103,11 +103,17 @@ async def delete_file(
 
     storage = get_storage()
     vectors = get_vector_service()
+    document_result = await session.execute(
+        select(CourseDocumentRecord).where(CourseDocumentRecord.uploaded_file_id == record.id)
+    )
+    document = document_result.scalar_one_or_none()
 
     await vectors.delete_by_file(conversation_id, record.file_id)
     await storage.delete(record.file_id)
     if record.parsed_markdown_path:
         await storage.delete(record.parsed_markdown_path)
+    if document and document.cleaned_text_path:
+        await storage.delete(document.cleaned_text_path)
 
     await session.delete(record)
     await session.flush()

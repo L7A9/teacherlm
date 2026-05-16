@@ -2,6 +2,8 @@ from functools import lru_cache
 from importlib.resources import files
 from pathlib import Path
 
+import httpx
+
 from teacherlm_core.llm.ollama_client import OllamaClient
 from teacherlm_core.llm.runtime import (
     build_llm_client_kwargs,
@@ -55,6 +57,17 @@ class LLMService:
             api_key=cfg["api_key"],
         )
 
+    async def is_available(self, timeout_s: float = 3.0) -> tuple[bool, str | None]:
+        if self._client.provider != "ollama":
+            return True, None
+        try:
+            async with httpx.AsyncClient(timeout=timeout_s) as client:
+                response = await client.get(f"{self._client.base_url.rstrip('/')}/api/tags")
+                response.raise_for_status()
+        except Exception as exc:  # noqa: BLE001 - provider readiness boundary
+            return False, str(exc)
+        return True, None
+
     async def extract_themes(
         self, chunks_text: str, n_branches: int
     ) -> ThemeList:
@@ -79,7 +92,7 @@ class LLMService:
             schema=CourseOutline,
             system_prompt=system,
             user_prompt=chunks_text,
-            options={"temperature": 0.15},
+            options={"temperature": 0.15, "num_ctx": 8192, "num_predict": 1800},
         )
 
     async def build_batch_outline(self, batch_text: str) -> CourseOutline:
@@ -89,7 +102,7 @@ class LLMService:
             schema=CourseOutline,
             system_prompt=system,
             user_prompt=batch_text,
-            options={"temperature": 0.1},
+            options={"temperature": 0.1, "num_ctx": 8192, "num_predict": 900},
         )
 
     async def synthesize_course_outline(
@@ -103,7 +116,7 @@ class LLMService:
             schema=CourseOutline,
             system_prompt=system,
             user_prompt=extracted_outlines,
-            options={"temperature": 0.1},
+            options={"temperature": 0.1, "num_ctx": 8192, "num_predict": 1800},
         )
 
     async def expand_subtopic(

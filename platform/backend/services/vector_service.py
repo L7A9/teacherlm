@@ -51,12 +51,32 @@ class VectorService:
         return self._embedder
 
     async def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        return await self.embed_passages(texts)
+
+    async def embed_passages(self, texts: Sequence[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        embedder = await self._get_embedder()
+
+        batch_size = max(1, self._settings.embedding_batch_size)
+
+        vectors: list[list[float]] = []
+        for batch in _batched(list(texts), batch_size):
+            def _run(batch_texts: list[str] = batch) -> list[list[float]]:
+                embed = getattr(embedder, "passage_embed", embedder.embed)
+                return [list(vec) for vec in embed(batch_texts)]
+
+            vectors.extend(await asyncio.to_thread(_run))
+        return vectors
+
+    async def embed_queries(self, texts: Sequence[str]) -> list[list[float]]:
         if not texts:
             return []
         embedder = await self._get_embedder()
 
         def _run() -> list[list[float]]:
-            return [list(vec) for vec in embedder.embed(list(texts))]
+            embed = getattr(embedder, "query_embed", embedder.embed)
+            return [list(vec) for vec in embed(list(texts))]
 
         return await asyncio.to_thread(_run)
 
@@ -66,7 +86,11 @@ class VectorService:
         name = _collection_name(conversation_id)
         existing = await self._client.collection_exists(name)
         if existing:
-            return
+            info = await self._client.get_collection(name)
+            vector_size = _collection_vector_size(info)
+            if vector_size == self._dim:
+                return
+            await self._client.delete_collection(name)
         await self._client.create_collection(
             collection_name=name,
             vectors_config=qm.VectorParams(size=self._dim, distance=qm.Distance.COSINE),
@@ -75,6 +99,9 @@ class VectorService:
         for field_name, schema in (
             ("source", qm.PayloadSchemaType.KEYWORD),
             ("file_id", qm.PayloadSchemaType.KEYWORD),
+            ("source_file_id", qm.PayloadSchemaType.KEYWORD),
+            ("document_id", qm.PayloadSchemaType.KEYWORD),
+            ("section_id", qm.PayloadSchemaType.KEYWORD),
         ):
             await self._client.create_payload_index(
                 collection_name=name,
@@ -112,28 +139,32 @@ class VectorService:
         if not chunks:
             return 0
         await self.ensure_collection(conversation_id)
-        vectors = await self.embed([c.text for c in chunks])
-        points = [
-            qm.PointStruct(
-                id=c.chunk_id,
-                vector=vectors[i],
-                payload={
-                    "text": c.text,
-                    "source": c.source,
-                    "file_id": file_id,
-                    "index": c.index,
-                    "token_count": c.token_count,
-                    **c.metadata,
-                },
+        total = 0
+        batch_size = max(1, self._settings.embedding_batch_size)
+        for chunk_batch in _batched(list(chunks), batch_size):
+            vectors = await self.embed([c.text for c in chunk_batch])
+            points = [
+                qm.PointStruct(
+                    id=c.chunk_id,
+                    vector=vectors[i],
+                    payload={
+                        "text": c.text,
+                        "source": c.source,
+                        "file_id": file_id,
+                        "index": c.index,
+                        "token_count": c.token_count,
+                        **c.metadata,
+                    },
+                )
+                for i, c in enumerate(chunk_batch)
+            ]
+            await self._client.upsert(
+                collection_name=_collection_name(conversation_id),
+                points=points,
+                wait=True,
             )
-            for i, c in enumerate(chunks)
-        ]
-        await self._client.upsert(
-            collection_name=_collection_name(conversation_id),
-            points=points,
-            wait=True,
-        )
-        return len(points)
+            total += len(points)
+        return total
 
     # --- reads ---
 
@@ -150,7 +181,7 @@ class VectorService:
             return []
 
         limit = top_k or self._settings.retrieval_top_k
-        [vector] = await self.embed([query])
+        [vector] = await self.embed_queries([query])
 
         flt: qm.Filter | None = None
         if file_ids:
@@ -208,6 +239,29 @@ class VectorService:
 
     async def aclose(self) -> None:
         await self._client.close()
+
+
+def _collection_vector_size(collection_info: object) -> int | None:
+    config = getattr(collection_info, "config", None)
+    params = getattr(config, "params", None)
+    vectors = getattr(params, "vectors", None)
+    if vectors is None:
+        return None
+    size = getattr(vectors, "size", None)
+    if isinstance(size, int):
+        return size
+    if isinstance(vectors, dict):
+        first = next(iter(vectors.values()), None)
+        size = getattr(first, "size", None)
+        return size if isinstance(size, int) else None
+    return None
+
+
+def _batched[T](items: Sequence[T], batch_size: int) -> list[list[T]]:
+    return [
+        list(items[index : index + batch_size])
+        for index in range(0, len(items), batch_size)
+    ]
 
 
 _vector_service: VectorService | None = None

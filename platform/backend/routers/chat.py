@@ -62,6 +62,7 @@ async def chat(
         )
     )
     await session.flush()
+    await session.commit()
     context_chunks = await get_retrieval_orchestrator().retrieve_for(
         output_type="text",
         query=body.user_message,

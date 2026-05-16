@@ -40,6 +40,10 @@ class Conversation(Base):
         back_populates="conversation",
         cascade="all, delete-orphan",
     )
+    course_documents: Mapped[list[CourseDocumentRecord]] = relationship(
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+    )
     learner_state: Mapped[LearnerStateRecord | None] = relationship(
         back_populates="conversation",
         cascade="all, delete-orphan",
@@ -88,6 +92,130 @@ class UploadedFile(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
     conversation: Mapped[Conversation] = relationship(back_populates="files")
+    course_document: Mapped[CourseDocumentRecord | None] = relationship(
+        back_populates="uploaded_file",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+
+
+class CourseDocumentRecord(Base):
+    __tablename__ = "course_documents"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    uploaded_file_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("uploaded_files.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    source_file_id: Mapped[str] = mapped_column(String(1024), nullable=False)
+    source_filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    raw_markdown_path: Mapped[str | None] = mapped_column(String(1024))
+    cleaned_text_path: Mapped[str | None] = mapped_column(String(1024))
+    text_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    course_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+    conversation: Mapped[Conversation] = relationship(back_populates="course_documents")
+    uploaded_file: Mapped[UploadedFile] = relationship(back_populates="course_document")
+    sections: Mapped[list[CourseSectionRecord]] = relationship(
+        back_populates="document",
+        cascade="all, delete-orphan",
+        order_by="CourseSectionRecord.order_index",
+    )
+    chunks: Mapped[list[SearchChunkRecord]] = relationship(
+        back_populates="document",
+        cascade="all, delete-orphan",
+        order_by="SearchChunkRecord.chunk_index",
+    )
+
+
+class CourseSectionRecord(Base):
+    __tablename__ = "course_sections"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("course_documents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    parent_section_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    level: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    heading_path: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
+    order_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    page_start: Mapped[int | None] = mapped_column(Integer)
+    page_end: Mapped[int | None] = mapped_column(Integer)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    summary: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    key_concepts: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
+    equations: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
+    tables: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, nullable=False)
+    timeline_events: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
+    section_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+    document: Mapped[CourseDocumentRecord] = relationship(back_populates="sections")
+    chunks: Mapped[list[SearchChunkRecord]] = relationship(
+        back_populates="section",
+        cascade="all, delete-orphan",
+        order_by="SearchChunkRecord.chunk_index",
+    )
+
+
+class SearchChunkRecord(Base):
+    __tablename__ = "search_chunks"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("course_documents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    section_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("course_sections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    source_filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    source_file_id: Mapped[str] = mapped_column(String(1024), nullable=False, index=True)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    token_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    prev_chunk_id: Mapped[str | None] = mapped_column(String(64))
+    next_chunk_id: Mapped[str | None] = mapped_column(String(64))
+    page_start: Mapped[int | None] = mapped_column(Integer)
+    page_end: Mapped[int | None] = mapped_column(Integer)
+    heading_path: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
+    chunk_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+    document: Mapped[CourseDocumentRecord] = relationship(back_populates="chunks")
+    section: Mapped[CourseSectionRecord] = relationship(back_populates="chunks")
 
 
 class LearnerStateRecord(Base):

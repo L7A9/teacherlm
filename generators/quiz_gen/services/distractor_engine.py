@@ -128,6 +128,10 @@ async def enhance_mcq_distractors(
 ) -> MCQ:
     """Replace MCQ options with [correct, *3 hard negatives], shuffled deterministically."""
     settings = get_settings()
+    if re.search(r"\b(which|which of the following|listed as|listed under)\b", mcq.question, re.IGNORECASE):
+        # List-membership questions become ambiguous if we add plausible terms
+        # from the same source list. Keep the model's original answer set.
+        return mcq
     if not (0 <= mcq.correct_index < len(mcq.options)):
         return mcq
 

@@ -1,0 +1,16 @@
+{
+  "conversation_id": "replace-with-conversation-id",
+  "cases": [
+    {
+      "id": "q001",
+      "query": "Replace with a real student question from the course.",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "replace-with-gold-chunk-id"
+      ],
+      "metadata": {
+        "notes": "Use dump-corpus to find the correct chunk ids."
+      }
+    }
+  ]
+}

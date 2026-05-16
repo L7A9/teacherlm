@@ -73,6 +73,11 @@ class StorageService:
         return f"conversations/{conversation_id}/parsed/{stem}.md"
 
     @staticmethod
+    def cleaned_text_key(conversation_id: uuid.UUID | str, file_id: str) -> str:
+        stem = PurePosixPath(file_id).stem or str(uuid.uuid4())
+        return f"conversations/{conversation_id}/cleaned/{stem}.md"
+
+    @staticmethod
     def artifact_key(conversation_id: uuid.UUID | str, filename: str) -> str:
         safe = PurePosixPath(filename).name
         return f"conversations/{conversation_id}/artifacts/{uuid.uuid4()}_{safe}"

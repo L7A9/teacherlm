@@ -13,6 +13,7 @@ from config import get_settings
 from db.session import dispose_engine
 from dispatcher.registry import get_registry
 from routers import chat, conversations, files, generate, generators, health
+from services.retrieval_orchestrator import get_retrieval_orchestrator
 from services.storage_service import get_storage
 from services.vector_service import get_vector_service
 
@@ -30,6 +31,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     get_registry().reload()
 
     await get_storage().ensure_bucket()
+    await get_retrieval_orchestrator().warmup()
 
     app.state.arq_pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
     logger.info("connected to redis at %s", settings.redis_url)

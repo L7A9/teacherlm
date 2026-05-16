@@ -40,11 +40,18 @@ _SYNTH_PROMPTS: dict[str, str] = {
     "text": "Explain this topic{topic}.",
 }
 
-
 def _synthesize_prompt(output_type: str, topic: str | None) -> str:
     template = _SYNTH_PROMPTS.get(output_type, f"Generate a {output_type}{{topic}}.")
     suffix = f" about {topic}" if topic else ""
     return template.format(topic=suffix)
+
+
+def _effective_topic(output_type: str, topic: str | None) -> str | None:
+    return topic
+
+
+def _retrieval_query(output_type: str, topic: str | None) -> str:
+    return topic or ""
 
 
 @router.post("/{conversation_id}/generate")
@@ -63,12 +70,9 @@ async def generate(
     except GeneratorNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    synth_message = _synthesize_prompt(body.output_type, body.topic)
-    # No topic = no query: the orchestrator falls back to a broad corpus
-    # sample. Using the synth message ("Generate a quiz.") as a query
-    # produces near-empty retrieval pools because nothing in the source
-    # files matches that phrase.
-    retrieval_query = body.topic or ""
+    topic = _effective_topic(body.output_type, body.topic)
+    synth_message = _synthesize_prompt(body.output_type, topic)
+    retrieval_query = _retrieval_query(body.output_type, body.topic)
 
     chat_history = await _load_history(session, conversation_id, limit=CHAT_HISTORY_LIMIT)
     learner_state = await get_learner_tracker().load_state(session, conversation_id)
@@ -81,11 +85,13 @@ async def generate(
         )
     )
     await session.flush()
+    await session.commit()
 
     context_chunks = await get_retrieval_orchestrator().retrieve_for(
         output_type=body.output_type,
         query=retrieval_query,
         conversation_id=conversation_id,
+        topic=topic,
     )
 
     payload = GeneratorInput(
@@ -94,7 +100,7 @@ async def generate(
         context_chunks=context_chunks,
         learner_state=learner_state,
         chat_history=chat_history,
-        options={**body.options, "topic": body.topic} if body.topic else dict(body.options),
+        options={**body.options, "topic": topic} if topic else dict(body.options),
     )
 
     return EventSourceResponse(
