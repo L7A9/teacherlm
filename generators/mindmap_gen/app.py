@@ -45,6 +45,9 @@ async def info() -> dict:
         "language_support": "auto (matches source content)",
         "retrieval_mode": "topic_clusters",
         "streams": True,
+        "models": {
+            "generation": settings.MODEL_NAME,
+        },
     }
 
 

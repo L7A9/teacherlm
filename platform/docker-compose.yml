@@ -68,6 +68,11 @@ services:
     build:
       context: ..
       dockerfile: platform/backend/Dockerfile
+      args:
+        EMBEDDING_MODEL: ${EMBEDDING_MODEL:-intfloat/multilingual-e5-large}
+        PREFETCH_EMBEDDING_MODEL: ${PREFETCH_EMBEDDING_MODEL:-true}
+        RETRIEVAL_RERANKER_MODEL: ${RETRIEVAL_RERANKER_MODEL:-BAAI/bge-reranker-base}
+        PREFETCH_RERANKER_MODEL: ${PREFETCH_RERANKER_MODEL:-true}
     restart: unless-stopped
     env_file:
       - .env
@@ -79,11 +84,9 @@ services:
       MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-localhost:9000}
       MINIO_SECURE: "false"
       OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
-      CORS_ORIGINS: '["http://localhost:3000"]'
+      CORS_ORIGINS: '["http://localhost:3000","http://127.0.0.1:3000"]'
     volumes:
       - ../generators_registry.json:/app/generators_registry.json:ro
-      - fastembed_cache:/opt/fastembed_cache
-      - hf_cache:/opt/hf_cache
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     extra_hosts:
@@ -102,6 +105,11 @@ services:
     build:
       context: ..
       dockerfile: platform/backend/Dockerfile
+      args:
+        EMBEDDING_MODEL: ${EMBEDDING_MODEL:-intfloat/multilingual-e5-large}
+        PREFETCH_EMBEDDING_MODEL: ${PREFETCH_EMBEDDING_MODEL:-true}
+        RETRIEVAL_RERANKER_MODEL: ${RETRIEVAL_RERANKER_MODEL:-BAAI/bge-reranker-base}
+        PREFETCH_RERANKER_MODEL: ${PREFETCH_RERANKER_MODEL:-true}
     restart: unless-stopped
     command: ["arq", "workers.ingestion_worker.WorkerSettings"]
     env_file:
@@ -113,9 +121,6 @@ services:
       MINIO_ENDPOINT: minio:9000
       MINIO_SECURE: "false"
       OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
-    volumes:
-      - fastembed_cache:/opt/fastembed_cache
-      - hf_cache:/opt/hf_cache
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -137,10 +142,9 @@ services:
       - .env
     environment:
       TEACHER_GEN_OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
-      TEACHER_GEN_CHAT_MODEL: ${TEACHER_GEN_CHAT_MODEL:-llama3.1:8b-instruct-q4_K_M}
-      TEACHER_GEN_ANALYSIS_MODEL: ${TEACHER_GEN_ANALYSIS_MODEL:-llama3.2:latest}
-      TEACHER_GEN_EXTRACTION_MODEL: ${TEACHER_GEN_EXTRACTION_MODEL:-llama3.2:latest}
-      TEACHER_GEN_HYDE_ENABLED: ${TEACHER_GEN_HYDE_ENABLED:-false}
+      TEACHER_GEN_CHAT_MODEL: ${TEACHER_GEN_CHAT_MODEL:-${OLLAMA_CHAT_MODEL:-llama3.1:8b-instruct-q4_K_M}}
+      TEACHER_GEN_ANALYSIS_MODEL: ${TEACHER_GEN_ANALYSIS_MODEL:-${OLLAMA_ANALYSIS_MODEL:-${OLLAMA_CHAT_MODEL:-llama3.1:8b-instruct-q4_K_M}}}
+      TEACHER_GEN_EXTRACTION_MODEL: ${TEACHER_GEN_EXTRACTION_MODEL:-${OLLAMA_EXTRACTION_MODEL:-${OLLAMA_CHAT_MODEL:-llama3.1:8b-instruct-q4_K_M}}}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
@@ -155,9 +159,9 @@ services:
       - .env
     environment:
       QUIZ_GEN_OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
-      QUIZ_GEN_CHAT_MODEL: ${QUIZ_GEN_CHAT_MODEL:-llama3.1:8b-instruct-q4_K_M}
-      QUIZ_GEN_EXTRACTION_MODEL: ${QUIZ_GEN_EXTRACTION_MODEL:-llama3.1:8b-instruct-q4_K_M}
-      QUIZ_GEN_GENERATION_MODEL: ${QUIZ_GEN_GENERATION_MODEL:-llama3.1:8b-instruct-q4_K_M}
+      QUIZ_GEN_CHAT_MODEL: ${QUIZ_GEN_CHAT_MODEL:-${OLLAMA_CHAT_MODEL:-llama3.1:8b-instruct-q4_K_M}}
+      QUIZ_GEN_EXTRACTION_MODEL: ${QUIZ_GEN_EXTRACTION_MODEL:-${OLLAMA_EXTRACTION_MODEL:-${OLLAMA_CHAT_MODEL:-llama3.1:8b-instruct-q4_K_M}}}
+      QUIZ_GEN_GENERATION_MODEL: ${QUIZ_GEN_GENERATION_MODEL:-${OLLAMA_GENERATION_MODEL:-${OLLAMA_CHAT_MODEL:-llama3.1:8b-instruct-q4_K_M}}}
       QUIZ_GEN_MINIO_ENDPOINT: minio:9000
       QUIZ_GEN_MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-localhost:9000}
       QUIZ_GEN_MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
@@ -205,9 +209,9 @@ services:
       - .env
     environment:
       PODCAST_GEN_OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
-      PODCAST_GEN_CHAT_MODEL: ${PODCAST_GEN_CHAT_MODEL:-llama3.1:8b-instruct-q4_K_M}
-      PODCAST_GEN_EXTRACTION_MODEL: ${PODCAST_GEN_EXTRACTION_MODEL:-llama3.1:8b-instruct-q4_K_M}
-      PODCAST_GEN_GENERATION_MODEL: ${PODCAST_GEN_GENERATION_MODEL:-llama3.1:8b-instruct-q4_K_M}
+      PODCAST_GEN_CHAT_MODEL: ${PODCAST_GEN_CHAT_MODEL:-${OLLAMA_CHAT_MODEL:-llama3.1:8b-instruct-q4_K_M}}
+      PODCAST_GEN_EXTRACTION_MODEL: ${PODCAST_GEN_EXTRACTION_MODEL:-${OLLAMA_EXTRACTION_MODEL:-${OLLAMA_CHAT_MODEL:-llama3.1:8b-instruct-q4_K_M}}}
+      PODCAST_GEN_GENERATION_MODEL: ${PODCAST_GEN_GENERATION_MODEL:-${OLLAMA_GENERATION_MODEL:-${OLLAMA_CHAT_MODEL:-llama3.1:8b-instruct-q4_K_M}}}
       PODCAST_GEN_MINIO_ENDPOINT: minio:9000
       PODCAST_GEN_MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-localhost:9000}
       PODCAST_GEN_MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
@@ -250,7 +254,5 @@ volumes:
   postgres_data:
   qdrant_data:
   minio_data:
-  fastembed_cache:
-  hf_cache:
   mindmap_artifacts:
   podcast_artifacts:

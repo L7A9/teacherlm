@@ -18,7 +18,7 @@ For each turn, the pipeline:
    - `affirm` — celebrate + suggest next concept (student got it)
    - `explain` — direct answer with analogies and citations (default)
    - Stuck-safety: if the student has been struggling for more than `stuck_turns_threshold` turns, the pipeline falls back to `explain` instead of another Socratic question.
-3. **Re-ranks context chunks** using the `teacherlm_core` cross-encoder, optionally augmented with a HyDE hypothetical answer.
+3. **Uses backend-prepared context chunks** from the shared RAG pipeline.
 4. **Streams the response** in the shared teacher voice (prompts prepend `teacherlm_core/prompts/teacher_voice.txt`).
 5. **Scores confidence** (groundedness + coverage) and **extracts learner updates** (concepts covered / demonstrated / struggled).
 
@@ -66,10 +66,8 @@ All settings are env-prefixed with `TEACHER_GEN_`. Highlights:
 | `TEACHER_GEN_CHAT_MODEL`              | `llama3.1:8b-instruct`           |
 | `TEACHER_GEN_ANALYSIS_MODEL`          | `llama3.1:8b-instruct`           |
 | `TEACHER_GEN_EXTRACTION_MODEL`        | `llama3.1:8b-instruct`           |
-| `TEACHER_GEN_HYDE_ENABLED`            | `true`                           |
 | `TEACHER_GEN_CONFUSION_GUIDE_THRESHOLD` | `0.7`                          |
 | `TEACHER_GEN_STUCK_TURNS_THRESHOLD`   | `4`                              |
-| `TEACHER_GEN_RERANK_TOP_K`            | `6`                              |
 
 ## Enabling in `generators_registry.json`
 

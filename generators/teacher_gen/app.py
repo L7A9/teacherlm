@@ -26,7 +26,7 @@ async def info() -> dict:
         "streams": True,
         "capabilities": {
             "modes": ["explain", "guide", "quiz_back", "affirm"],
-            "hyde_enabled": settings.hyde_enabled,
+            "context_ranking": "backend",
             "reports_learner_updates": True,
             "returns_confidence": True,
         },

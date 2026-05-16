@@ -21,6 +21,8 @@ Quality rules:
   causes and consequences, definitions and classifications, methods and
   examples, processes and stages, themes and case studies, or evaluation and
   limitations.
+- Infer the organizing principle from the uploaded course. Do not apply a fixed
+  template for any one domain.
 - Keep siblings at the same abstraction level.
 - Do not duplicate the same topic under multiple branches.
 - Do not create unsupported branches. If a branch label is not supported by
@@ -32,5 +34,6 @@ Quality rules:
   example, use "Causes de la Revolution" instead of "Histoire", "Reliefs et
   Climats" instead of "Geographie", or "Methodes de Resolution" instead of
   "Mathematiques" when those labels match the uploaded content.
+- Preserve balanced coverage across all provided documents/modules.
 
 Return ONLY the structured hierarchy.

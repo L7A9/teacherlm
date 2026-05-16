@@ -19,10 +19,15 @@ class HybridRetriever:
         qdrant_client: Any,
         collection_name: str,
         embedder: Any,
+        *,
+        dense_top_k: int = 20,
+        sparse_top_k: int = 20,
     ) -> None:
         self.qdrant = qdrant_client
         self.collection_name = collection_name
         self.embedder = embedder
+        self.dense_top_k = dense_top_k
+        self.sparse_top_k = sparse_top_k
         self._bm25: BM25Index | None = None
 
     def index_bm25(self, chunks: list[Chunk]) -> None:
@@ -30,12 +35,16 @@ class HybridRetriever:
         self._bm25 = BM25Index(chunks)
 
     async def retrieve(self, query: str, top_k: int = 20) -> list[Chunk]:
-        dense_hits = await self._dense_search(query, limit=20)
-        sparse_hits = self._sparse_search(query, limit=20)
+        dense_hits = await self._dense_search(
+            query,
+            limit=max(top_k, self.dense_top_k),
+        )
+        sparse_hits = self._sparse_search(query, limit=max(top_k, self.sparse_top_k))
         return _rrf_fuse([dense_hits, sparse_hits], top_k=top_k)
 
     async def _dense_search(self, query: str, limit: int) -> list[Chunk]:
-        query_vec = list(next(iter(self.embedder.embed([query]))))
+        embed = getattr(self.embedder, "query_embed", self.embedder.embed)
+        query_vec = list(next(iter(embed([query]))))
         result = await self.qdrant.query_points(
             collection_name=self.collection_name,
             query=query_vec,

@@ -11,6 +11,8 @@ import type {
   DoneEventData,
   ErrorEventData,
   GenerateRequest,
+  Message,
+  MessageList,
   SourceRef,
   SseEvent,
   UUID,
@@ -55,6 +57,7 @@ function useRunStream() {
     async ({ conversationId, path, body }: RunStreamArgs) => {
       const controller = new AbortController();
       startStream(conversationId, controller);
+      addOptimisticUserMessage(qc, conversationId, path, body);
 
       const fullPath = `/api/conversations/${conversationId}/${path}`;
 
@@ -84,7 +87,6 @@ function useRunStream() {
       } finally {
         endStream(conversationId);
         qc.invalidateQueries({ queryKey: ["messages", conversationId] });
-        qc.invalidateQueries({ queryKey: ["files", conversationId] });
         qc.invalidateQueries({ queryKey: ["conversations", "detail", conversationId] });
       }
     },
@@ -100,6 +102,43 @@ function useRunStream() {
       startStream,
     ],
   );
+}
+
+function addOptimisticUserMessage(
+  qc: ReturnType<typeof useQueryClient>,
+  conversationId: UUID,
+  path: StreamPath,
+  body: ChatRequest | GenerateRequest,
+) {
+  if (path !== "chat" || !("user_message" in body)) return;
+
+  const content = body.user_message.trim();
+  if (!content) return;
+
+  const message: Message = {
+    id: `optimistic-user-${conversationId}-${Date.now()}`,
+    conversation_id: conversationId,
+    role: "user",
+    content,
+    generator_id: null,
+    output_type: null,
+    artifacts: [],
+    sources: [],
+    created_at: new Date().toISOString(),
+  };
+
+  qc.setQueryData<MessageList>(["messages", conversationId], (current) => {
+    if (!current) return { items: [message], total: 1 };
+    const alreadyPresent = current.items.some(
+      (item) => item.role === "user" && item.content === content,
+    );
+    if (alreadyPresent) return current;
+    return {
+      ...current,
+      items: [...current.items, message],
+      total: current.total + 1,
+    };
+  });
 }
 
 interface HandleEventCallbacks {

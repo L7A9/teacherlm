@@ -1,0 +1,611 @@
+
+
+--- Page 1 ---
+Syst` emes de Recommandation et Blockchain
+Semaine 4 : L’ `Ere du Deep Learning dans la Recommandation
+Pr. Abdelaaziz Hessane
+´Ecole Normale Sup´ erieure de Mekn` es
+Master ”Syst` emes Intelligents pour l’´Education”
+November 13, 2025
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 1 / 35
+
+--- Page 2 ---
+Plan de la s´ eance
+1 Les limites des mod` eles traditionnels :Pourquoi aller plus loin que
+la SVD?
+2 Le Deep Learning au service de la recommandation :Les
+avantages cl´ es.
+3 Concept fondamental : Les Plongements (Embeddings).
+4 Architecture 1 : Neural Collaborative Filtering (NCF).
+5 Architecture 2 : Mod´ elisation de S´ equences avec les RNN.
+6 Aper¸ cu d’autres architectures neuronales.
+7 Avantages et d´ efis du Deep Learning.
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 2 / 35
+
+--- Page 3 ---
+Les Limites des Mod` eles Traditionnels
+Rappel : Factorisation de Matrices (SVD)
+La matrice des notesR∈R m×n est d´ ecompos´ ee :
+R≈P·Q T
+o` uP∈R m×k etQ∈R n×k aveck≪min(m,n)
+Pr´ ediction lin´ eaire :
+ˆrui = ⃗pu · ⃗qi =
+kX
+f=1
+puf ·q if
+Limitations identifi´ ees :
+Hypoth` ese de lin´ earit´ e stricte : La relation est une simple
+combinaison lin´ eaire
+Interaction fixe : Le produit scalaire impose une structure rigide
+Incapacit´ e ` a mod´ eliser : Les interactions complexes de second ordre
+ou sup´ erieur
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 3 / 35
+
+--- Page 4 ---
+Exemple Concret : Limitation de la Lin´ earit´ e
+Sc´ enario ´ educatif :
+Consid´ erons un ´ etudiant avec le profil :⃗pu = [0.8,0.2,0.1] repr´ esentant :
+Facteur 1 (0.8) : Int´ erˆ et pour les math´ ematiques
+Facteur 2 (0.2) : Int´ erˆ et pour la programmation
+Facteur 3 (0.1) : Int´ erˆ et pour la th´ eorie
+Deux cours :
+Cours A (ML avanc´ e) : ⃗qA = [0.9,0.8,0.9]
+SVD pr´ edit : ˆruA = 0.8(0.9) + 0.2(0.8) + 0.1(0.9) = 0.97
+Cours B (Alg` ebre de base) : ⃗qB = [0.9,0.1,0.1]
+SVD pr´ edit : ˆruB = 0.8(0.9) + 0.2(0.1) + 0.1(0.1) = 0.75
+Probl` eme : Le cours A n´ ecessite SIMULTAN´EMENT comp´ etences en
+maths ET programmation (interaction multiplicative), mais SVD ne
+capture que l’effet additif !
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 4 / 35
+
+--- Page 5 ---
+Pourquoi le Deep Learning pour la Recommandation?
+Capacit´ e de mod´ elisation non-lin´ eaire :
+Un r´ eseau de neurones avec une couche cach´ ee peut approximer toute
+fonction continue :
+ˆrui =f( ⃗pu, ⃗qi; Θ)
+o` ufest une composition de transformations non-lin´ eaires.
+Exemple de transformation :
+h1 =σ(W 1[⃗pu; ⃗qi] +b 1)
+h2 =σ(W 2h1 +b 2)
+ˆrui =W 3h2 +b 3
+o` uσest une fonction d’activation non-lin´ eaire (ReLU, sigmoid, tanh).
+Th´ eor` eme d’approximation universelle: Un r´ eseau avec suffisamment
+de neurones peut approximer n’importe quelle fonction mesurable avec une
+pr´ ecision arbitraire.
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 5 / 35
+
+--- Page 6 ---
+Avantages Cl´ es du Deep Learning
+1 Apprentissage hi´ erarchique de caract´ eristiques
+Couches basses : Caract´ eristiques simples
+Couches hautes : Concepts abstraits et complexes
+2 Fusion multi-modale naturelle
+ˆr=f(embed(u),embed(i),CNN(image i),BERT(desc i),contexte)
+3 Apprentissage de bout en bout
+Pas besoin d’ing´ enierie manuelle des features
+Le mod` ele optimise directement l’objectif final
+4 Flexibilit´ e architecturale
+MLP pour interactions g´ en´ erales
+CNN pour donn´ ees spatiales (images)
+RNN/Transformer pour s´ equences temporelles
+GNN pour donn´ ees de graphe
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 6 / 35
+
+--- Page 7 ---
+Concept Cl´ e : Les Plongements (Embeddings)
+D´ efinition formelle :
+Un embedding est une fonctionϕ:V →R d qui transforme un ´ el´ ement
+d’un espace discret (vocabulaireV) en un vecteur dense de dimensiond.
+Pour les SR :
+Utilisateurs :ϕ u :{1, ...,m} →R du
+Items :ϕ i :{1, ...,n} →R di
+Comparaison avec One-Hot Encoding :
+One-Hot(sparse)
+⃗vuser5 = [0,0,0,0,1,0, ...,0]
+Dimension :|V|(ex: 10000)
+Embedding(dense)
+⃗euser5 = [0.23,−0.45,0.12, ...,0.78]
+Dimension :d(ex: 32, 64, 128)
+Avantages : R´ eduction dimensionnelle + Capture de similarit´ e s´ emantique
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 7 / 35
+
+--- Page 8 ---
+Comment sont Appris les Embeddings ?
+Matrice d’embedding :E∈R |V|×d
+Pour obtenir l’embedding de l’entit´ ei:
+⃗ei =E[i,:] ou ⃗ei =E T ·onehot(i)
+Processus d’apprentissage :
+1 Initialisation: Al´ eatoire (ex:N(0,0.01)) ou pr´ e-entra ˆ ın´ ee
+2 Forward pass: Extraction des embeddings et calcul de la pr´ ediction
+3 Calcul de l’erreur:L= P
+(u,i)∈D (rui −ˆrui)2 +λ||Θ|| 2
+4 Backpropagation: Calcul des gradients ∂L
+∂E
+5 Mise ` a jour:E←E−η ∂L
+∂E
+Propri´ et´ e cl´ e :Les embeddings sont ajust´ es pour que les entit´ es similaires
+(qui co-occurent souvent) aient des vecteurs proches dans l’espace
+d’embedding.
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 8 / 35
+
+--- Page 9 ---
+Visualisation de l’Espace d’Embedding
+Dimension 1
+Dimension 2
+Calcul
+Alg` ebre
+Stats
+Python
+Java
+Web
+Physique
+Chimie
+Litt´ erature
+Histoire
+U1
+U2
+U3
+Espace d’embedding 2D (r´ eduction depuis 64D)
+Observation :Les cours similaires sont regroup´ es. Les utilisateurs sont
+positionn´ es pr` es des cours qu’ils pr´ ef` erent.
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 9 / 35
+
+--- Page 10 ---
+Neural Collaborative Filtering (NCF)
+Papier fondateur :He et al., WWW 2017 - ”Neural Collaborative
+Filtering”
+Id´ ee principale :Remplacer le produit scalaire de la MF par un r´ eseau de
+neurones :
+MF: ˆrui = ⃗pT
+u ⃗qi
+NCF: ˆrui =f( ⃗pu, ⃗qi |Θ)
+Architecture g´ en´ erique :
+1 Input Layer: ID utilisateur et ID item
+2 Embedding Layer: Transformation en vecteurs denses
+3 Neural CF Layers: Couches de neurones qui mod´ elisent l’interaction
+4 Output Layer: Pr´ ediction finale
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 10 / 35
+
+--- Page 11 ---
+Architecture NCF : Sch´ ema D´ etaill´ e
+Input Layer
+User ID: 42, Item ID: 157
+User Embedding
+⃗pu ∈R 32
+Item Embedding
+⃗qi ∈R 32
+Concatenation
+[⃗pu; ⃗qi ]∈R 64
+Dense Layer 1 + ReLU
+R64 →R 128
+Dense Layer 2 + ReLU
+R128 →R 64
+Dense Layer 3 + ReLU
+R64 →R 32
+Output Layer
+ˆrui ∈[0,5] ou [0,1]
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 11 / 35
+
+--- Page 12 ---
+NCF : Formulation Math´ ematique Compl` ete
+Couche d’embedding :
+⃗pu =E U[u,:], ⃗qi =E I [i,:]
+Concat´ enation :
+⃗x0 = [⃗pu; ⃗qi]∈R 2d
+Couches cach´ ees (MLP) :
+⃗xl =σ(W l ⃗xl−1 + ⃗bl),l= 1,2, ...,L
+o` u :
+Wl ∈R dl ×dl−1 : matrice de poids
+⃗bl ∈R dl : biais
+σ: fonction d’activation (ReLU g´ en´ eralement)
+Couche de sortie :
+R´ egression : ˆrui =W T
+out⃗xL +b out
+Classification : ˆyui = sigmoid(W T
+out⃗xL +b out)
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 12 / 35
+
+--- Page 13 ---
+NCF : Fonctions de Perte
+1. R´ egression (pr´ ediction de notes explicites) :
+LMSE =
+X
+(u,i)∈D
+(rui −ˆrui)2 +λ
+X
+l
+||Wl ||2
+F
+2. Classification binaire (feedback implicite) :
+LBCE =−
+X
+(u,i)∈D
+[yui log ˆyui + (1−y ui) log(1−ˆyui)] +λ||Θ|| 2
+o` uyui = 1 si interaction observ´ ee,yui = 0 sinon.
+3. Pairwise ranking (BPR) :
+LBPR =−
+X
+(u,i,j)∈D s
+logσ(ˆrui −ˆruj) +λ||Θ|| 2
+o` uiest un item positif etjest un item n´ egatif pour l’utilisateuru.
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 13 / 35
+
+--- Page 14 ---
+Variante NCF : GMF + MLP (NeuMF)
+Id´ ee :Combiner la Generalized Matrix Factorization (GMF) avec MLP.
+User, Item
+⃗pGMF
+u
+⃗qGMF
+i
+⃗pGMF
+u ⊙ ⃗qGMF
+i
+⃗pMLP
+u
+⃗qMLP
+i
+[⃗pMLP
+u ; ⃗qMLP
+i ]
+MLP Layers
+Concatenate GMF + MLP
+ˆrui
+ˆrui =σ(W T [⃗pGMF
+u ⊙ ⃗qGMF
+i ;ϕ( ⃗pMLP
+u , ⃗qMLP
+i )])
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 14 / 35
+
+--- Page 15 ---
+Exemple Num´ erique : Forward Pass NCF
+Configuration :
+Utilisateur 42, Item 157
+Embeddings : dimension 4 (pour simplicit´ e)
+Architecture : [8]→[16]→[8]→[1]
+1. Embeddings appris :
+⃗p42 = [0.5,0.3,−0.2,0.8], ⃗q157 = [0.4,0.6,0.1,−0.3]
+2. Concat´ enation :
+⃗x0 = [0.5,0.3,−0.2,0.8,0.4,0.6,0.1,−0.3]
+3. Premi` ere couche (simplifi´ e) :
+⃗x1 = ReLU(W1⃗x0 + ⃗b1)
+Supposons apr` es calcul :⃗x1 = [0.82,0.15, ...,0.44]∈R 16
+4. Couches suivantes...
+5. Sortie finale :
+ˆr42,157 =W T
+out⃗xL +b out = 4.2
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 15 / 35
+
+--- Page 16 ---
+Mod´ elisation de S´ equences avec RNN
+Motivation :Le comportement utilisateur est temporel et s´ equentiel.
+Exemples :
+E-commerce : Acheter un t´ el´ ephone→Acheter une coque→
+Acheter un chargeur
+´Education : Cours d´ ebutant→Cours interm´ ediaire→Cours avanc´ e
+Musique : ´Ecouter un artiste peut d´ eclencher l’´ ecoute d’artistes
+similaires
+Question cl´ e :Comment pr´ edire le prochain item sachant la s´ equence des
+interactions pass´ ees ?
+ˆit+1 = arg max
+i
+P(i|i 1,i 2, ...,i t)
+Solution : Les R´ eseaux de Neurones R´ ecurrents (RNN) sont sp´ ecialement
+con¸ cus pour traiter des s´ equences de longueur variable.
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 16 / 35
+
+--- Page 17 ---
+RNN : Architecture de Base
+´Equations du RNN :
+`A chaque pas de tempst:
+⃗ht = tanh(Wh⃗ht−1 +W x ⃗xt + ⃗bh)
+⃗yt =W y⃗ht + ⃗by
+o` u :
+⃗xt : embedding de l’item au tempst
+⃗ht : ´ etat cach´ e (m´ emoire du RNN)
+⃗yt : pr´ ediction ` a l’instantt
+Wh,W x ,W y : matrices de poids partag´ ees dans le temps
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 17 / 35
+
+--- Page 18 ---
+RNN : Architecture de Base
+Visualisation :
+h1
+x1
+y1
+h2
+x2
+y2
+h3
+x3
+y3
+h4
+x4
+y4
+Item 1 Item 2 Item 3 Item 4
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 18 / 35
+
+--- Page 19 ---
+RNN pour Syst` emes de Recommandation
+Session-based Recommendation :
+S´ equence d’items consult´ es :s= [i1,i 2, ...,i t]
+Objectif :Pr´ edirei t+1
+Processus :
+1 Pour chaque itemi k dans la s´ equence :⃗xk = Embedding(i k)∈R d
+2 Mettre ` a jour l’´ etat cach´ e :⃗hk = RNN(⃗hk−1 , ⃗xk)
+3 `A la fin de la s´ equence, pr´ edire les scores pour tous les items :
+⃗s= softmax(W ⃗ht + ⃗b)
+4 Recommander les items avec les scores les plus ´ elev´ es :
+Top-K = arg topk(⃗s)
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 19 / 35
+
+--- Page 20 ---
+GRU : Solution au Probl` eme du Gradient
+Probl` eme des RNN classiques :Vanishing/Exploding gradients
+GRU (Gated Recurrent Unit): Architecture avec portes de contrˆ ole
+´Equations GRU :
+⃗zt =σ(W z⃗xt +U z⃗ht−1 + ⃗bz) (Update gate)
+⃗rt =σ(W r ⃗xt +U r⃗ht−1 + ⃗br ) (Reset gate)
+˜⃗ht = tanh(Wh⃗xt +U h(⃗rt ⊙ ⃗ht−1) + ⃗bh) (Candidate)
+⃗ht = (1− ⃗zt)⊙ ⃗ht−1 + ⃗zt ⊙ ˜⃗ht (New hidden state)
+Avantages :
+Meilleure capture des d´ ependances long terme
+Moins de param` etres que LSTM
+Plus stable lors de l’entra ˆ ınement
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 20 / 35
+
+--- Page 21 ---
+Exemple Concret : Recommandation de Cours
+Historique d’un ´ etudiant :
+1 Python Basics (id: 12)
+2 Data Structures (id: 45)
+3 Algorithms (id: 78)
+4 Machine Learning Intro (id: 103)
+Processus avec GRU :
+⃗e1 = Embed(12) = [0.2,−0.5,0.8, ...]∈R 64 ⃗h1 = GRU(⃗h0, ⃗e1) ⃗h2 = GRU(⃗h1, ⃗e2)
+⃗h3 = GRU(⃗h2, ⃗e3) ⃗h4 = GRU(⃗h3, ⃗e4)
+Pr´ ediction :P(cours =i|s´ equence) = softmax(W⃗h4 + ⃗b)i
+Top-3 Recommandations :
+Deep Learning (id: 156) - Score: 0.82
+Neural Networks (id: 142) - Score: 0.75
+Advanced Python (id: 89) - Score: 0.68
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 21 / 35
+
+--- Page 22 ---
+M´ ecanisme d’Attention pour la Recommandation
+Limitation des RNN/GRU :L’´ etat final ⃗ht doit encoder toute la
+s´ equence.
+Solution : Attention Mechanism
+Pour pr´ edire le prochain item, calculer une moyenne pond´ er´ ee de tous les
+´ etats cach´ es :
+αk = exp(f( ⃗hk ,⃗ht))Pt
+j=1 exp(f( ⃗hj ,⃗ht))
+⃗c= Pt
+k=1 αk⃗hk
+o` ufest une fonction de score (ex: produit scalaire, r´ eseau de neurones).
+Interpr´ etation :
+αk : importance de l’item ` a la positionkpour la pr´ ediction actuelle
+⃗c: repr´ esentation contextuelle qui se concentre sur les items
+pertinents
+Avantage :Le mod` ele peut ”regarder en arri` ere” et se concentrer sur les
+items les plus pertinents de la s´ equence.
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 22 / 35
+
+--- Page 23 ---
+Auto-encodeurs pour le Filtrage Collaboratif
+Id´ ee :Apprendre une repr´ esentation compress´ ee des pr´ ef´ erences
+utilisateur.
+Architecture :
+Input
+Rn
+Enc 1
+512
+Enc 2
+128
+Latent
+⃗z64
+Dec 1
+128
+Dec 2
+512
+Output
+Rn
+Principe :
+Encoder :Compresse ⃗ru (creux) en ⃗z(compact)
+Decoder :Reconstruit ˆ⃗ru (dense) depuis ⃗z
+Utilisation :Recommander les items avec ˆr ui ´ elev´ e
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 23 / 35
+
+--- Page 24 ---
+Auto-encodeurs : Formulation Math´ ematique
+Encoder : ⃗h1 =f 1(W1⃗ru + ⃗b1) ⃗z=f 2(W2⃗h1 + ⃗b2)
+Decoder : ⃗h3 =g 1(W3⃗z+ ⃗b3) ˆ⃗ru =g 2(W4⃗h3 + ⃗b4)
+Fonction de perte :L= P
+u∈U ||⃗ru − ˆ⃗ru||2
+Ou +λ||Θ|| 2
+o` uOu est l’ensemble des items observ´ es pour l’utilisateuru.
+Recommandation :Pour un utilisateuru, recommander les itemsiavec
+les valeurs ˆrui les plus ´ elev´ ees dansˆ⃗ru.
+Variante : Denoising Auto-encoder :Ajouter du bruit ` a l’entr´ ee pour
+rendre le mod` ele plus robuste.
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 24 / 35
+
+--- Page 25 ---
+CNN pour la Recommandation Bas´ ee Contenu
+Cas d’usage :Recommandation de films bas´ ee sur les affiches.
+Architecture :
+1 Input :Image de l’affiche∈R 224×224×3
+2 Couches convolutives :Conv1: 3→64 filtres,kernel 3×3
+MaxPool: 2×2 Conv2: 64→128 filtres,kernel 3×3 MaxPool: 2×2
+3 Flatten + Dense : ⃗vvisual = Dense(Flatten(conv output))
+4 Fusion avec embeddings : ⃗x= [ ⃗pu; ⃗qi; ⃗vvisual]
+5 MLP :Pr´ ediction finale
+Avantage :R´ esout le probl` eme de d´ emarrage ` a froid pour les nouveaux
+items.
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 25 / 35
+
+--- Page 26 ---
+Transformers pour la Recommandation S´ equentielle
+BERT4Rec, SASRec :Application des Transformers aux SR.
+Avantages sur RNN :
+Parall´ elisation compl` ete (pas de d´ ependance s´ equentielle)
+Attention bidirectionnelle
+Capture de d´ ependances long terme
+Self-Attention :Pour une s´ equence [i1,i 2, ...,i t] avec embeddings
+[⃗e1, ⃗e2, ..., ⃗et] :
+Attention(Q,K,V) = softmax
+
+QK T
+√dk
+
+V
+o` u :
+Q=EW Q (Queries)
+K=EW K (Keys)
+V=EW V (Values)
+E= [ ⃗e1; ⃗e2;...; ⃗et]
+R´ esultat :Chaque position peut ”voir” toutes les autres positions avec
+des poids appris.
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 26 / 35
+
+--- Page 27 ---
+Avantages du Deep Learning pour les SR
+1. Performance de Pointe
+Les mod` eles DL surpassent syst´ ematiquement les m´ ethodes traditionnelles
+sur les benchmarks standards (MovieLens, Amazon, etc.)
+2. Flexibilit´ e Multi-modale
+Fusion naturelle de sources h´ et´ erog` enes :
+Score =f(ID u,ID i ,Image i ,Texte i ,Contexte, ...)
+3. Apprentissage de Bout en Bout
+Pas besoin d’ing´ enierie manuelle de features
+Optimisation directe de l’objectif m´ etier
+Apprentissage conjoint de repr´ esentations et de pr´ edictions
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 27 / 35
+
+--- Page 28 ---
+Avantages du Deep Learning pour les SR
+4. Transfert d’Apprentissage
+Possibilit´ e d’utiliser des mod` eles pr´ e-entra ˆ ın´ es (BERT, ResNet) et de les
+fine-tuner pour la recommandation
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 28 / 35
+
+--- Page 29 ---
+D´ efis et Limitations du Deep Learning
+1. Besoin Massif en Donn´ ees
+Millions de param` etres ` a apprendre
+Risque de sur-apprentissage avec peu de donn´ ees
+Probl´ ematique pour domaines de niche
+2. Coˆ ut Computationnel
+Entra ˆ ınement : Heures/jours sur GPU
+Inf´ erence : Latence pour pr´ edictions en temps r´ eel
+Coˆ ut ´ energ´ etique et environnemental
+3. Effet ”Bo ˆ ıte Noire”
+Difficile d’expliquer pourquoi un item est recommand´ e
+Probl` eme pour la confiance utilisateur et la r´ egulation (RGPD)
+Techniques d’explicabilit´ e (LIME, SHAP) encore limit´ ees
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 29 / 35
+
+--- Page 30 ---
+D´ efis et Limitations (suite)
+4. Complexit´ e de Mise en Œuvre
+Nombreux hyperparam` etres : architecture, learning rate, batch size,
+r´ egularisation...
+N´ ecessite expertise en DL
+Debugging difficile
+5. Probl` emes´Ethiques
+Amplification des biais pr´ esents dans les donn´ ees
+Effet ”filter bubble” renforc´ e
+Optimisation de m´ etriques qui ne correspondent pas toujours au
+bien-ˆ etre utilisateur
+Recommandation
+Toujours comparer avec des baselines simples (KNN, MF). Parfois, un
+mod` ele simple bien r´ egl´ e bat un mod` ele complexe mal configur´ e !
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 30 / 35
+
+--- Page 31 ---
+M´ etriques d’´Evaluation pour DL RecSys
+1. Pour la pr´ ediction de notes (R´ egression) :
+RMSE:
+q
+1
+|T |
+P
+(u,i)∈T (rui −ˆrui)2
+MAE: 1
+|T |
+P
+(u,i)∈T |rui −ˆrui |
+2. Pour le ranking (Top-K) :
+Precision@K: |Recommand´ es∩Pertinents|
+K
+Recall@K: |Recommand´ es∩Pertinents|
+|Tous Pertinents|
+NDCG@K: Normalized Discounted Cumulative Gain
+NDCG@K = DCG@K
+IDCG@K ,DCG@K = PK
+i=1
+2reli −1
+log2(i+1)
+HR@K: Hit Rate (au moins 1 item pertinent dans le top-K)
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 31 / 35
+
+--- Page 32 ---
+Bonnes Pratiques pour le Deep Learning en SR
+1 Commencer simple: Tester d’abord des baselines (MF, KNN)
+2 Pr´ etraitement des donn´ ees
+Normalisation des embeddings
+Gestion des donn´ ees manquantes
+Negative sampling pour feedback implicite
+3 R´ egularisation
+Dropout (0.2-0.5)
+L2 regularization (λ= 10 −5 to 10 −3)
+Early stopping bas´ e sur la validation
+4 Hyperparam` etres cl´ es
+Taille des embeddings : 32, 64, 128
+Learning rate : 10 −4 ` a 10−2 (avec scheduler)
+Batch size : 256, 512, 1024
+Architecture MLP : [128, 64, 32] ou [256, 128, 64]
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 32 / 35
+
+--- Page 33 ---
+Ressources et R´ ef´ erences
+Papiers fondamentaux :
+He et al. (2017): ”Neural Collaborative Filtering” - WWW 2017
+Hidasi et al. (2016): ”Session-based Recommendations with RNNs” -
+ICLR 2016
+Kang & McAuley (2018): ”Self-Attentive Sequential
+Recommendation” - ICDM 2018
+Sun et al. (2019): ”BERT4Rec” - CIKM 2019
+Frameworks et biblioth` eques :
+PyTorch / TensorFlow : Deep learning
+RecBole : Biblioth` eque unifi´ ee pour SR (Python)
+Surprise : Algorithmes de SR classiques
+Microsoft Recommenders : Collection d’algorithmes et best practices
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 33 / 35
+
+--- Page 34 ---
+Ressources et r´ ef´ erences
+Datasets :
+MovieLens (100K, 1M, 20M, 25M)
+Amazon Product Reviews
+Netflix Prize, Spotify Million Playlist, LastFM
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 34 / 35
+
+--- Page 35 ---
+Conclusion et Synth` ese
+Ce qu’il faut retenir :
+LeDeep Learningtranscende les limitations des mod` eles lin´ eaires
+Lesembeddingssont la pierre angulaire : repr´ esentations denses
+apprises
+NCF: G´ en´ eralisation neuronale de la factorisation matricielle
+RNN/GRU/LSTM: Mod´ elisation des comportements s´ equentiels
+Transformers: ´Etat de l’art pour la recommandation s´ equentielle
+Trade-off: Performance vs Complexit´ e vs Interpr´ etabilit´ e
+La semaine prochaine :
+´Evaluation Avanc´ ee: A/B testing, m´ etriques business
+´Ethique: Biais, fairness, diversit´ e
+D´ eploiement: Architecture syst` eme, scalabilit´ e, monitoring
+Questions ?
+Pr. Abdelaaziz Hessane ( ´Ecole Normale Sup´ erieure de Mekn` es Master ”Syst` emes Intelligents pour l’´Education”)Syst` emes de Recommandation et Blockchain November 13, 2025 35 / 35

@@ -1,0 +1,209 @@
+
+
+--- Page 1 ---
+Syst` emes de Recommandation et Blockchain
+Semaine 1 : Fondements des Syst` emes de Recommandation
+(SR) et Applications ´Educatives
+Pr. Abdelaaziz Hessane
+´Ecole Normale Sup´ erieure de Mekn` es
+Master ”Syst` emes Intelligents pour l’´Education”
+October 15, 2025
+
+--- Page 2 ---
+Plan de la s´ eance
+1.Le probl` eme de la surcharge informationnelle :Pourquoi
+avons-nous besoin de recommandations?
+2.D´ efinition et objectifs d’un syst` eme de recommandation
+(SR) :Au-del` a de Netflix et Amazon.
+3.Les donn´ ees au cœur des SR :Mod´ elisation et concepts
+cl´ es.
+4.Une premi` ere taxonomie des approches :Comment
+fonctionnent-ils?
+5.Applications sp´ ecifiques au domaine de l’´ education :Vers
+un apprentissage personnalis´ e.
+6.D´ efis et enjeux :Sparsit´ e et d´ emarrage ` a froid.
+
+--- Page 3 ---
+Le Probl` eme : La Surcharge Informationnelle
+Nous vivons dans une ` ere d’abondance
+de choix :
+▶ Des millions de produits sur les
+sites d’e-commerce.
+▶ Des milliers de films et s´ eries sur
+les plateformes de streaming.
+▶ Des milliards de pages web,
+d’articles et de vid´ eos.
+Le paradoxe du choix :Trop de choix
+peut paralyser la d´ ecision et diminuer la
+satisfaction.
+
+--- Page 4 ---
+Le Probl` eme : La Surcharge Informationnelle
+
+
+--- Page 5 ---
+La Surcharge Informationnelle en ´Education
+Le probl` eme est particuli` erement aigu dans le contexte ´ educatif
+moderne :
+▶ MOOCs (Massive Open Online Courses) :Des milliers de
+cours disponibles sur des plateformes comme Coursera, edX.
+▶ OER (Open Educational Resources) :Des millions de
+ressources p´ edagogiques libres (manuels, vid´ eos, quiz).
+▶ Articles scientifiques :Une production exponentielle de
+nouvelles recherches.
+Question
+Comment un ´ etudiant ou un enseignant peut-il trouver la ressource
+la plus pertinente pour un besoin d’apprentissage sp´ ecifique?
+
+--- Page 6 ---
+Qu’est-ce qu’un Syst` eme de Recommandation?
+D´ efinition :Un syst` eme de recommandation (SR) est un outil
+logiciel et un ensemble d’algorithmes qui visent ` a fournir des
+suggestions pertinentes d’items ` a des utilisateurs.
+Source:Various aspects of user preference learning andrecommender
+systems- Alan Eckhardt
+L’objectif est defiltrer l’informationet de pr´ edire ce que
+l’utilisateur pourrait aimer.
+
+--- Page 7 ---
+Les Objectifs Multiples d’un SR
+Un bon syst` eme de recommandation cherche ` a:
+▶ Augmenter la pertinence :Aider les utilisateurs ` a trouver
+ce qu’ils cherchent.
+▶ Favoriser la d´ ecouverte (S´ erendipit´ e) :Aider les
+utilisateurs ` a d´ ecouvrir de nouveaux items qu’ils n’auraient
+pas cherch´ es par eux-mˆ emes.
+▶ Personnaliser l’exp´ erience :Adapter l’interface et le
+contenu ` a chaque utilisateur.
+▶ Am´ eliorer la satisfaction et l’engagement :Un utilisateur
+qui trouve du contenu pertinent est un utilisateur qui revient.
+▶ Augmenter la diversit´ e :´Eviter d’enfermer l’utilisateur dans
+une ”bulle de filtres” en ne lui proposant que des choses
+similaires.
+
+--- Page 8 ---
+Les Donn´ ees : Le Carburant des SR
+Les SR reposent sur l’analyse des interactions entre lesutilisateurs
+(U) et lesitems(I).
+La Matrice d’Utilit´ e (User-Item Matrix) :
+▶ Une matriceRde taillem×n, o` um=|U|etn=|I|.
+▶ L’entr´ eeRui repr´ esente l’interaction de l’utilisateuruavec
+l’itemi.
+R=
+
+
+i1 i2 i3 . . .i n
+u1 5 3 ?. . .1
+u2 4 ? ?. . .3
+... ... ...
+um ? 2 5. . .?
+
+
+Le but du jeu :Pr´ edire les valeurs manquantes (”?”).
+
+--- Page 9 ---
+Types de Feedback : Explicite vs. Implicite
+L’interactionR ui peut ˆ etre de deux natures:
+Feedback Explicite
+▶ L’utilisateur donne un avis
+direct et intentionnel.
+▶ Exemples : notes (1-5
+´ etoiles), ”J’aime” / ”Je
+n’aime pas”.
+▶ Avantage :Tr` es pr´ ecis,
+signal fort.
+▶ Inconv´ enient :Rare,
+demande un effort ` a
+l’utilisateur.
+Feedback Implicite
+▶ La pr´ ef´ erence est inf´ er´ ee des
+actions de l’utilisateur.
+▶ Exemples : clics, achats,
+temps pass´ e sur une page,
+visionnage d’une vid´ eo.
+▶ Avantage :Abondant,
+facile ` a collecter.
+▶ Inconv´ enient :Bruit´ e et
+ambigu (un clic n’est pas
+toujours un ”like”).
+
+--- Page 10 ---
+Taxonomie des Approches de Recommandation
+On distingue plusieurs grandes familles d’algorithmes:
+1.Recommandation Non-Personnalis´ ee (ou par Popularit´ e)
+▶ Recommande les items les plus populaires ` a tout le monde.
+▶ Simple, robuste, mais ne s’adapte pas aux goˆ uts individuels.
+2.Filtrage Bas´ e sur le Contenu (Content-Based Filtering)
+▶ ”Montre-moi plus de choses similaires ` a ce que j’ai aim´ e.”
+▶ Bas´ e sur les attributs des items (genre d’un film, mots-cl´ es
+d’un article).
+3.Filtrage Collaboratif (Collaborative Filtering)
+▶ ”Dis-moi ce que les gens qui me ressemblent ont aim´ e.”
+▶ Bas´ e uniquement sur la matrice d’interactions utilisateur-item.
+4.Syst` emes Hybrides
+▶ Combinent plusieurs approches pour pallier leurs faiblesses
+respectives.
+
+--- Page 11 ---
+Applications des SR dans l’ ´Education
+Les SR peuvent transformer l’exp´ erience d’apprentissage:
+▶ Recommandation de ressources p´ edagogiques :Sugg´ erer
+des articles, vid´ eos, ou chapitres de livre pour approfondir une
+notion.
+▶ Recommandation de parcours d’apprentissage :Proposer
+une s´ equence de cours ou de modules adapt´ ee au niveau et
+aux objectifs de l’´ etudiant.
+▶ Recommandation de pairs :Mettre en relation des
+´ etudiants ayant des comp´ etences compl´ ementaires pour un
+projet de groupe.
+▶ Recommandation de fili` eres ou de sp´ ecialisations :Aider
+les ´ etudiants ` a s’orienter en fonction de leurs r´ esultats et de
+leurs int´ erˆ ets.
+▶ Aide aux enseignants :Sugg´ erer des activit´ es p´ edagogiques
+adapt´ ees au profil de la classe.
+
+--- Page 12 ---
+Les Grands D´ efis des SR
+Deux probl` emes fondamentaux affectent la plupart des syst` emes:
+1. La Sparsit´ e des Donn´ ees (Data Sparsity)
+▶ La matrice utilisateur-item est extrˆ emement creuse : la plupart
+des utilisateurs n’ont interagi qu’avec une infime fraction des
+items disponibles (souvent>99% de la matrice est vide).
+▶ Il est donc difficile de trouver des utilisateurs ou des items
+avec suffisamment d’interactions en commun.
+▶ Formule de la sparsit´ e :Sparsity= 1− Nombre d’interactions
+|U|×|I|
+2. Le Probl` eme du D´ emarrage ` a Froid (Cold Start)
+▶ Nouvel utilisateur :Comment recommander ` a un utilisateur
+qui n’a encore aucune interaction?
+▶ Nouvel item :Comment recommander un item qui n’a
+encore re¸ cu aucune interaction?
+
+--- Page 13 ---
+Conclusion et Prochaines ´Etapes
+Ce qu’il faut retenir :
+▶ Les SR sont une r´ eponse ` a la surcharge informationnelle, y
+compris en ´ education.
+▶ Ils reposent sur l’analyse des interactions (explicites ou
+implicites) stock´ ees dans une matrice utilisateur-item.
+▶ Les approches principales sont bas´ ees sur la popularit´ e, le
+contenu et la collaboration.
+▶ Les d´ efis majeurs sont la sparsit´ e des donn´ ees et le probl` eme
+du d´ emarrage ` a froid.
+La semaine prochaine :
+▶ Plong´ ee au cœur duFiltrage Collaboratif, l’approche la plus
+influente.
+
+--- Page 14 ---
+R´ ef´ erences et Lectures Recommand´ ees
+Ricci, F., Rokach, L., & Shapira, B. (Eds.). (2022).
+Recommender Systems Handbook (3rd ed.). Springer.
+Aggarwal, C. C. (2016).Recommender Systems: The
+Textbook. Springer.
+Resnick, P., Iacovou, N., Suchak, M., Bergstrom, P., & Riedl,
+J. (1994). GroupLens: An open architecture for collaborative
+filtering of netnews. InProceedings of the 1994 ACM
+conference on Computer supported cooperative work.
+Urdaneta-Ponte, M. C., Mendez-Zorrilla, A., &
+Oleagordia-Ruiz, I. (2021). Recommendation systems for
+education: Systematic review.Electronics, 10(14), 1611.

@@ -1,0 +1,118 @@
+{
+  "conversation_id": "2c72ce30-4711-407f-a96f-44df1a96961d",
+  "cases": [
+    {
+      "id": "q001_collaborative_filtering",
+      "query": "Qu'est-ce que le filtrage collaboratif dans un systeme de recommandation ?",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "33cba989-53a1-5de6-b4b1-6045a1acc2bb",
+        "6e7188eb-7044-5ca9-8989-f227b004c4ee"
+      ]
+    },
+    {
+      "id": "q002_user_item_based_cf",
+      "query": "Quelle est la difference entre l'approche user-based et item-based collaborative filtering ?",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "33cba989-53a1-5de6-b4b1-6045a1acc2bb",
+        "f59b225b-11d1-540c-b110-b92339c559f2",
+        "094db03f-a702-5596-9ea7-8315cc71bde9"
+      ]
+    },
+    {
+      "id": "q003_ncf",
+      "query": "Explique Neural Collaborative Filtering NCF et son architecture.",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "a588270a-d1a7-5427-8485-f3453a3933e8",
+        "0331e77a-371d-5095-b311-01b7f23bd582"
+      ]
+    },
+    {
+      "id": "q004_autoencoders",
+      "query": "Comment les auto-encodeurs sont utilises pour le filtrage collaboratif ?",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "34ee01d7-9c9d-502c-b2c8-5f25817a5c1b"
+      ]
+    },
+    {
+      "id": "q005_sequential_recommendation",
+      "query": "Quels sont les problemes des RNN classiques et le role de LSTM ou GRU en recommandation sequentielle ?",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "0331e77a-371d-5095-b311-01b7f23bd582",
+        "34ee01d7-9c9d-502c-b2c8-5f25817a5c1b"
+      ]
+    },
+    {
+      "id": "q006_transformers_deep_learning",
+      "query": "Pourquoi utiliser le deep learning et les transformers pour les systemes de recommandation ?",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "34ee01d7-9c9d-502c-b2c8-5f25817a5c1b",
+        "38621b2e-2794-537c-b988-00536b785566"
+      ]
+    },
+    {
+      "id": "q007_tfidf",
+      "query": "Explique le modele vectoriel TF-IDF dans le filtrage base sur le contenu.",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "0dcea5c7-979b-503e-9db5-a17d2bfdc022",
+        "5cb8e139-fcd3-556f-b591-9a438ff51d0a",
+        "c2479d13-ebd4-57c6-bbc2-9062d8f4ac34"
+      ]
+    },
+    {
+      "id": "q008_user_profile_cbf",
+      "query": "Comment construire le profil utilisateur dans un systeme content-based filtering ?",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "0dcea5c7-979b-503e-9db5-a17d2bfdc022",
+        "c2479d13-ebd4-57c6-bbc2-9062d8f4ac34"
+      ]
+    },
+    {
+      "id": "q009_cbf_advantages_limits",
+      "query": "Quels sont les avantages et les inconvenients du filtrage base sur le contenu CBF ?",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "75b2eb47-0d0b-5bc1-a237-c7b01cf12926",
+        "0dcea5c7-979b-503e-9db5-a17d2bfdc022"
+      ]
+    },
+    {
+      "id": "q010_precision_recall",
+      "query": "Que signifient Precision@k et Rappel@k pour evaluer un systeme de recommandation ?",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "24c5b5e9-e90c-503d-8c1a-17838da9592c",
+        "0e65923e-9551-5193-859b-92d64c7576ad",
+        "38621b2e-2794-537c-b988-00536b785566"
+      ]
+    },
+    {
+      "id": "q011_ndcg",
+      "query": "Comment calculer DCG, IDCG et nDCG@k ?",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "24c5b5e9-e90c-503d-8c1a-17838da9592c",
+        "923f8a12-783b-5ed8-b1f1-6982e3909a70",
+        "fa6c428b-35df-5b67-8b7f-66763c95e709",
+        "4869a0f8-9cb4-5597-a12e-8b99c678cbdf"
+      ]
+    },
+    {
+      "id": "q012_popularity_bias_serendipity",
+      "query": "Explique le biais de popularite, la nouveaute et la serendipite dans les recommandations.",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "24c5b5e9-e90c-503d-8c1a-17838da9592c",
+        "ace4a324-3e3f-5ad0-b5c4-ba2c2e2883ce",
+        "3386fc60-2f69-5237-85bb-d2d29c0f79ee"
+      ]
+    }
+  ]
+}

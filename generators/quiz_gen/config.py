@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -8,6 +9,7 @@ class Settings(BaseSettings):
         env_prefix="QUIZ_GEN_",
         env_file=".env",
         extra="ignore",
+        populate_by_name=True,
     )
 
     generator_id: str = "quiz_gen"
@@ -17,10 +19,30 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8002
 
-    ollama_host: str = "http://localhost:11434"
-    chat_model: str = "llama3.1:8b-instruct-q4_K_M"
-    extraction_model: str = "llama3.1:8b-instruct-q4_K_M"
-    generation_model: str = "llama3.1:8b-instruct-q4_K_M"
+    ollama_host: str = Field(
+        default="http://localhost:11434",
+        validation_alias=AliasChoices("QUIZ_GEN_OLLAMA_HOST", "OLLAMA_HOST"),
+    )
+    chat_model: str = Field(
+        default="llama3.1:8b-instruct-q4_K_M",
+        validation_alias=AliasChoices("QUIZ_GEN_CHAT_MODEL", "OLLAMA_CHAT_MODEL"),
+    )
+    extraction_model: str = Field(
+        default="llama3.1:8b-instruct-q4_K_M",
+        validation_alias=AliasChoices(
+            "QUIZ_GEN_EXTRACTION_MODEL",
+            "OLLAMA_EXTRACTION_MODEL",
+            "OLLAMA_CHAT_MODEL",
+        ),
+    )
+    generation_model: str = Field(
+        default="llama3.1:8b-instruct-q4_K_M",
+        validation_alias=AliasChoices(
+            "QUIZ_GEN_GENERATION_MODEL",
+            "OLLAMA_GENERATION_MODEL",
+            "OLLAMA_CHAT_MODEL",
+        ),
+    )
 
     chat_temperature: float = 0.4
     extraction_temperature: float = 0.1

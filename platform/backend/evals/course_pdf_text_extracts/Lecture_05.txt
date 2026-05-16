@@ -1,0 +1,181 @@
+
+
+--- Page 1 ---
+Syst` emes de Recommandation et Blockchain
+Semaine 5 : ´Evaluation Avanc´ ee,´Ethique et D´ eploiement
+Pr. Abdelaaziz Hessane
+´Ecole Normale Sup´ erieure de Mekn` es
+Master ”Syst` emes Intelligents pour l’´Education”
+December 10, 2025
+
+--- Page 2 ---
+Plan de la s´ eance
+1.Au-del` a de la RMSE :Pourquoi l’erreur de pr´ ediction ne
+suffit pas.
+2.M´ etriques de Classement (Rank-Aware Metrics) :
+▶ Pr´ ecision@k et Rappel@k.
+▶ Focus sur lenDCG(normalized Discounted Cumulative Gain).
+▶ Exemple de calcul d´ etaill´ e du nDCG.
+3.Au-del` a de la Pr´ ecision :Diversit´ e, S´ erendipit´ e et
+Nouveaut´ e.
+4. ´Ethique et Biais en ´Education :
+▶ Bulles de filtres ´ educatives.
+▶ Biais de popularit´ e et d’exposition.
+5.D´ eploiement et ´Evaluation en Ligne :Du mod` ele ` a l’API
+(A/B Testing).
+
+--- Page 3 ---
+Pourquoi la RMSE ne suffit pas?
+Jusqu’` a pr´ esent, nous avons minimis´ e l’erreur entre la note pr´ edite
+(ˆrui) et la note r´ eelle (rui).
+RMSE=
+r
+1
+N
+X
+(ˆrui −r ui)2
+Le probl` eme :
+▶ Dans la vraie vie, on ne pr´ edit pas des notes, on fournit une
+liste ordonn´ eede recommandations (Top-N).
+▶ Un utilisateur ne regarde que les premiers r´ esultats (Top-5 ou
+Top-10).
+▶ Une petite erreur sur le 1er item est beaucoup plus grave
+qu’une grande erreur sur le 100` eme item. La RMSE ne fait
+pas cette distinction.
+
+--- Page 4 ---
+M´ etriques de D´ ecision : Pr´ ecision@k et Rappel@k
+On fixe un seuilk(ex:k= 10). On consid` ere qu’un item est
+”pertinent” s’il est r´ eellement aim´ e par l’utilisateur (ex: note>3
+ou clic).
+Pr´ ecision@k :Parmi leskitems recommand´ es, combien sont
+pertinents?
+P@k= Nombre d’items pertinents dans le Top-k
+k
+Rappel@k (Recall) :Parmitousles items pertinents possibles
+pour cet utilisateur, combien ont ´ et´ e trouv´ es dans le Top-k?
+R@k= Nombre d’items pertinents dans le Top-k
+Nombre total d’items pertinents pour l’utilisateur
+Note : En recommandation, le Rappel est souvent tr` es bas car il y
+a trop d’items pertinents possibles.
+
+--- Page 5 ---
+La M´ etrique Reine : nDCG
+La Pr´ ecision@k est binaire (pertinent / pas pertinent). Elle ne
+prend pas en compte l’ordrepr´ ecis. LenDCG (normalized
+Discounted Cumulative Gain)prend en compte :
+1. La pertinence gradu´ ee (5 ´ etoiles c’est mieux que 3).
+2. La position dans la liste (un bon item en position 1 vaut plus
+qu’en position 5).
+La formule repose sur trois ´ etapes :
+1.CG (Cumulative Gain) :Somme des pertinences.
+2.DCG (Discounted CG) :Somme pond´ er´ ee par la position
+(p´ enalit´ e logarithmique).
+3.nDCG :Normalisation par rapport au classement id´ eal
+(IDCG).
+
+--- Page 6 ---
+Exemple de Calcul nDCG (1/3)
+Sc´ enario :Notre syst` eme recommande 5 cours ` a un ´ etudiant.
+Voici les vraies notes (pertinence r´ eellerel i) que l’´ etudiant
+donnerait ` a ces cours :
+Position (i) Cours Recommand´ e Vraie Note (rel i)
+1 Python Basique 3
+2 Machine Learning 2
+3 Data Science 3
+4 Java Avanc´ e 0(Non pertinent)
+5 Web Design 1
+´Etape 1 : Calculer le DCG (Discounted Cumulative Gain)
+DCGk =
+kX
+i=1
+2reli −1
+log2(i+ 1)
+
+--- Page 7 ---
+Exemple de Calcul nDCG (2/3)
+Calculons terme par terme (k= 5) :
+▶ i= 1: 23−1
+log2(2) = 7
+1 = 7.0
+▶ i= 2: 22−1
+log2(3) = 3
+1.58 ≈1.89
+▶ i= 3: 23−1
+log2(4) = 7
+2 = 3.5
+▶ i= 4: 20−1
+log2(5) = 0
+2.32 = 0
+▶ i= 5: 21−1
+log2(6) = 1
+2.58 ≈0.39
+DCG= 7.0 + 1.89 + 3.5 + 0 + 0.39 =12.78
+Est-ce un bon score? Impossible ` a dire sans normaliser. Il nous
+faut le scoreId´ eal(IDCG).
+
+--- Page 8 ---
+Exemple de Calcul nDCG (3/3)
+´Etape 2 : Calculer l’IDCG (Ideal DCG)On r´ eorganise les notes
+r´ eelles dans l’ordre d´ ecroissant parfait (3, 3, 2, 1, 0). C’est le
+meilleur classement possible.
+▶ i= 1 (Note 3): 7.0
+▶ i= 2 (Note 3): 23−1
+log2(3) = 7
+1.58 ≈4.43
+▶ i= 3 (Note 2): 22−1
+log2(4) = 3
+2 = 1.5
+▶ i= 4 (Note 1): 21−1
+log2(5) ≈0.43
+▶ i= 5 (Note 0): 0
+IDCG= 7.0 + 4.43 + 1.5 + 0.43 + 0 =13.36
+´Etape 3 : Calculer le nDCG
+nDCG= DCG
+IDCG = 12.78
+13.36 ≈0.956
+Le syst` eme est excellent (score proche de 1), bien que le 2` eme et
+3` eme item soient invers´ es.
+
+--- Page 9 ---
+Au-del` a de la Pr´ ecision :´Ethique et Diversit´ e
+Un syst` eme pr´ ecis peut ˆ etre nuisible.
+1. La Bulle de Filtres (Filter Bubble) :
+▶ Si un ´ etudiant aime les vid´ eos courtes et faciles, l’algo ne lui
+recommandera que ¸ ca.
+▶ Risque :Empˆ echer la progression vers des contenus
+complexes n´ ecessaires ` a l’apprentissage.
+▶ Solution :Forcer laDiversit´ eet laS´ erendipit´ e(d´ ecouverte
+inattendue) dans les listes.
+2. Le Biais de Popularit´ e :
+▶ Les algos (surtout CF) favorisent les items populaires (”The
+rich get richer”).
+▶ En ´ education, des ressources p´ edagogiques excellentes mais
+peu connues peuvent devenir invisibles.
+
+--- Page 10 ---
+D´ eploiement et´Evaluation en Ligne
+Une fois le mod` ele valid´ e hors-ligne (nDCG), il faut le tester avec
+de vrais utilisateurs.
+A/B Testing :
+▶ Groupe A (T´ emoin) : Recommandations actuelles (ou
+popularit´ e).
+▶ Groupe B (Test) : Nouveau mod` ele (SVD/Deep Learning).
+▶ On compare les m´ etriques m´ etier : Taux de compl´ etion des
+cours, notes aux examens, temps pass´ e.
+Architecture Technique :
+▶ Le mod` ele est souvent expos´ e via uneAPI REST(ex:
+FastAPI, Flask).
+▶ Le frontend (site web) envoie l’ID utilisateur ` a l’API→L’API
+renvoie la liste JSON des ID cours recommand´ es.
+
+--- Page 11 ---
+Conclusion du Module ”Syst` emes de Recommandation”
+Synth` ese :
+1. Nous avons vu comment passer de simples statistiques
+(Popularit´ e) ` a l’intelligence collective (CF) et aux r´ eseaux de
+neurones (Deep Learning).
+2. Nous avons appris que la pr´ ecision (RMSE) ne suffit pas :
+l’ordre (nDCG) et la diversit´ e comptent.
+3. L’ing´ enieur p´ edagogique doit veiller ` a ce que l’algorithme
+serve l’apprentissage, et non l’inverse (attention aux biais).

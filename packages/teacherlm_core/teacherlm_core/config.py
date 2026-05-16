@@ -27,7 +27,7 @@ class CoreSettings(BaseSettings):
     qdrant_collection: str = "teacherlm_chunks"
 
     # --- Embedding / reranking ---
-    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    embedding_model: str = "intfloat/multilingual-e5-large"
     reranker_model: str = "BAAI/bge-reranker-base"
 
     # --- Retrieval defaults ---

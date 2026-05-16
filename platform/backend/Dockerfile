@@ -29,12 +29,24 @@ RUN pip install -e /app/packages/teacherlm_core
 COPY platform/backend/requirements.txt /app/platform/backend/requirements.txt
 RUN pip install -r /app/platform/backend/requirements.txt
 
-# Fastembed/HF cache lives on a named volume mounted by docker-compose so the
-# embedding model (~80 MB) persists across container rebuilds — the Docker
-# build sandbox on this host can't reach HF Hub, so we download lazily on
-# first use from within the running container and keep it across recreations.
-ENV HF_HOME=/opt/hf_cache \
-    FASTEMBED_CACHE_PATH=/opt/fastembed_cache
+# Bake the default embedding and reranker models into the backend image so first
+# upload/search does not block on a Hugging Face download. Keep the cache inside
+# the image; do not mount over these paths at runtime or the baked files will be
+# hidden.
+ARG EMBEDDING_MODEL=intfloat/multilingual-e5-large
+ARG PREFETCH_EMBEDDING_MODEL=true
+ARG RETRIEVAL_RERANKER_MODEL=BAAI/bge-reranker-base
+ARG PREFETCH_RERANKER_MODEL=true
+ENV EMBEDDING_MODEL=${EMBEDDING_MODEL} \
+    RETRIEVAL_RERANKER_MODEL=${RETRIEVAL_RERANKER_MODEL} \
+    HF_HOME=/app/.cache/hf \
+    FASTEMBED_CACHE_PATH=/app/.cache/fastembed
+RUN if [ "$PREFETCH_EMBEDDING_MODEL" = "true" ]; then \
+        python -c "import os; from fastembed import TextEmbedding; TextEmbedding(os.environ['EMBEDDING_MODEL'])"; \
+    fi
+RUN if [ "$PREFETCH_RERANKER_MODEL" = "true" ]; then \
+        python -c "import os; from fastembed.rerank.cross_encoder import TextCrossEncoder; TextCrossEncoder(model_name=os.environ['RETRIEVAL_RERANKER_MODEL'])"; \
+    fi
 
 # Copy the rest of the backend source.
 COPY platform/backend /app/platform/backend

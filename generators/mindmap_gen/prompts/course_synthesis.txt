@@ -16,6 +16,8 @@ Quality rules:
 - Use ONLY information that appears in the extracted outlines.
 - Keep the same language as the source materials.
 - Cover the whole course, not just the first or most recent lecture.
+- Preserve coverage across all modules. Do not let one long module, guide, or
+  supplemental reference dominate the final map.
 - Merge duplicates and near-duplicates.
 - Convert lecture/week/file titles into conceptual modules when possible.
 - Keep siblings at the same abstraction level.
@@ -25,10 +27,15 @@ Quality rules:
 - Do not force any subject template. For history, chronology may be best; for
   geography, regions/processes may be best; for math, definitions/methods/
   formulas may be best; for computer science, concepts/algorithms/evaluation
-  may be best.
+  may be best; for medicine, anatomy/pathology/treatment may be best; for law,
+  doctrines/cases/arguments may be best; for literature, themes/characters/
+  movements may be best.
 - Avoid generic branches such as "Introduction", "Conclusion", "Concepts",
   "Applications", "Other", "Python", "Mathematics", or "Computer Science"
   unless the extracted course truly uses one as a major section.
 - Prefer concise study labels over long slide titles.
+- If partial outlines come from multiple documents, choose main branches that
+  cover the whole course progression rather than copying a single document's
+  title as the root.
 
 Return ONLY the structured hierarchy.

@@ -48,7 +48,7 @@ export interface ModelSettings {
 export const DEFAULT_MODEL_SETTINGS: ModelSettings = {
   enabled: false,
   provider: "ollama",
-  model: "llama3.1:8b-instruct-q4_K_M",
+  model: "gemma4:e2b",
   baseUrl: "http://host.docker.internal:11434",
   apiKey: "",
 };

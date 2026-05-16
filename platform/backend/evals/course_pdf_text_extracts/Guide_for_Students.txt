@@ -1,0 +1,610 @@
+
+
+--- Page 1 ---
+Guide Complet d’ ´Evaluation des Syst` emes de
+Recommandation
+En ´Education : Choisir la Bonne M´ etrique
+Pr. Abdelaaziz Hessane
+Master ”Syst` emes Intelligents pour l’´Education”
+´Ecole Normale Sup´ erieure de Mekn` es
+Novembre 2025
+R´ esum´ e
+Objectif :Ce guide expose commentle choix de la bonne m´ etrique d’´ evaluation est
+crucialdans un syst` eme de recommandation p´ edagogique.
+`A travers des exemples concrets dans le contexte ´ educatif, nous d´ emontrerons que deux syst` emes
+peuvent avoir des performances apparemment similaires (ex : mˆ eme RMSE), mais produire des
+r´ esultats radicalement diff´ erents lorsque mesur´ es avec lanDCG, ce qui affecte directement
+l’apprentissage.
+Point cl´ e :La m´ etrique n’est pas neutre—elle fa¸ conne le comportement du syst` eme et ses
+impacts p´ edagogiques.
+1
+
+--- Page 2 ---
+Guide d’ ´Evaluation des Syst` emes de Recommandation Master SIE - ENS Mekn` es
+Table des mati` eres
+1 Introduction : Au-del` a de la Notation 4
+1.1 Le Probl` eme Fondamental . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 4
+2 Pourquoi la RMSE Ne Suffit Pas ? 4
+2.1 D´ efinition et Limitation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 4
+2.2 Limitations Critiques en ´Education . . . . . . . . . . . . . . . . . . . . . . . . . . . . 4
+2.2.1 Exemple Num´ erique . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 5
+3 M´ etriques de D´ ecision : Pr´ ecision@k et Rappel@k 5
+3.1 D´ efinitions . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 5
+3.1.1 Pr´ ecision@k . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 5
+3.1.2 Rappel@k . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 5
+3.2 Exemple P´ edagogique : Recommandation de Cours . . . . . . . . . . . . . . . . . . . 5
+3.2.1 Calcul de Pr´ ecision@10 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+3.2.2 Calcul de Rappel@10 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+3.3 Limitation de Pr´ ecision@k et Rappel@k . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+4 La M´ etrique Reine : nDCG 6
+4.1 Vue d’Ensemble . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+4.2 Construction ´Etape par ´Etape . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 7
+4.2.1 1. CG (Cumulative Gain) . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 7
+4.2.2 2. DCG (Discounted Cumulative Gain) . . . . . . . . . . . . . . . . . . . . . . 7
+4.2.3 3. IDCG (Ideal DCG) . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 7
+4.2.4 4. nDCG (Normalized DCG) . . . . . . . . . . . . . . . . . . . . . . . . . . . . 7
+4.3 Exemple D´ etaill´ e Complet . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 8
+4.3.1 Contexte . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 8
+4.3.2 ´Etape 1 : Calculer le DCG . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 8
+4.3.3 ´Etape 2 : Calculer l’IDCG . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 8
+4.3.4 ´Etape 3 : Calculer le nDCG . . . . . . . . . . . . . . . . . . . . . . . . . . . . 9
+4.4 R´ ecapitulatif des Formules . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 9
+5 Impact Critique : Comparaison des M´ etriques 9
+5.1 Deux Syst` emes, Une D´ ecision M´ etrique . . . . . . . . . . . . . . . . . . . . . . . . . . 9
+5.1.1 Donn´ ees R´ eelles . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 9
+5.1.2 Calcul avec la RMSE . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 10
+5.1.3 Calcul avec Pr´ ecision@5 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 10
+5.1.4 Calcul avec nDCG@5 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 10
+6 Au-del` a de nDCG : Autres M´ etriques Contextuelles 11
+6.1 Diversit´ e . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 11
+6.1.1 D´ efinition . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 11
+6.1.2 Exemple ´Educatif . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 11
+6.2 S´ erendipit´ e . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 12
+6.3 Novaut´ e (Novelty) . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 12
+7 Consid´ erations ´Ethiques et P´ edagogiques 12
+7.1 La Bulle de Filtres en ´Education . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 12
+7.2 Biais de Popularit´ e . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 12
+2
+
+--- Page 3 ---
+Guide d’ ´Evaluation des Syst` emes de Recommandation Master SIE - ENS Mekn` es
+8 D´ eploiement et ´Evaluation en Ligne 13
+8.1 Du Mod` ele au Monde R´ eel . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 13
+8.1.1 Architecture . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 13
+8.1.2 Exemple : Plateforme de Cours en Ligne SISE . . . . . . . . . . . . . . . . . . 13
+9 Synth` ese et Recommandations 13
+9.1 Choix de M´ etrique par Cas d’Usage . . . . . . . . . . . . . . . . . . . . . . . . . . . . 13
+9.2 Checklist pour ´Evaluer un Syst` eme de Recommandation . . . . . . . . . . . . . . . . 13
+9.3 La M´ etrique Fa¸ conne l’Algorithme . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 14
+10 Conclusion 14
+3
+
+--- Page 4 ---
+Guide d’ ´Evaluation des Syst` emes de Recommandation Master SIE - ENS Mekn` es
+1 Introduction : Au-del` a de la Notation
+En apprentissage automatique et en syst` emes de recommandation, nous avons longtemps utilis´ e
+des m´ etriques simples et g´ en´ erales : l’erreur quadratique moyenne (RMSE), l’erreur absolue moyenne
+(MAE), etc.
+1.1 Le Probl` eme Fondamental
+Imaginez un syst` eme qui recommande des cours ` a un ´ etudiant en Master≪ Syst` emes Intelligents
+pour l’ ´Education ≫. Supposons que le vrai classement id´ eal (ce que l’´ etudiant aimerait r´ eellement)
+est :
+Rang 1 : Apprentissage Profond(tr` es pertinent)
+Rang 2 : Optimisation(pertinent)
+Rang 3 : Visualisation des Donn´ ees(peu pertinent)
+Consid´ erez deux syst` emes de recommandation diff´ erents :
+Position Id´ eal Syst` eme A Syst` eme B
+1 Apprentissage Profond (5/5) Visualisation (4/5) Optimisation (5/5)
+2 Optimisation (4/5) Optimisation (4/5) Apprentissage Profond (4/5)
+3 Visualisation (3/5) Apprentissage Profond (5/5) Visualisation (3/5)
+Table 1– Comparaison de deux classements alternatifs.
+Question cruciale :Si on utilise seulement la RMSE, les deux syst` emes semblent ´ equivalents
+(mˆ eme ensemble de notes, ordre diff´ erent). Maispour l’´ etudiant, voirApprentissage
+Profond en rang 3 au lieu de rang 1est une grave erreur p´ edagogique !
+C’est pourquoi en recommandation p´ edagogique, nous avons besoin de m´ etriquessensibles au
+rang(rank-aware metrics), pas seulement ` a la pr´ ediction de notes.
+2 Pourquoi la RMSE Ne Suffit Pas ?
+2.1 D´ efinition et Limitation
+La RMSE (Root Mean Square Error) est d´ efinie comme :
+RMSE =
+s
+1
+N
+X
+u,i
+(ˆru,i −r u,i)2 (1)
+o` u :
+— ˆru,i = note pr´ edite par le syst` eme
+—r u,i = vraie note donn´ ee par l’utilisateur
+—N= nombre total de pr´ edictions
+2.2 Limitations Critiques en ´Education
+Probl` eme 1 : Pas de Distinction de Rang
+La RMSE traite une mauvaise pr´ ediction en position 1 identiquement ` a celle en position
+100. Or, un ´ etudiant regarde surtout les5 ` a 10 premiers r´ esultats.
+4
+
+--- Page 5 ---
+Guide d’ ´Evaluation des Syst` emes de Recommandation Master SIE - ENS Mekn` es
+Probl` eme 2 : Nous Ne Recommandons Pas des Notes, des Listes
+En pratique, le syst` eme ne pr´ edit pas une note. Il g´ en` ere unclassement ordonn´ ee
+(Top-N ranking). Un ´ etudiant voit : “Voici les 5 cours recommand´ es, dans cet ordre”.
+Probl` eme 3 : Sensibilit´ e aux Extrˆ emes
+RMSE p´ enalise les grandes erreurs de fa¸ con quadratique. Un cours tr` es impopulaire mal
+pr´ edit peut dominer la m´ etrique, alors qu’il n’affecte pas l’exp´ erience utilisateur.
+2.2.1 Exemple Num´ erique
+Supposons 3 pr´ edictions :
+Vraie Note Pr´ ediction A Pr´ ediction B
+Cours 1 (visible en rank 1) 5 3 5
+Cours 2 (invisible, rank 100) 5 5 3
+RMSE
+q
+(3−5)2+(5−5)2
+2 = 1.41
+q
+(5−5)2+(3−5)2
+2 = 1.41
+Conclusion :Les deux syst` emes ont lamˆ eme RMSE, mais :
+—Syst` eme A: Montre mal le cours important (rang 1)→mauvais pour l’´ etudiant
+—Syst` eme B: Montre bien le cours important (rang 1)→bon pour l’´ etudiant
+RMSE ne capture pas cette diff´ erence cruciale !
+3 M´ etriques de D´ ecision : Pr´ ecision@k et Rappel@k
+3.1 D´ efinitions
+Ces m´ etriques se concentrent sur le “top-k” : leskpremiers r´ esultats que l’utilisateur verra.
+3.1.1 Pr´ ecision@k
+P@k= Nombre d’items pertinents dans le Top-k
+k (2)
+Interpr´ etation :“Sur leskcours recommand´ es, combien sont vraiment pertinents (i.e., int´ eressent
+l’´ etudiant) ?”
+3.1.2 Rappel@k
+R@k= Nombre d’items pertinents dans le Top-k
+Nombre total d’items pertinents pour l’utilisateur (3)
+Interpr´ etation :“Parmi tous les cours que l’´ etudiant aimerait vraiment, combien avons-nous
+trouv´ es dans le Top-k ?”
+3.2 Exemple P´ edagogique : Recommandation de Cours
+Contexte :Un ´ etudiant en Master SISE consulte la plateforme. Il y a 200 cours disponibles.
+Nous recommandons le Top-10.
+Parmi la base d’apprentissage, nous savons que cet ´ etudiant aime typiquement les do-
+maines suivants (marqu´ es comme pertinents) :
+— Apprentissage Profond
+5
+
+--- Page 6 ---
+Guide d’ ´Evaluation des Syst` emes de Recommandation Master SIE - ENS Mekn` es
+— Optimisation
+— Traitement du Langage Naturel (NLP)
+— Syst` emes de Recommandation
+— Vision par Ordinateur
+Total :5 cours vraiment pertinentspour lui.
+3.2.1 Calcul de Pr´ ecision@10
+Notre syst` eme recommande (Top-10) :
+1. Apprentissage Profond (pertinent)
+2. Visualisation 3D (non pertinent)
+3. Optimisation (pertinent)
+4. Graphiques (non pertinent)
+5. Traitement du Langage Naturel (pertinent)
+6. Infographie (non pertinent)
+7. Syst` emes de Recommandation (pertinent)
+8. G´ eom´ etrie Computationnelle (non pertinent)
+9. Vision par Ordinateur (pertinent)
+10. Statistiques Avanc´ ees (non pertinent)
+P@10 = 5
+10 = 0.5 = 50% (4)
+Interpr´ etation :Sur les 10 cours recommand´ es, 50% sont vraiment pertinents pour cet ´ etudiant.
+3.2.2 Calcul de Rappel@10
+R@10 = 5
+5 = 1.0 = 100% (5)
+Interpr´ etation :Tous les 5 cours pertinents pour l’´ etudiant apparaissent dans le Top-10. Ex-
+cellent !
+3.3 Limitation de Pr´ ecision@k et Rappel@k
+Le Probl` eme : Binaire, Pas de Gradation
+Pr´ ecision@k et Rappel@k consid` erent un cours soit “pertinent” (1), soit “non pertinent”
+(0).
+Ils ignorent :
+— Que Apprentissage Profond (note 5) estbeaucoup plus importantque Traitement
+NLP (note 4)
+— Que la position compte : un cours excellent en position 1 vaut plus qu’en position 10
+Pour capturer ces nuances, nous avons besoin dunDCG.
+4 La M´ etrique Reine : nDCG
+4.1 Vue d’Ensemble
+LenDCG(normalized Discounted Cumulative Gain) est le standard industry en recommandation
+car il capture :
+6
+
+--- Page 7 ---
+Guide d’ ´Evaluation des Syst` emes de Recommandation Master SIE - ENS Mekn` es
+1.Pertinence gradu´ ee: Un cours avec note 5 ¿ cours avec note 3
+2.Position: Rang 1 vaut plus que rang 5 (p´ enalit´ e logarithmique)
+3.Normalisation: Permet la comparaison entre utilisateurs
+4.2 Construction ´Etape par ´Etape
+Le nDCG repose sur trois concepts imbriqu´ es :
+4.2.1 1. CG (Cumulative Gain)
+CG k =
+kX
+i=1
+reli (6)
+o` u reli est la pertinence (note ou score) dui-` eme item.
+C’est simplement la somme des pertinences deskpremiers items.
+4.2.2 2. DCG (Discounted Cumulative Gain)
+DCG k =
+kX
+i=1
+2reli −1
+log2(i+ 1) (7)
+o` u :
+— Le num´ erateur 2reli −1pond` ere la pertinence de mani` ere exponentielle
+— Si rel = 0 : 2 0 −1 = 0
+— Si rel = 1 : 2 1 −1 = 1
+— Si rel = 2 : 2 2 −1 = 3
+— Si rel = 3 : 2 3 −1 = 7 (bien mieux !)
+— Si rel = 5 : 2 5 −1 = 31 (excellent !)
+— Le d´ enominateur log2(i+ 1)p´ enalise les positions tardives
+— Position 1 (i= 1) : log 2(2) = 1→pas de p´ enalit´ e
+— Position 2 (i= 2) : log 2(3)≈1.585→faible p´ enalit´ e
+— Position 5 (i= 5) : log 2(6)≈2.585→p´ enalit´ e moyenne
+— Position 10 (i= 10) : log 2(11)≈3.459→forte p´ enalit´ e
+Intuition :Un bon cours (haute pertinence) en premi` ere position est r´ ecompens´ e. Un bon cours
+en position 10 l’est moins. Un mauvais cours n’ajoute rien.
+4.2.3 3. IDCG (Ideal DCG)
+IDCG k = max(DCGk) = DCG d’un classement parfait (8)
+Nous r´ eorganisons les vraies pertinences de l’utilisateurdans l’ordre id´ eal d´ ecroissant, puis
+calculons le DCG correspondant.
+4.2.4 4. nDCG (Normalized DCG)
+nDCGk = DCG k
+IDCG k
+(9)
+Cela normalise le score entre 0 et 1, o` u :
+—1.0= classement parfait (nous avons devin´ e l’ordre exact des pr´ ef´ erences)
+—0.0= classement catastrophique
+—0.5-0.9= bon compromis
+7
+
+--- Page 8 ---
+Guide d’ ´Evaluation des Syst` emes de Recommandation Master SIE - ENS Mekn` es
+4.3 Exemple D´ etaill´ e Complet
+4.3.1 Contexte
+Un syst` eme de recommandation de cours recommande 5 cours ` a un ´ etudiant. Voici les vraies
+pertinences (notes que l’´ etudiant donnerait) :
+Position (i) Cours Recommand´ e Vraie Pertinence (rel)
+1 Apprentissage Profond 5
+2 Web Design 2
+3 Bases de Donn´ ees 5
+4 Infographie 0
+5 Optimisation Math´ ematique 1
+Table 2– Recommandations avec vraies pertinences.
+4.3.2 ´Etape 1 : Calculer le DCG
+DCG 5 =
+5X
+i=1
+2reli −1
+log2(i+ 1) (10)
+Calculons terme par terme :
+—i=1(rel=5) :
+25 −1
+log2(2) = 31
+1 = 31.0 (11)
+—i=2(rel=2) :
+22 −1
+log2(3) = 3
+1.585 ≈1.893 (12)
+—i=3(rel=5) :
+25 −1
+log2(4) = 31
+2 = 15.5 (13)
+—i=4(rel=0) :
+20 −1
+log2(5) = 0
+2.322 = 0 (14)
+—i=5(rel=1) :
+21 −1
+log2(6) = 1
+2.585 ≈0.387 (15)
+DCG 5 = 31.0 + 1.893 + 15.5 + 0 + 0.387 = 48.78 (16)
+4.3.3 ´Etape 2 : Calculer l’IDCG
+Nous r´ eorganisons les vraies pertinences dans l’ordre d´ ecroissant : (5,5,2,1,0).
+C’est le classementparfait: les deux cours les plus pertinents en premier, puis d´ ecroissant.
+—i=1(rel=5) :
+25 −1
+log2(2) = 31
+1 = 31.0 (17)
+—i=2(rel=5) :
+25 −1
+log2(3) = 31
+1.585 ≈19.554 (18)
+8
+
+--- Page 9 ---
+Guide d’ ´Evaluation des Syst` emes de Recommandation Master SIE - ENS Mekn` es
+—i=3(rel=2) :
+22 −1
+log2(4) = 3
+2 = 1.5 (19)
+—i=4(rel=1) :
+21 −1
+log2(5) = 1
+2.322 ≈0.431 (20)
+—i=5(rel=0) :
+20 −1
+log2(6) = 0
+2.585 = 0 (21)
+IDCG 5 = 31.0 + 19.554 + 1.5 + 0.431 + 0 = 52.485 (22)
+4.3.4 ´Etape 3 : Calculer le nDCG
+nDCG5 = DCG 5
+IDCG 5
+= 48.78
+52.485 ≈0.930 (23)
+Interpr´ etation :
+nDCG@5 = 0.930 (93%)
+Cela signifie que le classement obtenu est ` a 93% aussi bon que le classement parfait.
+C’est excellent !
+Pourquoi pas 100% ?Parce que nous avons invers´ e les deux cours les plus pertinents
+(Apprentissage Profond et Bases de Donn´ ees). L’ordre compte.
+4.4 R´ ecapitulatif des Formules
+Formule Utilit´ e
+CG k = Pk
+i=1 reli Somme brute des pertinences
+DCG k = Pk
+i=1
+2reli −1
+log2(i+1) Cumul ajust´ e par position
+IDCG k = meilleur possibleDCG k R´ ef´ erence pour normaliser
+nDCGk = DCG k
+IDCG k
+Score entre 0 et 1
+5 Impact Critique : Comparaison des M´ etriques
+5.1 Deux Syst` emes, Une D´ ecision M´ etrique
+Imaginons un cas r´ ealiste : deux syst` emes de recommandation p´ edagogiques concurrents (Syst` eme
+Alpha et Syst` eme Beta). Tous deux recommandent 5 cours ` a un ´ etudiant du Master SISE.
+5.1.1 Donn´ ees R´ eelles
+Vraies pertinences (objectifs p´ edagogiques) :
+— Apprentissage Profond : 5 (essentiel pour la sp´ ecialisation)
+— Optimisation : 4 (tr` es importante)
+— Traitement NLP : 5 (essentiel)
+— Infographie : 1 (hors programme)
+— Statistiques Avanc´ ees : 3 (utile)
+9
+
+--- Page 10 ---
+Guide d’ ´Evaluation des Syst` emes de Recommandation Master SIE - ENS Mekn` es
+Rang Syst` eme Alpha Syst` eme Beta
+1 Infographie (rel=1) Apprentissage Profond (rel=5)
+2 Apprentissage Profond (rel=5) Traitement NLP (rel=5)
+3 Traitement NLP (rel=5) Optimisation (rel=4)
+4 Optimisation (rel=4) Statistiques (rel=3)
+5 Statistiques (rel=3) Infographie (rel=1)
+Table 3– Classements des deux syst` emes.
+5.1.2 Calcul avec la RMSE
+Hypoth´ etiquement, si nous pr´ edisions des notes individuelles :
+RMSEα =
+r
+1
+5[(1−1) 2 + (5−5) 2 + (5−5) 2 + (4−4) 2 + (3−3) 2] = 0.0 (24)
+RMSEβ =
+r
+1
+5[(5−5) 2 + (5−5) 2 + (4−4) 2 + (3−3) 2 + (1−1) 2] = 0.0 (25)
+Conclusion avec RMSE :Les deux syst` emes sont identiques ! C’est faux !
+5.1.3 Calcul avec Pr´ ecision@5
+Seuil : un cours avec rel≥3 est pertinent.
+— Syst` eme Alpha : Cours pertinents dans Top-5 ={Apprentissage Profond, Traitement NLP,
+Optimisation, Statistiques}= 4 / 5→P@5 = 0.8 (80%)
+— Syst` eme Beta : Cours pertinents dans Top-5 ={Apprentissage Profond, Traitement NLP,
+Optimisation, Statistiques}= 4 / 5→P@5 = 0.8 (80%)
+Conclusion avec Pr´ ecision@5 :Les deux syst` emes sont aussi ´ equivalents ! C’est aussi faux !
+5.1.4 Calcul avec nDCG@5
+Syst` eme Alpha :
+DCG α = 21 −1
+log2(2) + 25 −1
+log2(3) + 25 −1
+log2(4) + 24 −1
+log2(5) + 23 −1
+log2(6)
+= 1
+1 + 31
+1.585 + 31
+2 + 15
+2.322 + 7
+2.585
+= 1.0 + 19.554 + 15.5 + 6.461 + 2.709
+= 45.224
+Syst` eme Beta :
+DCG β = 25 −1
+log2(2) + 25 −1
+log2(3) + 24 −1
+log2(4) + 23 −1
+log2(5) + 21 −1
+log2(6)
+= 31
+1 + 31
+1.585 + 15
+2 + 7
+2.322 + 1
+2.585
+= 31.0 + 19.554 + 7.5 + 3.016 + 0.387
+= 61.457
+IDCG (classement parfait : 5, 5, 4, 3, 1) :
+10
+
+--- Page 11 ---
+Guide d’ ´Evaluation des Syst` emes de Recommandation Master SIE - ENS Mekn` es
+IDCG= 31
+1 + 31
+1.585 + 15
+2 + 7
+2.322 + 1
+2.585
+= 61.457
+R´ esultats nDCG :
+nDCGα = 45.224
+61.457 ≈0.736 (73.6%)
+nDCGβ = 61.457
+61.457 = 1.0 (100%)
+CONCLUSION CRITIQUE :
+—RMSE :Syst` eme Alpha = Syst` eme Beta (0.0 vs 0.0) Trompeur
+—Pr´ ecision@5 :Syst` eme Alpha = Syst` eme Beta (80% vs 80%) Trompeur
+—nDCG@5 :Syst` eme Alpha (73.6%)≪Syst` eme Beta (100%)R´ ev` ele la v´ erit´ e !
+Pourquoi nDCG d´ etecte le probl` eme ?
+Parce quela position est cruciale en ´ education. Mettre Infographie (hors pro-
+gramme) en premier dans Syst` eme Alpha est une grave erreur p´ edagogique. L’´ etudiant verra
+d’abord un cours inutile, au lieu du cours essentiel (Apprentissage Profond).
+Impact r´ eel :L’´ etudiant clique sur les 1-2 premiers r´ esultats. Avec Alpha, il clique sur
+Infographie (mauvais). Avec Beta, il clique sur Apprentissage Profond (bon).
+6 Au-del` a de nDCG : Autres M´ etriques Contextuelles
+6.1 Diversit´ e
+La diversit´ e mesurela vari´ et´ e th´ ematiquedes recommandations. En ´ education, c’est critique
+pour ´ eviter les bulles de filtres.
+6.1.1 D´ efinition
+Diversit´ e = 1− 1
+k(k−1)
+kX
+i=1
+kX
+j=i+1
+sim(i, j) (26)
+o` u sim(i, j) est la similarit´ e entre coursesietj(ex : bas´ ee sur les tags ou les domaines).
+6.1.2 Exemple ´Educatif
+Supposons 3 recommandations :
+— Cours 1 : Apprentissage Profond (domaine : IA)
+— Cours 2 : R´ eseaux de Neurones (domaine : IA)
+— Cours 3 : Vision par Ordinateur (domaine : IA)
+sim(tous les pairs) = 0.9 (tr` es similaires, mˆ eme domaine)
+Diversit´ e = 1− 1
+3×2 (0.9 + 0.9 + 0.9) = 1−0.45 = 0.55 (FAIBLE !) (27)
+Au contraire, si on avait :
+— Cours 1 : Apprentissage Profond (IA)
+— Cours 2 : Micro´ economie (´Economie)
+11
+
+--- Page 12 ---
+Guide d’ ´Evaluation des Syst` emes de Recommandation Master SIE - ENS Mekn` es
+— Cours 3 : Linguistique (Humaines)
+Diversit´ e≈0.95 ( ´ELEV´EE !) (28)
+Probl` eme en ´ education :Haute diversit´ e pure = risque d’incoherence. L’id´ eal est unediversit´ e
+´ equilibr´ ee, pertinente pour les objectifs d’apprentissage.
+6.2 S´ erendipit´ e
+La s´ erendipit´ e mesure les d´ ecouvertes inattendues mais pertinentes.
+S´ erendipit´ e =Cours recommand´ es, impr´ evisibles mais positifs
+Cours recommand´ es totaux (29)
+Exemple :Un ´ etudiant en IA d´ ecouvre soudain un cours de Philosophie des Sciences qui enrichit
+sa perspective. C’est une s´ erendipit´ e positive.
+6.3 Novaut´ e (Novelty)
+Novaut´ e =−1
+k
+kX
+i=1
+log2
+Popularit´ e du coursi
+Popularit´ e totale (30)
+Cela mesure si le syst` eme recommande des cours populaires ou niche.
+En ´ education :Trouver des ressources p´ edagogiques excellentes mais peu connues.
+7 Consid´ erations ´Ethiques et P´ edagogiques
+7.1 La Bulle de Filtres en ´Education
+Probl` eme :Un syst` eme bas´ e seulement sur la pertinence pr´ edictive (nDCG maximal) peut
+cr´ eer unebulle de filtres p´ edagogique.
+Exemple :Un ´ etudiant regarde surtout des vid´ eos courtes (10 min) et faciles. L’algo-
+rithme conclut : ”Il pr´ ef` ere les contenus l´ egers”. Il ne recommande que des vid´ eos courtes et
+faciles.
+R´ esultat :L’´ etudiant ne progresse jamais vers des contenus complexes, nuisant ` a son
+apprentissage.
+Solution :Ajouter unecomposante de diversit´ eau score final :
+Scorefinal =α·nDCG + (1−α)·Diversit´ e (31)
+o` uα∈[0,1] ajuste le compromis.
+7.2 Biais de Popularit´ e
+Les algorithmes de filtrage collaboratif favorisent les items populaires (”the rich get richer”). En
+´ education, cela peut :
+— Cacher d’excellentes ressources p´ edagogiques peu connues
+— Amplifier les in´ egalit´ es d’acc` es au contenu
+Contremesure :Penaliser les scores des items tr` es populaires pour favoriser la diversit´ e.
+12
+
+--- Page 13 ---
+Guide d’ ´Evaluation des Syst` emes de Recommandation Master SIE - ENS Mekn` es
+8 D´ eploiement et ´Evaluation en Ligne
+8.1 Du Mod` ele au Monde R´ eel
+Une fois le mod` ele valid´ e hors-ligne (avec nDCG), il doit ˆ etre test´ eavec de vrais utilisateurs
+via unA/B Test.
+8.1.1 Architecture
+—Groupe A (T´ emoin) :Recommandations classiques (popularit´ e, random)
+—Groupe B (Test) :Nouveau mod` ele (Collaborative Filtering, Deep Learning)
+—M´ etrique m´ etier :Taux de clic (CTR), taux de compl´ etude de cours, notes aux examens,
+engagement (minutes ´ ecout´ ees)
+8.1.2 Exemple : Plateforme de Cours en Ligne SISE
+M´ etrique Groupe A (Baseline) Groupe B (Mod` ele)
+CTR (Click-Through Rate) 12% 18%
+Compl´ etude de cours (avg %) 45% 62%
+Score examen (avg) 14.5/20 16.2/20
+Engagement (min/semaine) 120 195
+Satisfaction (1-5) 3.2 4.1
+Table 4– R´ esultats d’un A/B test r´ ealiste.
+Conclusion de l’A/B test :
+Le Groupe B (mod` ele) surpasse le Groupe A sur toutes les m´ etriques m´ etier. C’est une
+preuve que :
+1. Les pr´ edictions nDCG se traduisent enapprentissage r´ eel
+2. Les ´ etudiants compl` etent plus de cours
+3. Les notes s’am´ eliorent
+4. L’engagement augmente
+Recommandation :D´ eployer le mod` ele en production.
+9 Synth` ese et Recommandations
+9.1 Choix de M´ etrique par Cas d’Usage
+9.2 Checklist pour ´Evaluer un Syst` eme de Recommandation
+1. Avez-vous calcul´ enDCG@5 et nDCG@10(positions critiques) ?
+2. Avez-vous mesur´ e ladiversit´ epour ´ eviter les bulles de filtres ?
+3. Avez-vous test´ e sur des utilisateurs r´ eels (A/B test) ?
+4. Avez-vous check´ e lesbiais d’exposition(popularit´ e) ?
+5. Avez-vous d´ efini desobjectifs p´ edagogiques clairsavant de choisir la m´ etrique ?
+6. Avez-vous document´ e comment la m´ etrique impacte r´ eellement l’exp´ erience utilisateur ?
+13
+
+--- Page 14 ---
+Guide d’ ´Evaluation des Syst` emes de Recommandation Master SIE - ENS Mekn` es
+Cas d’Usage M´ etrique Recom-
+mand´ ee
+Raison
+Pr´ ediction de
+notes (ratings)
+RMSE, MAE Objectif : minimiser
+l’erreur de pr´ ediction
+Top-N ranking
+(cours recom-
+mand´ es)
+nDCG@k,
+Pr´ ecision@k, Rap-
+pel@k
+Objectif : ordre cor-
+rect du classement
+Recommandations
+persistantes
+(long-term)
+nDCG + Diversit´ e +
+S´ erendipit´ e
+Objectif : ´ eviter bulle
+de filtres
+Syst` eme
+op´ erationnel
+(production)
+A/B test + m´ etriques
+m´ etier
+Objectif : impact r´ eel
+sur l’apprentissage
+9.3 La M´ etrique Fa¸ conne l’Algorithme
+Principe crucial :“You optimize for what you measure.”(Vous optimisez ce que vous mesurez.)
+— Si vous mesureznDCG, vous optimisez l’ordre exact du classement.
+— Si vous mesurezDiversit´ e, vous obtenir des recommandations vari´ ees.
+— Si vous mesurezTaux de compl´ etude, vous obtenez des cours qui retiennent les ´ etudiants.
+En ´ education,l’objectif final n’est pas la pr´ ecision, c’est l’apprentissage. Donc, la m´ etrique
+doit capturer ce qui sert l’apprentissage.
+10 Conclusion
+Ce guide a d´ emontr´ e que :
+1.La RMSE et les m´ etriques de pr´ ediction sont insuffisantespour ´ evaluer les syst` emes
+de recommandation Top-N, surtout en ´ education.
+2.nDCG est la m´ etrique de basepour ´ evaluer le classement, car elle capture pertinence,
+position et gradation.
+3.Deux syst` emes peuvent avoir la mˆ eme RMSE/Pr´ ecision, mais des nDCG radica-
+lement diff´ erents, affectant directement l’exp´ erience p´ edagogique.
+4.Au-del` a de nDCG, il faut mesurer diversit´ e, s´ erendipit´ e, pour ´ eviter les pi` eges ´ ethiques.
+5.L’A/B test en ligne est la validation finale, car l’impact sur l’apprentissage r´ eel prime.
+6.La m´ etrique choisie fa¸ conne l’algorithme. En choisir une mauvaise peut nuire ` a l’ap-
+prentissage, mˆ eme si elle semble techniquement correcte.
+Message pour les ing´ enieurs p´ edagogiques :
+Ne posez pas : “Quelle m´ etrique utiliser ?” Posez plutˆ ot : “Quel impact veux-je sur l’apprentissage
+des ´ etudiants ?” La m´ etrique d´ ecoule de cette r´ eponse.
+14

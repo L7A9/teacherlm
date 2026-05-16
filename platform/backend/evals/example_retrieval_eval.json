@@ -1,0 +1,16 @@
+{
+  "conversation_id": "00000000-0000-0000-0000-000000000000",
+  "cases": [
+    {
+      "id": "definition-collaborative-filtering",
+      "query": "Qu'est-ce que le filtrage collaboratif ?",
+      "output_type": "text",
+      "relevant_chunk_ids": ["replace-with-search-chunk-id"],
+      "expected_section_ids": ["replace-with-course-section-id"],
+      "expected_source_document": "course.pdf",
+      "answer_facts": [
+        "Collaborative filtering uses behavior or preferences from similar users or items."
+      ]
+    }
+  ]
+}

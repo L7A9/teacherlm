@@ -1,0 +1,372 @@
+
+
+--- Page 1 ---
+Syst` emes de Recommandation et Blockchain
+Semaine 3 : Approches Bas´ ees sur le Contenu et Syst` emes
+Hybrides
+Pr. Abdelaaziz Hessane
+´Ecole Normale Sup´ erieure de Mekn` es
+Master ”Syst` emes Intelligents pour l’´Education”
+2 novembre 2025
+
+--- Page 2 ---
+Plan de la s´ eance
+1.Introduction au Filtrage Bas´ e sur le Contenu (CBF) :
+Une nouvelle perspective.
+2.Architecture d’un syst` eme CBF :
+▶ Extraction de Caract´ eristiques (Feature Extraction).
+▶ Construction des Profils (Utilisateur et Item).
+▶ G´ en´ eration des Recommandations.
+3.Focus Technique : Le Mod` ele Vectoriel TF-IDF
+▶ Exemple de calcul d´ etaill´ e.
+4.Avantages et Inconv´ enients du CBF.
+5.Les Syst` emes Hybrides :Le meilleur des deux mondes.
+
+--- Page 3 ---
+Le Principe du Filtrage Bas´ e sur le Contenu (CBF)
+Le CBF change de paradigme par rapport au Filtrage Collaboratif
+(CF).
+Filtrage Collaboratif (CF)
+▶ Ignore le contenu des items.
+▶ Se base sur les interactions
+de la communaut´ e.
+▶ Principe : ”Les utilisateurs
+qui vous ressemblent ont
+aim´ e...”
+Filtrage Bas´ e sur le Contenu
+(CBF)
+▶ Ignore les autres utilisateurs.
+▶ Se base sur les
+caract´ eristiques des items.
+▶ Principe : ”Si vous avez
+aim´ e cet item, vous aimerez
+d’autres items qui lui
+ressemblent.”
+Principe du CBF
+Le syst` eme apprend ` a recommander des items similaires ` a ceux que
+l’utilisateur a aim´ es dans le pass´ e.
+
+--- Page 4 ---
+Principe du CBF
+Figure – Principe du filtrage bas´ e sur le contenu
+
+--- Page 5 ---
+Architecture d’un Syst` eme CBF
+Le processus se d´ eroule en trois grandes ´ etapes :
+1.Content Analyzer (Analyseur de Contenu) :Extrait des
+caract´ eristiques structur´ ees (features) ` a partir des items. Pour
+un cours, ce pourrait ˆ etre : le sujet, le niveau, la dur´ ee, les
+mots-cl´ es de la description.
+2.Profile Learner (Apprentissage de Profil) :Cr´ ee un profil
+pour l’utilisateur en agr´ egeant les caract´ eristiques des items
+qu’il a positivement ´ evalu´ es.
+3.Filtering Component (Composant de Filtrage) :Compare
+le profil de l’utilisateur aux profils des items non encore vus et
+recommande les plus similaires.
+
+--- Page 6 ---
+Architecture d’un Syst` eme CBF
+Figure – Architecture d’un Syst` eme CBF
+
+--- Page 7 ---
+Comment Repr´ esenter le Contenu ?
+Le d´ efi principal est de transformer du contenu non structur´ e
+(comme la description d’un cours) en une repr´ esentation structur´ ee
+que l’ordinateur peut comprendre.
+Le Mod` ele Sac de Mots (Bag of Words) :
+▶ On ignore la grammaire et l’ordre des mots.
+▶ On repr´ esente un document par la fr´ equence de chaque mot
+qu’il contient.
+Le Mod` ele Vectoriel TF-IDF (Term Frequency-Inverse
+Document Frequency) :
+▶ Une am´ elioration du ”sac de mots”.
+▶ L’importance d’un mot dans un document est proportionnelle
+` a sa fr´ equence dans ce document, mais est diminu´ ee par sa
+fr´ equence dans l’ensemble des documents (le corpus).
+▶ Id´ ee : Un mot qui appara ˆ ıt souvent dans UN document mais
+rarement ailleurs est probablement un bon descripteur de ce
+document.
+
+--- Page 8 ---
+TF-IDF : Term Frequency - Inverse Document Frequency
+Pour un termetdans un documentdd’un corpusD:
+tfidf(t,d,D) = tf(t,d)×idf(t,D)
+1. Term Frequency (TF) :Fr´ equence du terme. Mesure la
+fr´ equence ` a laquelle un termetappara ˆ ıt dans un documentd.
+tf(t,d) = nombre d’occurrences detdansd
+nombre total de termes dansd
+2. Inverse Document Frequency (IDF) :Raret´ e du terme.
+Mesure l’importance d’un terme. Un mot tr` es commun comme
+”le” ou ”de” aura un IDF faible.
+idf(t,D) = log
+ nombre total de documents|D|
+nombre de documents contenantt
+
+
+--- Page 9 ---
+Exemple Illustratif : TF-IDF (1/4)
+Sc´ enario :Nous avons un corpus de 3 descriptions de cours (nos
+documents).
+▶ Doc 1 :”Apprentissage automatique et analyse de donn´ ees.”
+▶ Doc 2 :”Analyse et visualisation de donn´ ees.”
+▶ Doc 3 :”Introduction ` a l’apprentissage profond.”
+Objectif
+Calculer le vecteur TF-IDF pour chaque document.
+
+--- Page 10 ---
+Exemple Illustratif : TF-IDF (2/4)
+´Etape 1 : Calculer le TF pour chaque mot dans chaque
+document.(Apr` es avoir retir´ e les mots vides comme ”et”, ”de”,
+”` a”, ”l’”).
+Terme Doc 1 (4 mots) Doc 2 (3 mots) Doc 3 (3 mots)
+apprentissage 1/4 = 0.25 0 1/3 = 0.33
+automatique 1/4 = 0.25 0 0
+analyse 1/4 = 0.25 1/3 = 0.33 0
+donn´ ees 1/4 = 0.25 1/3 = 0.33 0
+visualisation 0 1/3 = 0.33 0
+profond 0 0 1/3 = 0.33
+introduction 0 0 1/3 = 0.33
+
+--- Page 11 ---
+Exemple Illustratif : TF-IDF (3/4)
+´Etape 2 : Calculer l’IDF pour chaque mot du vocabulaire.
+|D|= 3 documents.
+▶ idf(apprentissage) = log(3/2) = 0.176
+▶ idf(automatique) = log(3/1) = 0.477
+▶ idf(analyse) = log(3/2) = 0.176
+▶ idf(donn´ ees) = log(3/2) = 0.176
+▶ idf(visualisation) = log(3/1) = 0.477
+▶ idf(profond) = log(3/1) = 0.477
+▶ idf(introduction) = log(3/1) = 0.477
+
+--- Page 12 ---
+Exemple Illustratif : TF-IDF (4/4)
+´Etape 3 : Calculer le score TF-IDF (TF×IDF).
+Vecteur Doc 1 :
+▶ tfidf(apprentissage) = 0.25×0.176 = 0.044
+▶ tfidf(automatique) = 0.25×0.477 = 0.12
+▶ tfidf(analyse) = 0.25×0.176 = 0.044
+▶ tfidf(donn´ ees) = 0.25×0.176 = 0.044
+▶ ... (les autres sont ` a 0)
+Vecteur Doc 2 :
+▶ tfidf(analyse) = 0.33×0.176 = 0.058
+▶ tfidf(donn´ ees) = 0.33×0.176 = 0.058
+▶ tfidf(visualisation) = 0.33×0.477 = 0.16
+▶ ... (les autres sont ` a 0)
+Chaque document est maintenant un vecteur num´ erique !
+
+--- Page 13 ---
+G´ en´ eration des Recommandations
+1. Construire le profil de l’utilisateur :Le profil de l’utilisateur
+est un vecteur, souvent calcul´ e comme la moyenne (pond´ er´ ee ou
+non) des vecteurs des items qu’il a aim´ es.
+⃗pu = 1
+|Iu|
+X
+i∈I u
+⃗vi
+O` uIu est l’ensemble des items aim´ es paru, et ⃗vi est le vecteur
+TF-IDF de l’itemi.
+2. Recommander :On calcule la similarit´ e entre le profil de
+l’utilisateur ⃗pu et le profil de chaque item ⃗vj qu’il n’a pas encore
+vu. La mesure la plus utilis´ ee est lasimilarit´ e cosinus.
+sim(⃗pu, ⃗vj) = ⃗pu · ⃗vj
+∥⃗pu∥∥⃗vj ∥
+On recommande les items avec le score de similarit´ e le plus ´ elev´ e.
+
+--- Page 14 ---
+Exemple Complet : G´ en´ eration des Recommandations
+(1/5)
+Rappel du Contexte
+Nos 3 documents (cours) :
+▶ Doc 1 :”Apprentissage automatique et analyse de donn´ ees.”
+▶ Doc 2 :”Analyse et visualisation de donn´ ees.”
+▶ Doc 3 :”Introduction ` a l’apprentissage profond.”
+Vecteurs TF-IDF obtenus (termes non-nuls seulement) :
+▶ Doc 1 :apprentissage : 0.044, automatique : 0.12, analyse : 0.044,
+donn´ ees : 0.044
+▶ Doc 2 :analyse : 0.058, donn´ ees : 0.058, visualisation : 0.16
+▶ Doc 3 :apprentissage : 0.06, profond : 0.16, introduction : 0.16
+
+--- Page 15 ---
+Exemple Complet : G´ en´ eration des Recommandations
+(2/5)
+Historique de l’Utilisateur
+Sc´ enario :
+L’utilisateurAlicea d´ ej` a consult´ e et aim´ e les cours suivants :
+✓Doc 1 :Apprentissage automatique et analyse de donn´ ees
+✓Doc 3 :Introduction ` a l’apprentissage profond
+Question :
+Devons-nous recommanderDoc 2(Analyse et visualisation de
+donn´ ees) ` a Alice ?
+
+--- Page 16 ---
+Exemple Complet : G´ en´ eration des Recommandations
+(3/5)
+´Etape 1 : Construction du Profil Utilisateur
+Formule :
+⃗pAlice = 1
+|IAlice|
+X
+i∈I Alice
+⃗vi = ⃗v1 + ⃗v3
+2
+Calcul d´ etaill´ e pour chaque terme :
+apprentissage : 0.044 + 0.06
+2 = 0.052
+automatique : 0.12 + 0
+2 = 0.06
+analyse : 0.044 + 0
+2 = 0.022
+
+--- Page 17 ---
+Exemple Complet : G´ en´ eration des Recommandations
+(3/5)
+´Etape 1 : Construction du Profil Utilisateur
+donn´ ees : 0.044 + 0
+2 = 0.022
+profond : 0 + 0.16
+2 = 0.08
+introduction : 0 + 0.16
+2 = 0.08
+visualisation : 0 + 0
+2 = 0
+
+--- Page 18 ---
+Exemple Complet : G´ en´ eration des Recommandations
+(4/5)
+´Etape 2 : Calcul de la Similarit´ e Cosinus avec Doc 2
+Formule :
+sim(⃗pAlice, ⃗v2) = ⃗pAlice · ⃗v2
+∥⃗pAlice∥∥⃗v2∥
+1. Produit scalaire ⃗pAlice · ⃗v2 :
+= (0.0052×0) + (0.06×0) + (0.022×0.058) + (0.022×0.058)
++ (0.08×0) + (0.08×0) + (0×0.16)
+= 0.00128 + 0.00128 =0.00256
+2. Normes :
+∥⃗pAlice∥=
+p
+0.0522 + 0.062 + 0.0222 + 0.0222 + 0.082 + 0.082 ≈0.142
+∥⃗v2∥=
+p
+0.0582 + 0.0582 + 0.162 ≈0.180
+
+--- Page 19 ---
+Exemple Complet : G´ en´ eration des Recommandations
+(5/5)
+D´ ecision de Recommandation
+R´ esultat final :
+sim(⃗pAlice, ⃗v2) = 0.00256
+0.142×0.180 ≈0.01
+Interpr´ etation :
+▶ Score relativementfaible(0.01 sur une ´ echelle de 0 ` a 1)
+▶ Doc 2 partage peu de caract´ eristiques avec les pr´ ef´ erences
+d’Alice
+▶ Seuls les termes ”analyse” et ”donn´ ees” cr´ eent une connexion
+
+--- Page 20 ---
+Exemple Complet : G´ en´ eration des Recommandations
+(5/5)
+D´ ecision de Recommandation
+R´ esultat final :
+D´ ecision :
+Doc 2 ne serait probablement PAS recommand´ e` a Alice. Le
+syst` eme privil´ egierait des cours avec des scores plus ´ elev´ es,
+contenant des termes comme ”apprentissage”, ”automatique” ou
+”profond”.
+
+--- Page 21 ---
+Exemple Complet : G´ en´ eration des Recommandations
+(6/6)
+Explicabilit´ e du Syst` eme CBF
+Explication pour l’utilisateur :
+”Ce cours (Doc 2) est peu recommand´ e car il se concentre sur la
+visualisation de donn´ ees, alors que vous avez montr´ e une
+pr´ ef´ erence pour l’apprentissage automatique et le deep learning.”
+Imaginons un Doc 4 :”Apprentissage automatique profond”
+▶ Ce cours aurait un score de similarit´ ebeaucoup plus ´ elev´ e
+▶ Termes en commun : apprentissage, automatique, profond
+
+--- Page 22 ---
+Exemple Complet : G´ en´ eration des Recommandations
+(6/6)
+Explicabilit´ e du Syst` eme CBF
+Classement des recommandations :
+1. Doc 4 : Apprentissage automatique profond... (score ´ elev´ e∼
+0.7-0.8)(` a v´ erifier ! !)
+2. Doc 2 : Analyse et visualisation... (score : 0.01)
+Le syst` eme CBF recommande en priorit´ e les items les plus
+similaires au profil utilisateur !
+
+--- Page 23 ---
+Avantages et Inconv´ enients du CBF
+Avantages
+▶ Ind´ ependance de l’utilisateur :Pas besoin de donn´ ees sur
+les autres utilisateurs.
+▶ Pas de ”cold start” pour les items :Un nouvel item peut
+ˆ etre recommand´ e d` es qu’il est ajout´ e, car son profil de
+contenu est disponible.
+▶ Explicabilit´ e :On peut facilement expliquer pourquoi un item
+a ´ et´ e recommand´ e (”car il est similaire ` a X que vous avez
+aim´ e, notamment sur les mots-cl´ es Y et Z”).
+▶ Pas de biais de popularit´ e :Peut recommander des items de
+niche.
+
+--- Page 24 ---
+Avantages et Inconv´ enients du CBF
+Inconv´ enients
+▶ Analyse de contenu limit´ ee :Difficile d’extraire de bonnes
+caract´ eristiques pour certains types d’items (ex : images,
+musique).
+▶ Sur-sp´ ecialisation :Le syst` eme a du mal ` a recommander des
+items en dehors des centres d’int´ erˆ et connus de l’utilisateur.
+Manque de s´ erendipit´ e.
+▶ ”Cold start” pour les utilisateurs :Un nouvel utilisateur
+doit noter plusieurs items pour que le syst` eme puisse
+construire un profil fiable.
+
+--- Page 25 ---
+Les Syst` emes Hybrides : Le Meilleur des Deux Mondes
+Id´ ee :Combiner le Filtrage Collaboratif (CF) et le Filtrage Bas´ e
+sur le Contenu (CBF) pour capitaliser sur leurs forces et att´ enuer
+leurs faiblesses.
+Exemple :
+▶ Le CF souffre du ”cold start” pour les nouveaux items.
+▶ Le CBF excelle dans ce domaine.
+▶ Solution Hybride :Quand un nouvel item arrive, on utilise le
+CBF pour les premi` eres recommandations. Une fois qu’il a
+accumul´ e assez d’interactions, on l’int` egre dans le mod` ele CF.
+
+--- Page 26 ---
+Architectures d’Hybridation
+Il existe de nombreuses fa¸ cons de combiner les mod` eles :
+▶ Pond´ er´ ee (Weighted) :On calcule les pr´ edictions des deux
+syst` emes (CF et CBF) et on fait une moyenne pond´ er´ ee de
+leurs scores.
+ˆrhybride =α·ˆr CF + (1−α)·ˆr CBF
+▶ `A commutation (Switching) :On utilise un crit` ere (ex :
+nombre d’interactions de l’utilisateur) pour choisir quel
+syst` eme utiliser. Si l’utilisateur est nouveau, on utilise CBF,
+sinon on utilise CF.
+▶ En cascade (Cascade) :Un premier syst` eme (ex : CBF)
+produit une liste de candidats, puis un second syst` eme (ex :
+CF) affine le classement de cette liste.
+▶ M´ elange de caract´ eristiques (Feature Combination) :On
+traite les pr´ edictions d’un syst` eme comme une nouvelle
+caract´ eristique pour l’autre syst` eme.
+
+--- Page 27 ---
+Conclusion et Prochaines ´Etapes
+Ce qu’il faut retenir :
+▶ LeFiltrage Bas´ e sur le Contenurecommande des items
+similaires ` a ceux d´ ej` a aim´ es, en se basant sur leurs
+caract´ eristiques.
+▶ TF-IDFest une technique puissante pour vectoriser du texte.
+▶ Le CBF a des avantages clairs (explicabilit´ e, cold-start des
+items) mais aussi des d´ efauts (sur-sp´ ecialisation).
+▶ LesSyst` emes Hybridescombinent plusieurs approches et
+repr´ esentent souvent l’´ etat de l’art dans les syst` emes de
+production.
+La semaine prochaine :
+▶ Nous plongerons dans l’` ere duDeep Learningpour la
+recommandation.
