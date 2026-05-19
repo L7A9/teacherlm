@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
-from arq import ArqRedis
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,13 +11,12 @@ from db.models import Conversation, CourseDocumentRecord, UploadedFile as Upload
 from db.session import get_db
 from schemas.file import UploadedFileList, UploadedFileRead
 from services.storage_service import get_storage
-from services.vector_service import get_vector_service
 
 
 router = APIRouter(prefix="/api/conversations/{conversation_id}/files", tags=["files"])
 
 
-def get_arq(request: Request) -> ArqRedis:
+def get_arq(request: Request) -> Any:
     pool = getattr(request.app.state, "arq_pool", None)
     if pool is None:
         raise HTTPException(status_code=503, detail="ingestion queue not initialized")
@@ -29,7 +28,7 @@ async def upload_file(
     conversation_id: uuid.UUID,
     upload: UploadFile = File(...),
     session: AsyncSession = Depends(get_db),
-    arq: ArqRedis = Depends(get_arq),
+    arq: Any = Depends(get_arq),
 ) -> UploadedFileModel:
     conversation = await session.get(Conversation, conversation_id)
     if conversation is None:
@@ -102,6 +101,8 @@ async def delete_file(
     record = await _load_file(session, conversation_id, file_pk)
 
     storage = get_storage()
+    from services.vector_service import get_vector_service
+
     vectors = get_vector_service()
     document_result = await session.execute(
         select(CourseDocumentRecord).where(CourseDocumentRecord.uploaded_file_id == record.id)

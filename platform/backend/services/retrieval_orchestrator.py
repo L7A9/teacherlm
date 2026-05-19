@@ -343,12 +343,25 @@ _COURSE_OVERVIEW_INTENTS = {
     "teach",
     "review",
     "understand",
+    "roadmap",
+    "prepare",
+    "study",
+    "start",
+    "begin",
+    "exam",
+    "revision",
+    "revise",
+    "learn",
     "resume",
     "resumer",
     "explique",
     "expliquer",
     "apprendre",
     "comprendre",
+    "etudier",
+    "commencer",
+    "preparer",
+    "examen",
     "presente",
     "presenter",
     "شرح",
@@ -394,6 +407,17 @@ _BROAD_PRONOUN_TARGETS = {
     "cela",
 }
 
+_BROAD_STUDY_PATTERNS = [
+    r"\bwhat\s+should\s+i\s+study\s+first\b",
+    r"\bwhere\s+should\s+i\s+start\b",
+    r"\bgive\s+me\s+a\s+(?:beginner\s+)?roadmap\b",
+    r"\bprepare\s+me\s+for\s+(?:the\s+)?exam\b",
+    r"\bteach\s+me\s+(?:this|the)\s+course\b",
+    r"\bhelp\s+me\s+(?:study|revise|review)\b",
+    r"\bpar\s+ou\s+commencer\b",
+    r"\bprepar(?:e|er)\s+.*examen\b",
+]
+
 
 def _is_course_overview_query(query: str) -> bool:
     """Detect vague course-wide chat requests that semantic top-k handles poorly."""
@@ -401,6 +425,8 @@ def _is_course_overview_query(query: str) -> bool:
     normalized = _normalize_query(query)
     if not normalized:
         return False
+    if any(re.search(pattern, normalized) for pattern in _BROAD_STUDY_PATTERNS):
+        return True
 
     tokens = set(normalized.split())
     has_intent = bool(tokens & _COURSE_OVERVIEW_INTENTS)

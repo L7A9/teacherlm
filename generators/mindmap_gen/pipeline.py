@@ -360,6 +360,17 @@ def _is_generic_title(title: str) -> bool:
     }
 
 
+def _is_generic_title(title: str) -> bool:
+    return _norm(title) in {
+        "outline",
+        "agenda",
+        "introduction",
+        "conclusion",
+        "course",
+        "cours",
+    }
+
+
 def _discover_course_title(text: str) -> str:
     patterns = [
         r"(?m)^-\s*(Semaine|Week|Lecture|Chapter|Chapitre|Module)\s+\d+\s*[:\-–—]\s*(.+)$",
@@ -389,8 +400,6 @@ def _distinctive_module_title(text: str) -> str:
             if not key or key in _GENERIC_BRANCHES or key in _GENERIC_ROOTS:
                 continue
             if _is_generic_title(part):
-                continue
-            if key in {"lst sitd", "developpement mobile sous android", "qcm"}:
                 continue
             if _is_noisy_label(part):
                 continue
@@ -505,6 +514,26 @@ def _is_noisy_label(label: str) -> bool:
     return bool(
         re.search(
             r"\b(slide|logo|layout|attribution|page|copyright|questions?|thank you)\b",
+            key,
+        )
+    )
+
+
+def _is_noisy_label(label: str) -> bool:
+    key = _norm(label)
+    if not key or len(key) < 4:
+        return True
+    noisy_exact = {
+        "layout attribution critical",
+        "conclusion",
+        "introduction",
+        "plan de la seance",
+    }
+    if key in noisy_exact:
+        return True
+    return bool(
+        re.search(
+            r"\b(slide|logo|layout|attribution|page|copyright|questions?|thank you|navigation|footer)\b",
             key,
         )
     )
@@ -731,6 +760,26 @@ _GENERIC_BRANCHES = {
     "mathematics",
     "python",
     "blockchain",
+    "concepts",
+    "applications",
+    "autres",
+    "other",
+    "overview",
+    "introduction",
+    "conclusion",
+}
+
+
+_GENERIC_ROOTS = {
+    "course",
+    "cours",
+    "overview",
+    "outline",
+    "introduction",
+    "conclusion",
+}
+
+_GENERIC_BRANCHES = {
     "concepts",
     "applications",
     "autres",

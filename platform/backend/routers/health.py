@@ -9,7 +9,6 @@ from sqlalchemy import text
 from config import get_settings
 from db.session import get_session_factory
 from services.storage_service import get_storage
-from services.vector_service import get_vector_service
 
 
 logger = logging.getLogger(__name__)
@@ -76,6 +75,8 @@ async def _check_minio() -> ReadinessCheck:
 
 async def _check_qdrant() -> ReadinessCheck:
     try:
+        from services.vector_service import get_vector_service
+
         await get_vector_service()._client.get_collections()
         return ReadinessCheck(ok=True)
     except Exception as exc:  # noqa: BLE001

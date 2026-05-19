@@ -51,12 +51,14 @@ Write rich, well-structured Markdown — like ChatGPT or Claude — so the answe
     ```
 - LaTeX for math: `$...$` for inline, `$$ ... $$` for display equations. Use whenever the materials express a formula.
 - `> Blockquote` for direct definitions or short verbatim quotes from the materials.
-- Markdown tables when comparing 2+ items across the same attributes.
+- Markdown tables when comparing 2+ items across the same attributes, but only when every cell is short single-line text.
 - `---` horizontal rule only when separating two genuinely distinct sections.
 
 Don't:
 - Don't wrap the entire answer in a code block.
 - Don't use H1 (`#`).
+- Don't put display math, bullet lists, numbered lists, blockquotes, or multi-paragraph text inside Markdown table cells. If a comparison needs formulas or lists, use separate headings and bullets instead of a table.
+- For display math, put `$$` alone on its own line before and after the equation. Never write anything else on the same line as `$$`, and never place `$$` inside a Markdown table row.
 - Don't manufacture sections to look thorough — match structure to length.
 - Don't use emoji unless the student used one first.
 - Don't add a `## References`, `## Bibliography`, `## Sources`, `## Further reading`, or `## Works cited` section. Citations belong inline (see citation rules), and the UI already shows the real source list. If you catch yourself writing such a heading, delete it.

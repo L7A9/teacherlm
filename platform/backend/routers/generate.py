@@ -19,7 +19,6 @@ from dispatcher.registry import GeneratorEntry, GeneratorNotFound
 from dispatcher.router import GeneratorRouter, get_router
 from schemas.message import GenerateRequest
 from services.learner_tracker import get_learner_tracker
-from services.retrieval_orchestrator import get_retrieval_orchestrator
 
 
 logger = logging.getLogger(__name__)
@@ -86,6 +85,8 @@ async def generate(
     )
     await session.flush()
     await session.commit()
+
+    from services.retrieval_orchestrator import get_retrieval_orchestrator
 
     context_chunks = await get_retrieval_orchestrator().retrieve_for(
         output_type=body.output_type,

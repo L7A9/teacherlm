@@ -13,9 +13,34 @@ import type {
   UUID,
 } from "./types";
 
-export const API_BASE_URL =
+const CONFIGURED_API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ??
   "http://localhost:8000";
+
+export const API_BASE_URL = resolveApiBaseUrl();
+
+function resolveApiBaseUrl(): string {
+  if (typeof window === "undefined") return CONFIGURED_API_BASE_URL;
+
+  try {
+    const configured = new URL(CONFIGURED_API_BASE_URL);
+    const pageHost = window.location.hostname;
+    const configuredHost = configured.hostname;
+    if (
+      configuredHost === "localhost" &&
+      pageHost &&
+      pageHost !== "localhost" &&
+      pageHost !== "127.0.0.1"
+    ) {
+      configured.hostname = pageHost;
+      return configured.toString().replace(/\/+$/, "");
+    }
+  } catch {
+    return CONFIGURED_API_BASE_URL;
+  }
+
+  return CONFIGURED_API_BASE_URL;
+}
 
 export class ApiError extends Error {
   constructor(

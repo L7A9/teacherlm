@@ -11,6 +11,7 @@ from qdrant_client.http import models as qm
 
 from config import Settings, get_settings
 from services.chunking_service import Chunk
+from services.chunk_question_generator import searchable_chunk_text
 
 
 @dataclass(slots=True)
@@ -142,7 +143,7 @@ class VectorService:
         total = 0
         batch_size = max(1, self._settings.embedding_batch_size)
         for chunk_batch in _batched(list(chunks), batch_size):
-            vectors = await self.embed([c.text for c in chunk_batch])
+            vectors = await self.embed([searchable_chunk_text(c) for c in chunk_batch])
             points = [
                 qm.PointStruct(
                     id=c.chunk_id,

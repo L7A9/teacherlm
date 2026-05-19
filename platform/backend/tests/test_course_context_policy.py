@@ -44,6 +44,20 @@ class FakeContext:
             )
         ]
 
+    async def get_mindmap_course_context(self, conversation_id):
+        self.calls.append(("mindmap", None))
+        if self.overview_empty:
+            return []
+        return [
+            Chunk(
+                text="Module 1: Foundations\nMajor headings:\n- Basics",
+                source="course",
+                score=1,
+                chunk_id="mindmap",
+                metadata={"context_type": "mindmap_module_pack"},
+            )
+        ]
+
     async def get_representative_course_context(self, conversation_id):
         self.calls.append(("representative", None))
         if self.overview_empty:
@@ -82,9 +96,11 @@ class FakeContext:
         ]
 
     async def get_equations(self, conversation_id):
+        self.calls.append(("equations", None))
         return []
 
     async def get_tables(self, conversation_id):
+        self.calls.append(("tables", None))
         return []
 
 
@@ -109,7 +125,10 @@ class CourseContextPolicyTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(chunks[0].chunk_id, "outline")
-        self.assertEqual(context.calls, [("generator", "quiz")])
+        self.assertEqual(
+            context.calls,
+            [("generator", "quiz")],
+        )
 
     async def test_topic_quiz_uses_retrieval_plus_section_context(self) -> None:
         if Settings is None or RetrievalOrchestrator is None:
@@ -152,8 +171,8 @@ class CourseContextPolicyTests(unittest.IsolatedAsyncioTestCase):
             conversation_id="00000000-0000-0000-0000-000000000000",
         )
 
-        self.assertEqual([chunk.chunk_id for chunk in chunks], ["outline", "representative"])
-        self.assertEqual([call[0] for call in context.calls], ["outline", "representative"])
+        self.assertEqual([chunk.chunk_id for chunk in chunks], ["mindmap", "outline", "representative"])
+        self.assertEqual([call[0] for call in context.calls], ["mindmap", "outline", "representative"])
 
     async def test_student_style_course_about_question_uses_course_overview_context(self) -> None:
         if Settings is None or RetrievalOrchestrator is None:
@@ -173,8 +192,8 @@ class CourseContextPolicyTests(unittest.IsolatedAsyncioTestCase):
             conversation_id="00000000-0000-0000-0000-000000000000",
         )
 
-        self.assertEqual([chunk.chunk_id for chunk in chunks], ["outline", "representative"])
-        self.assertEqual([call[0] for call in context.calls], ["outline", "representative"])
+        self.assertEqual([chunk.chunk_id for chunk in chunks], ["mindmap", "outline", "representative"])
+        self.assertEqual([call[0] for call in context.calls], ["mindmap", "outline", "representative"])
 
     async def test_specific_text_question_still_uses_semantic_retrieval(self) -> None:
         if Settings is None or RetrievalOrchestrator is None:
@@ -218,7 +237,7 @@ class CourseContextPolicyTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(chunks[0].chunk_id, "c1")
         self.assertEqual(
             context.calls,
-            [("outline", None), ("representative", None), ("relevant", "coverage_broad")],
+            [("mindmap", None), ("outline", None), ("representative", None), ("relevant", "coverage_broad")],
         )
 
 

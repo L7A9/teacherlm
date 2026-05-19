@@ -235,7 +235,9 @@ const markdownComponents: Components = {
 };
 
 function AssistantMarkdown({ content }: { content: string }) {
-  const normalized = normalizeDisplayMath(content);
+  const normalized = normalizeDisplayMath(
+    degradeMalformedTables(repairMalformedMathFences(content)),
+  );
 
   return (
     <div className="prose prose-invert prose-slate max-w-none">
@@ -276,6 +278,205 @@ function normalizeDisplayMath(content: string): string {
   }
 
   return out.join("\n");
+}
+
+function degradeMalformedTables(content: string): string {
+  const lines = content.split(/\r?\n/);
+  const out: string[] = [];
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i] ?? "";
+    const next = lines[i + 1] ?? "";
+    if (!isTableRow(line) || !isSeparatorRow(next)) {
+      out.push(line);
+      continue;
+    }
+
+    const block: string[] = [line, next];
+    let j = i + 2;
+    for (; j < lines.length; j += 1) {
+      const candidate = lines[j] ?? "";
+      if (!candidate.trim()) break;
+      block.push(candidate);
+    }
+
+    if (!isMalformedTableBlock(block)) {
+      out.push(...block);
+      i = j - 1;
+      continue;
+    }
+
+    out.push(...renderMalformedTableAsSections(block));
+    i = j - 1;
+  }
+
+  return out.join("\n");
+}
+
+function repairMalformedMathFences(content: string): string {
+  const lines = content.split(/\r?\n/);
+  const out: string[] = [];
+  let inFence = false;
+  let inMathBlock = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith("```")) {
+      inFence = !inFence;
+      out.push(line);
+      continue;
+    }
+
+    if (inFence) {
+      out.push(line);
+      continue;
+    }
+
+    if (trimmed === "$$") {
+      inMathBlock = !inMathBlock;
+      out.push(line);
+      continue;
+    }
+
+    if (inMathBlock && trimmed.startsWith("$$")) {
+      const trailing = trimmed.slice(2).trim();
+      inMathBlock = false;
+      out.push("$$");
+      if (trailing) out.push(trailing);
+      continue;
+    }
+
+    const inlineDisplayMath = splitInlineDisplayMath(line);
+    if (inlineDisplayMath) {
+      out.push(...inlineDisplayMath);
+      continue;
+    }
+
+    out.push(line);
+  }
+
+  if (inMathBlock) out.push("$$");
+  return out.join("\n");
+}
+
+function isTableRow(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed.startsWith("|") && trimmed.includes("|", 1);
+}
+
+function isSeparatorRow(line: string): boolean {
+  return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
+}
+
+function isMalformedTableBlock(lines: string[]): boolean {
+  return lines.some((line, index) => {
+    const trimmed = line.trim();
+    if (!trimmed) return false;
+    if (index === 1 && isSeparatorRow(line)) return false;
+    return trimmed.includes("$$") || !isTableRow(line);
+  });
+}
+
+function renderMalformedTableAsSections(lines: string[]): string[] {
+  const headers = splitTableRow(lines[0] ?? "");
+  const leftHeader = cleanCell(headers[1] ?? "Option A");
+  const rightHeader = cleanCell(headers[2] ?? "Option B");
+  const rendered: string[] = [];
+  let current: string[] | null = null;
+
+  const flush = () => {
+    if (!current) return;
+    const [label, left, right] = current;
+    const title = cleanCell(label ?? "");
+    if (title) rendered.push(`### ${title}`);
+    if (left?.trim()) {
+      rendered.push(`**${leftHeader}:**`, "", cleanCell(left));
+    }
+    if (right?.trim()) {
+      rendered.push("", `**${rightHeader}:**`, "", cleanCell(right));
+    }
+    rendered.push("");
+    current = null;
+  };
+
+  for (const line of lines.slice(2)) {
+    const trimmed = line.trim();
+    if (!trimmed || isSeparatorRow(line)) continue;
+
+    if (isTableRow(line)) {
+      const cells = splitTableRow(line);
+      if (cells.length >= 2 && cells[0]?.trim()) {
+        flush();
+        current = [cells[0] ?? "", cells[1] ?? "", cells.slice(2).join(" | ")];
+      } else if (current) {
+        current[2] = [current[2], cells.join(" | ")].filter(Boolean).join("\n");
+      }
+      continue;
+    }
+
+    if (current) {
+      const continuationTarget = !current[2]?.trim() && !trimmed.startsWith("|") ? 1 : 2;
+      current[continuationTarget] = [current[continuationTarget], line]
+        .filter(Boolean)
+        .join("\n");
+    } else {
+      rendered.push(line);
+    }
+  }
+
+  flush();
+  return rendered.length ? rendered : lines;
+}
+
+function splitTableRow(line: string): string[] {
+  const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+  return trimmed.split("|").map((cell) => cell.trim());
+}
+
+function cleanCell(value: string): string {
+  const stripped = value.trim();
+  if (stripped.includes("\n") || stripped.includes("$$")) {
+    return stripped
+      .split(/\r?\n/)
+      .map(cleanTableContinuationLine)
+      .join("\n")
+      .replace(/^\*\*(.+)\*\*$/, "$1")
+      .trim();
+  }
+  return cleanTableContinuationLine(stripped)
+    .replace(/\s+/g, " ")
+    .replace(/^\*\*(.+)\*\*$/, "$1")
+    .trim();
+}
+
+function cleanTableContinuationLine(line: string): string {
+  return line
+    .trim()
+    .replace(/^\|\s*/, "")
+    .replace(/\s*\|$/, "")
+    .replace(/\s+\|\s+/g, "\n\n")
+    .trim();
+}
+
+function splitInlineDisplayMath(line: string): string[] | null {
+  const first = line.indexOf("$$");
+  if (first === -1) return null;
+  const second = line.indexOf("$$", first + 2);
+  if (second === -1) return null;
+
+  const before = line.slice(0, first).trim();
+  const math = line.slice(first + 2, second).trim();
+  const after = line.slice(second + 2).trim();
+
+  if (!math) return null;
+  return [
+    ...(before ? [before] : []),
+    "$$",
+    math,
+    "$$",
+    ...(after ? [after] : []),
+  ];
 }
 
 function isFormulaLine(line: string): boolean {

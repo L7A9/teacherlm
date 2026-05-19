@@ -19,22 +19,22 @@ _MONTH_DATE_RE = re.compile(
     r")\s+\d{1,2},?\s+\d{4}\b",
     re.IGNORECASE,
 )
-_PROFESSOR_FOOTER_RE = re.compile(
-    r"\bPr\.\s*Abdelaaziz\s+Hessane\b.*?(?:\d{4})?\s*(?:\d{1,3}\s*/\s*\d{1,3})?",
-    re.IGNORECASE,
-)
-_COURSE_FOOTER_FRAGMENT_RE = re.compile(
-    r"\b(?:École Normale Supérieure|Ecole Normale Superieure|Systèmes de Recommandation et Blockchain|"
-    r"Syst[eè]mes Intelligents pour l[’']?[ÉE]ducation)\b",
-    re.IGNORECASE,
-)
-_RESIDUAL_FOOTER_RE = re.compile(
-    r"(?:#\s*)?\bde\s+Mekn[eè]s\b|"
-    r"\(\s*,?\s*(?:de\s+Mekn[eè]s|Intelligents pour l[’']?[ÉE]ducation)\s*\)|"
-    r"Master\s+\"?\s*\"?",
-    re.IGNORECASE,
-)
 _EMPTY_PARENS_RE = re.compile(r"\(\s*[,;|]?\s*\)")
+_LEADING_FOOTER_RE = re.compile(
+    r"^\s*(?:"
+    r"(?:prof(?:essor)?|pr\.?|dr\.?|teacher|enseignant|universit(?:y|e)|"
+    r"facult(?:y|e)|school|college|institute|department|dept\.?|master|"
+    r"course|cours|lecture|chapter)\b"
+    r".{0,240}?"
+    r"(?:\d{1,3}\s*/\s*\d{1,3}|\b\d{4}\b)"
+    r")\s+",
+    re.IGNORECASE,
+)
+_ORGANIZATION_FOOTER_LINE_RE = re.compile(
+    r"\b(?:university|universit[eÃ©]|faculty|facult[eÃ©]|school|college|"
+    r"institute|department|dept\.?|professor|enseignant|copyright|all rights reserved)\b",
+    re.IGNORECASE,
+)
 
 _NOISE_PHRASES = (
     "navigation controls",
@@ -114,9 +114,7 @@ class DocumentCleaningService:
         if not line:
             return ""
 
-        line = _PROFESSOR_FOOTER_RE.sub(" ", line)
-        line = _COURSE_FOOTER_FRAGMENT_RE.sub(" ", line)
-        line = _RESIDUAL_FOOTER_RE.sub(" ", line)
+        line = _LEADING_FOOTER_RE.sub("", line)
         line = _EMPTY_PARENS_RE.sub(" ", line)
         line = _MONTH_DATE_RE.sub(" ", line)
         line = _PAGE_COUNTER_RE.sub(" ", line)
@@ -138,6 +136,8 @@ class DocumentCleaningService:
             return True
         if _DANGLING_IMAGE_FILE_RE.search(line):
             return True
+        if self._is_likely_footer_line(line, normalized):
+            return True
         if self._is_mostly_punctuation(line):
             return True
         return False
@@ -148,6 +148,19 @@ class DocumentCleaningService:
             return False
         useful = sum(1 for ch in line if ch.isalnum())
         return useful / len(line) < 0.25
+
+    @staticmethod
+    def _is_likely_footer_line(line: str, normalized: str) -> bool:
+        if len(line) > 180:
+            return False
+        has_footer_cue = bool(_ORGANIZATION_FOOTER_LINE_RE.search(line))
+        has_counter_or_date = bool(_PAGE_COUNTER_RE.search(line) or _MONTH_DATE_RE.search(line))
+        separator_count = line.count("|") + line.count(" - ") + line.count(" / ")
+        if has_footer_cue and (has_counter_or_date or separator_count >= 2):
+            return True
+        if has_footer_cue and len(normalized.split()) <= 10:
+            return True
+        return False
 
 
 _cleaner: DocumentCleaningService | None = None
