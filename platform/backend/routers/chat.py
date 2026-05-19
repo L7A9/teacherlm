@@ -20,8 +20,8 @@ from db.session import get_db, session_scope
 from dispatcher.registry import GeneratorEntry, GeneratorNotFound
 from dispatcher.router import GeneratorRouter, get_router
 from schemas.message import ChatRequest
+from services.interaction_router import InteractionDecision, get_interaction_router
 from services.learner_tracker import get_learner_tracker
-from services.retrieval_orchestrator import get_retrieval_orchestrator
 
 
 logger = logging.getLogger(__name__)
@@ -52,6 +52,15 @@ async def chat(
     # `user_message` once (not duplicated in chat_history).
     chat_history = await _load_history(session, conversation_id, limit=CHAT_HISTORY_LIMIT)
     learner_state = await get_learner_tracker().load_state(session, conversation_id)
+    learner_state_dict = learner_state.model_dump()
+
+    route = await get_interaction_router().route(
+        conversation_id=conversation_id,
+        user_message=body.user_message,
+        chat_history=chat_history,
+        learner_state=learner_state_dict,
+        options=body.options,
+    )
 
     # Persist the user turn up-front so a failure mid-stream still leaves it.
     session.add(
@@ -63,9 +72,19 @@ async def chat(
     )
     await session.flush()
     await session.commit()
+
+    if route.action != "retrieve":
+        return EventSourceResponse(
+            _stream_direct_chat(conversation_id, route),
+            media_type="text/event-stream",
+        )
+
+    from services.retrieval_orchestrator import get_retrieval_orchestrator
+
+    retrieval_query = route.retrieval_query.strip() or body.user_message
     context_chunks = await get_retrieval_orchestrator().retrieve_for(
         output_type="text",
-        query=body.user_message,
+        query=retrieval_query,
         conversation_id=conversation_id,
     )
 
@@ -81,6 +100,40 @@ async def chat(
     return EventSourceResponse(
         _stream_chat(conversation_id, entry, payload, grouter),
         media_type="text/event-stream",
+    )
+
+
+async def _stream_direct_chat(
+    conversation_id: uuid.UUID,
+    route: InteractionDecision,
+) -> AsyncIterator[dict[str, Any]]:
+    """Stream a router-authored reply for turns that do not need retrieval."""
+    response = route.response.strip() or _direct_reply_fallback(route.action)
+    done_payload = {
+        "response": response,
+        "generator_id": "teacher_gen",
+        "output_type": "text",
+        "artifacts": [],
+        "sources": [],
+        "learner_updates": LearnerUpdates().model_dump(),
+        "metadata": {
+            "interaction_router": True,
+            "mode": route.action,
+        },
+    }
+
+    yield {"event": "token", "data": json.dumps({"delta": response}, default=str)}
+    yield {"event": "sources", "data": json.dumps([], default=str)}
+    yield {"event": "done", "data": json.dumps(done_payload, default=str)}
+
+    await _persist_assistant_turn(
+        conversation_id=conversation_id,
+        generator_id="teacher_gen",
+        output_type="text",
+        collected_text=[response],
+        sources=[],
+        artifacts=[],
+        done_payload=done_payload,
     )
 
 
@@ -179,6 +232,15 @@ async def _load_history(
     )
     messages = list(result.scalars().all())[::-1]
     return [{"role": m.role, "content": m.content} for m in messages]
+
+
+def _direct_reply_fallback(action: str) -> str:
+    if action == "outside_files":
+        return (
+            "That seems outside the uploaded course files, so I can't answer it "
+            "from your sources. Ask me about the course material and I'll help."
+        )
+    return "I'm here with you. Tell me what you'd like to work on from your course materials."
 
 
 def _extract_text(data: Any) -> str:

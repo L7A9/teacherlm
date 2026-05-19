@@ -44,6 +44,24 @@ In 2006, the Netflix Prize popularized collaborative filtering.
         self.assertTrue(first.tables)
         self.assertIn("Netflix Prize", document.sections[1].timeline_events[0])
 
+    def test_skips_figure_captions_when_inferring_document_title(self) -> None:
+        extractor = CourseStructureExtractor()
+        document = extractor.extract(
+            """
+Figure: Example architecture screenshot
+
+# Distributed Systems
+
+## Replication
+Replication keeps copies of data on multiple nodes.
+""",
+            conversation_id="00000000-0000-0000-0000-000000000000",
+            source_file_id="uploads/systems.pdf",
+            source_filename="systems.pdf",
+        )
+
+        self.assertEqual(document.title, "Distributed Systems")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -20,6 +20,7 @@ _BOILERPLATE_TERMS = re.compile(
     re.IGNORECASE,
 )
 _WORD_RE = re.compile(r"[A-Za-z][A-Za-z'-]*")
+_DEFINITION_RE = re.compile(r"^\s*(?:[-*]\s*)?([^:\n]{2,90})\s*:\s+(.{12,})$")
 _COURSE_CONCEPT_HINTS = re.compile(
     r"\b(concept|method|model|algorithm|approach|system|metric|measure|"
     r"formula|definition|principle|process|classification|theory|law|"
@@ -109,7 +110,7 @@ async def extract_concepts(
         )
     except Exception:
         logger.exception("concept extraction failed for %d chunks", len(chunks))
-        return ExtractedConcepts()
+        return _fallback_concepts(chunks)
 
     valid_ids = {c.chunk_id for c in chunks}
     cleaned = ExtractedConcepts(
@@ -130,4 +131,55 @@ async def extract_concepts(
         len(result.apply),
         len(result.analyze),
     )
-    return cleaned
+    return cleaned if total else _fallback_concepts(chunks)
+
+
+def _fallback_concepts(chunks: list[Chunk]) -> ExtractedConcepts:
+    cards: list[ConceptCard] = []
+    seen: set[str] = set()
+    for chunk in chunks:
+        candidates: list[tuple[str, str]] = []
+        raw_concepts = chunk.metadata.get("key_concepts") or []
+        if isinstance(raw_concepts, list):
+            candidates.extend((str(item), "Course key concept from metadata.") for item in raw_concepts)
+        heading = str(chunk.metadata.get("section_title") or chunk.metadata.get("heading_path") or "").strip()
+        if heading:
+            candidates.append((heading.split(">")[-1].strip(), "Section heading from the uploaded material."))
+        for line in chunk.text.splitlines():
+            definition = _DEFINITION_RE.match(line.strip())
+            if definition:
+                candidates.append((definition.group(1).strip(" -*"), definition.group(2).strip()[:240]))
+
+        for name, description in candidates:
+            name = _clean_name(name)
+            key = name.casefold()
+            if not name or key in seen:
+                continue
+            card = ConceptCard(
+                name=name,
+                bloom_level="understand",
+                description=description,
+                source_chunk_ids=[chunk.chunk_id],
+            )
+            if _is_boilerplate_concept(card):
+                continue
+            seen.add(key)
+            cards.append(card)
+            if len(cards) >= 40:
+                break
+        if len(cards) >= 40:
+            break
+    return ExtractedConcepts(
+        remember=cards[::4],
+        understand=cards[1::4] or cards[:10],
+        apply=cards[2::4],
+        analyze=cards[3::4],
+    )
+
+
+def _clean_name(name: str) -> str:
+    name = re.sub(r"\s+", " ", name).strip(" -*#:;")
+    if ">" in name:
+        parts = [part.strip() for part in name.split(">") if part.strip()]
+        name = parts[-1] if parts else name
+    return name[:90]

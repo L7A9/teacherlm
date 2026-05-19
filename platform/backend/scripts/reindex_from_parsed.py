@@ -49,6 +49,7 @@ async def _reindex_file(record: Any) -> dict[str, Any]:
     from services.course_content_store import get_course_content_store
     from services.course_structure_service import get_course_structure_extractor
     from services.document_cleaning_service import get_document_cleaner
+    from services.chunk_question_generator import get_chunk_question_generator
     from db.session import session_scope
     from services.storage_service import get_storage
     from services.vector_service import get_vector_service
@@ -57,6 +58,7 @@ async def _reindex_file(record: Any) -> dict[str, Any]:
     cleaner = get_document_cleaner()
     extractor = get_course_structure_extractor()
     chunker = get_chunker()
+    question_generator = get_chunk_question_generator()
     content_store = get_course_content_store()
     vectors = get_vector_service()
 
@@ -72,6 +74,7 @@ async def _reindex_file(record: Any) -> dict[str, Any]:
         source_filename=record.filename,
     )
     chunks = chunker.chunk_course_document(document, source_file_id=record.file_id)
+    chunks = await question_generator.annotate_chunks(chunks)
 
     async with session_scope() as session:
         await content_store.replace_document(

@@ -16,7 +16,7 @@ class BM25Index:
 
     def __init__(self, chunks: list[Chunk]) -> None:
         self._chunks = chunks
-        self._tokenized = [tokenize(c.text) for c in chunks]
+        self._tokenized = [tokenize(_searchable_text(c)) for c in chunks]
         self._bm25 = BM25Okapi(self._tokenized) if self._tokenized else None
 
     def __len__(self) -> int:
@@ -42,3 +42,17 @@ class BM25Index:
             )
             for score, c in ranked
         ]
+
+
+def _searchable_text(chunk: Chunk) -> str:
+    metadata = chunk.metadata or {}
+    parts = [chunk.text]
+    for key in ("heading_path", "section_title"):
+        value = str(metadata.get(key, "") or "").strip()
+        if value:
+            parts.append(value)
+    for key in ("key_concepts", "generated_questions"):
+        value = metadata.get(key)
+        if isinstance(value, list):
+            parts.extend(str(item) for item in value if str(item).strip())
+    return "\n".join(parts)

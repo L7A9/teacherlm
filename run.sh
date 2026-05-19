@@ -21,7 +21,7 @@ shift || true
 
 case "$cmd" in
   up)
-    $COMPOSE up -d
+    $COMPOSE up -d --remove-orphans
     $COMPOSE ps
     echo
     echo "Frontend:     http://localhost:3000"
@@ -32,7 +32,7 @@ case "$cmd" in
     echo "mindmap_gen:  http://localhost:8008/health"
     ;;
   build)
-    $COMPOSE up -d --build
+    $COMPOSE up -d --build --remove-orphans
     $COMPOSE ps
     echo
     echo "Frontend:     http://localhost:3000"

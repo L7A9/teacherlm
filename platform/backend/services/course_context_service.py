@@ -22,7 +22,6 @@ from teacherlm_core.schemas.chunk import Chunk
 from config import Settings, get_settings
 from db.session import session_scope
 from services.course_content_store import CourseContentStore, get_course_content_store
-from services.vector_service import VectorService, _collection_name, get_vector_service
 
 
 logger = logging.getLogger(__name__)
@@ -42,11 +41,11 @@ class CourseContextService:
     def __init__(
         self,
         settings: Settings | None = None,
-        vector_service: VectorService | None = None,
+        vector_service: object | None = None,
         content_store: CourseContentStore | None = None,
     ) -> None:
         self._settings = settings or get_settings()
-        self._vectors = vector_service or get_vector_service()
+        self._vectors = vector_service
         self._store = content_store or get_course_content_store()
 
     async def get_relevant_chunks(
@@ -193,7 +192,14 @@ class CourseContextService:
         if output_type == "quiz":
             if topic:
                 return await self.get_topic_context(conversation_id, topic)
-            return await self.get_representative_course_context(conversation_id)
+            return _dedupe_chunks(
+                [
+                    *(await self.get_full_course_outline(conversation_id)),
+                    *(await self.get_representative_course_context(conversation_id)),
+                    *(await self.get_equations(conversation_id)),
+                    *(await self.get_tables(conversation_id)),
+                ]
+            )
 
         if output_type == "mindmap":
             if topic:
@@ -239,13 +245,19 @@ class CourseContextService:
         if not query.strip():
             return self._broad_sample(all_chunks, self._settings.course_context_chunk_budget)
 
-        collection = _collection_name(conversation_id)
-        if not await self._vectors._client.collection_exists(collection):
+        vectors = self._get_vectors_or_none()
+        if vectors is None:
             return self._bm25_only(query, all_chunks)
 
-        embedder = await self._vectors._get_embedder()
+        from services.vector_service import _collection_name
+
+        collection = _collection_name(conversation_id)
+        if not await vectors._client.collection_exists(collection):
+            return self._bm25_only(query, all_chunks)
+
+        embedder = await vectors._get_embedder()
         retriever = HybridRetriever(
-            qdrant_client=self._vectors._client,
+            qdrant_client=vectors._client,
             collection_name=collection,
             embedder=embedder,
             dense_top_k=self._settings.retrieval_dense_candidate_k,
@@ -256,7 +268,12 @@ class CourseContextService:
         k = self._settings.retrieval_top_k
         match mode:
             case "semantic_topk":
-                return await self._semantic_topk(query, retriever, k)
+                return _merge_formula_hits(
+                    query,
+                    await self._semantic_topk(query, retriever, k),
+                    all_chunks,
+                    target=max(k, self._settings.retrieval_rerank_candidate_k),
+                )
             case "coverage_broad":
                 return await coverage_broad(query, retriever, k=max(k * 2, 16))
             case "narrative_arc":
@@ -265,6 +282,18 @@ class CourseContextService:
                 return await topic_clusters(query, retriever, n_clusters=max(6, min(12, k)))
             case "relationship_dense":
                 return await relationship_dense(query, retriever)
+
+    def _get_vectors_or_none(self) -> object | None:
+        if self._vectors is not None:
+            return self._vectors
+        try:
+            from services.vector_service import get_vector_service
+
+            self._vectors = get_vector_service()
+        except Exception:  # noqa: BLE001
+            logger.exception("vector service unavailable; using BM25-only retrieval")
+            return None
+        return self._vectors
 
     async def _typed_section_items(
         self,
@@ -439,6 +468,12 @@ class CourseContextService:
 
         logger.info("Qdrant collection unavailable; using BM25-only retrieval")
         hits = BM25Index(chunks).query(query, top_k=max(self._settings.retrieval_top_k, 20))
+        hits = _merge_formula_hits(
+            query,
+            hits,
+            chunks,
+            target=max(self._settings.retrieval_top_k, 20),
+        )
         terms = _comparison_terms(query)
         if len(terms) < 2:
             return hits[: self._settings.retrieval_top_k]
@@ -636,6 +671,12 @@ def _is_noisy_section(section: object) -> bool:
     normalized_leaf = leaf_title.strip(" :-–—").lower()
     if _NOISY_HEADING_RE.match(normalized) or _NOISY_HEADING_RE.match(normalized_leaf):
         return True
+    if re.search(r"\b(plan\s+de|agenda|table\s+of\s+contents|contents)\b", normalized):
+        return True
+    if re.search(r"\b(university|universite|ecole|school|college|faculty|faculte|professor|enseignant)\b", normalized):
+        return True
+    if normalized.startswith(("master ", "degree ", "program ")):
+        return True
     text = " ".join(str(getattr(section, "text", "")).split())
     if len(text) < 24 and not getattr(section, "key_concepts", None):
         return True
@@ -691,33 +732,6 @@ def _comparison_terms(query: str) -> list[_QueryTerm]:
     normalized = query.lower()
     terms: list[_QueryTerm] = []
 
-    concept_queries = [
-        (
-            "svd",
-            ("svd", "singular value", "matrix factorization", "factorisation matricielle"),
-            "SVD matrix factorization latent factors user item P Q dot product linear rating prediction",
-        ),
-        (
-            "ncf",
-            ("ncf", "neural collaborative filtering", "collaborative filtering neural"),
-            "NCF replace dot product matrix factorization MLP neural layers embeddings non linear f p_u q_i theta",
-        ),
-        (
-            "rnn",
-            ("rnn", "recurrent neural", "recurrent network", "gru", "lstm"),
-            "RNN at each time step h_t x_t y_t item embedding hidden state memory prediction sequence",
-        ),
-        (
-            "transformer",
-            ("transformer", "attention", "self-attention"),
-            "Transformer self-attention sequence modeling temporal dependencies recommendation",
-        ),
-    ]
-
-    for label, aliases, expanded_query in concept_queries:
-        if any(alias in normalized for alias in aliases):
-            terms.append(_QueryTerm(label, expanded_query))
-
     acronym_matches = {match.lower() for match in re.findall(r"\b[A-Z][A-Z0-9]{1,7}\b", query)}
     seen = {term.label for term in terms}
     for acronym in sorted(acronym_matches - seen):
@@ -727,6 +741,185 @@ def _comparison_terms(query: str) -> list[_QueryTerm]:
     if len(terms) >= 2 and any(marker in normalized for marker in comparison_markers):
         return terms
     return []
+
+
+_COMPARISON_MARKERS_RE = re.compile(
+    r"\b(compare|comparison|difference|differentiate|versus|vs|between|"
+    r"comparer|comparaison|diff[eÃ©]rence|entre|"
+    r"مقارنة|الفرق|بين)\b",
+    re.IGNORECASE,
+)
+_TERM_WORD_RE = re.compile(r"[\w\u0600-\u06ff][\w\u0600-\u06ff+/#.-]*")
+_COMPARISON_STOPWORDS = {
+    "what",
+    "whats",
+    "is",
+    "are",
+    "the",
+    "a",
+    "an",
+    "of",
+    "for",
+    "in",
+    "on",
+    "to",
+    "from",
+    "course",
+    "material",
+    "materials",
+    "explain",
+    "compare",
+    "comparison",
+    "difference",
+    "differentiate",
+    "between",
+    "versus",
+    "vs",
+    "and",
+    "with",
+    "me",
+    "please",
+    "quelle",
+    "quel",
+    "est",
+    "sont",
+    "la",
+    "le",
+    "les",
+    "des",
+    "du",
+    "de",
+    "un",
+    "une",
+    "dans",
+    "pour",
+    "cours",
+    "document",
+    "documents",
+    "explique",
+    "comparer",
+    "comparaison",
+    "difference",
+    "diffÃ©rence",
+    "entre",
+    "et",
+}
+
+
+def _comparison_terms(query: str) -> list[_QueryTerm]:
+    if not _COMPARISON_MARKERS_RE.search(query):
+        return []
+
+    labels = _extract_compared_labels(query)
+    if len(labels) < 2:
+        labels = sorted({match.group(0) for match in re.finditer(r"\b[A-Z][A-Z0-9]{1,9}\b", query)})
+    if len(labels) < 2:
+        return []
+
+    out: list[_QueryTerm] = []
+    seen: set[str] = set()
+    for label in labels:
+        cleaned = _clean_comparison_label(label)
+        key = cleaned.casefold()
+        if not cleaned or key in seen:
+            continue
+        seen.add(key)
+        out.append(_QueryTerm(cleaned, cleaned))
+    return out if len(out) >= 2 else []
+
+
+def _extract_compared_labels(query: str) -> list[str]:
+    compact = re.sub(r"\s+", " ", query).strip(" ?!.")
+    patterns = [
+        r"\bbetween\s+(.+?)\s+and\s+(.+?)(?:$|[?.,;]|\s+in\s+|\s+for\s+)",
+        r"\bcompare\s+(.+?)\s+(?:and|with|to|versus|vs\.?)\s+(.+?)(?:$|[?.,;]|\s+in\s+|\s+for\s+)",
+        r"\bdifference\s+between\s+(.+?)\s+and\s+(.+?)(?:$|[?.,;]|\s+in\s+|\s+for\s+)",
+        r"\bentre\s+(.+?)\s+et\s+(.+?)(?:$|[?.,;]|\s+dans\s+|\s+pour\s+)",
+        r"\bcomparer\s+(.+?)\s+(?:et|avec|a|Ã )\s+(.+?)(?:$|[?.,;]|\s+dans\s+|\s+pour\s+)",
+    ]
+    labels: list[str] = []
+    for pattern in patterns:
+        match = re.search(pattern, compact, flags=re.IGNORECASE)
+        if match:
+            labels.extend(match.groups())
+            break
+
+    if not labels and re.search(r"\b(?:vs\.?|versus)\b", compact, flags=re.IGNORECASE):
+        labels = re.split(r"\b(?:vs\.?|versus)\b", compact, maxsplit=1, flags=re.IGNORECASE)
+
+    if not labels:
+        return []
+    expanded: list[str] = []
+    for label in labels:
+        expanded.extend(re.split(r"\s*,\s*|\s*/\s*", label))
+    return expanded
+
+
+def _clean_comparison_label(label: str) -> str:
+    words = [
+        word.strip(".,;:?!()[]{}\"'")
+        for word in _TERM_WORD_RE.findall(label)
+    ]
+    kept = [
+        word
+        for word in words
+        if word and word.casefold() not in _COMPARISON_STOPWORDS
+    ]
+    if not kept:
+        return ""
+    if len(kept) > 5:
+        kept = kept[-5:]
+    return " ".join(kept).strip()
+
+
+_FORMULA_QUERY_RE = re.compile(
+    r"\b(formula|equation|derive|derivation|calculate|compute|symbol|"
+    r"formule|[eÃ©]quation|calculer|calcule|"
+    r"معادلة|صيغة|احسب)\b|[=+\-*/^_]",
+    re.IGNORECASE,
+)
+_MATH_TEXT_RE = re.compile(
+    r"(\$\$.*?\$\$|\\\[.*?\\\]|\\\(.+?\\\)|\\(?:frac|sum|sqrt|hat|bar|vec|int|prod)\b|"
+    r"[=âˆ‘âˆšâˆ«Â±Ã—Ã·â‰¤â‰¥â‰ˆâˆž]|[A-Za-z]\s*[_^]\s*[A-Za-z0-9])",
+    re.DOTALL,
+)
+
+
+def _merge_formula_hits(
+    query: str,
+    hits: list[Chunk],
+    all_chunks: list[Chunk],
+    *,
+    target: int,
+) -> list[Chunk]:
+    if not _FORMULA_QUERY_RE.search(query):
+        return hits
+    formula_hits = _formula_chunks(query, all_chunks, limit=max(4, target // 3))
+    return _dedupe_chunks([*formula_hits, *hits])[:target]
+
+
+def _formula_chunks(query: str, chunks: list[Chunk], *, limit: int) -> list[Chunk]:
+    query_tokens = {
+        token.casefold()
+        for token in _TERM_WORD_RE.findall(query)
+        if len(token) > 2 and token.casefold() not in _COMPARISON_STOPWORDS
+    }
+    scored: list[tuple[float, Chunk]] = []
+    for chunk in chunks:
+        text = chunk.text or ""
+        if not _MATH_TEXT_RE.search(text):
+            continue
+        haystack = f"{text} {chunk.metadata.get('heading_path', '')}".casefold()
+        overlap = sum(1 for token in query_tokens if token in haystack)
+        math_density = len(_MATH_TEXT_RE.findall(text))
+        score = float(overlap * 4 + min(math_density, 6))
+        if overlap == 0 and query_tokens:
+            score *= 0.35
+        if score <= 0:
+            continue
+        scored.append((score, chunk.model_copy(update={"score": max(chunk.score, score)})))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [chunk for _score, chunk in scored[:limit]]
 
 
 def _balanced_term_merge(

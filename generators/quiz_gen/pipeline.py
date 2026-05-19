@@ -115,24 +115,15 @@ async def _enhance_mcqs(
 
 
 def _repair_obvious_concept_labels(questions: list[Question]) -> list[Question]:
-    repaired: list[Question] = []
-    for question in questions:
-        text_parts = [
-            question.question,
-            question.explanation,
-            str(getattr(question, "answer", "")),
-            " ".join(getattr(question, "options", []) or []),
-        ]
-        text = " ".join(text_parts).casefold()
-        concept = question.concept
-        if "intent" in text:
-            concept = "Definition of Intent"
-        elif "xcode" in text or ("ios" in text and "tool" in text):
-            concept = "iOS development tools"
-        elif "android architecture" in text or "android system components" in text:
-            concept = "Android Architecture Basis"
-        repaired.append(question.model_copy(update={"concept": concept}))
-    return repaired
+    return [
+        question.model_copy(update={"concept": _clean_concept_label(question.concept)})
+        for question in questions
+    ]
+
+
+def _clean_concept_label(value: str) -> str:
+    label = " ".join(str(value or "").split()).strip(" -:;")
+    return label[:90] if label else "Course concept"
 
 
 async def _build_intro(
@@ -250,15 +241,16 @@ def _fallback_concept(slot_concept: str, chunk: Chunk) -> str:
     source_text = f"{chunk.text} {chunk.metadata.get('heading_path', '')}".casefold()
     if slot_concept.casefold() in source_text:
         return slot_concept
-    if "intent" in source_text:
-        return "Definition of Intent"
-    if "android architecture" in source_text or "android system" in source_text:
-        return "Android Architecture Basis"
-    if "xcode" in source_text or "ios" in source_text:
-        return "iOS development tools"
-    if "sqlite" in source_text or "shared preferences" in source_text or "store data" in source_text:
-        return "Data persistence methods"
-    return slot_concept
+    heading = str(chunk.metadata.get("section_title") or chunk.metadata.get("heading_path") or "").strip()
+    key_concepts = chunk.metadata.get("key_concepts") or []
+    if isinstance(key_concepts, list):
+        for concept in key_concepts:
+            label = _clean_concept_label(str(concept))
+            if label and label.casefold() in source_text:
+                return label
+    if heading:
+        return _clean_concept_label(heading.split(">")[-1])
+    return _clean_concept_label(slot_concept)
 
 
 async def run(inp: GeneratorInput) -> AsyncIterator[str]:

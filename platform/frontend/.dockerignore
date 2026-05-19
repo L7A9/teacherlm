@@ -1,0 +1,24 @@
+# Keep the frontend Docker context small. The image installs dependencies and
+# builds .next inside Docker, so local development artifacts only add churn.
+
+node_modules/
+.next/
+out/
+.turbo/
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+.env.local
+.env*.local
+
+tsconfig.tsbuildinfo
+.eslintcache
+
+coverage/
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx

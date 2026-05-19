@@ -20,7 +20,16 @@ class Settings(BaseSettings):
         default_factory=lambda: [
             "http://localhost:3000",
             "http://127.0.0.1:3000",
+            "http://0.0.0.0:3000",
         ]
+    )
+    cors_origin_regex: str | None = (
+        r"https?://("
+        r"localhost|127\.0\.0\.1|0\.0\.0\.0|"
+        r"10(?:\.\d{1,3}){3}|"
+        r"172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2}|"
+        r"192\.168(?:\.\d{1,3}){2}"
+        r")(?::\d+)?"
     )
 
     # --- Database ---
@@ -67,6 +76,10 @@ class Settings(BaseSettings):
     # --- Chunking ---
     chunk_max_tokens: int = 512
     chunk_overlap_tokens: int = 50
+    chunk_question_generation_enabled: bool = True
+    chunk_question_count: int = 4
+    chunk_question_batch_size: int = 4
+    chunk_question_max_chars: int = 2200
 
     # --- Retrieval ---
     retrieval_top_k: int = 8

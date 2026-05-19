@@ -11,6 +11,7 @@ from config import Settings, get_settings
 from db.models import UploadedFile
 from db.session import session_scope
 from services.chunking_service import get_chunker
+from services.chunk_question_generator import get_chunk_question_generator
 from services.course_content_store import get_course_content_store
 from services.course_structure_service import get_course_structure_extractor
 from services.document_cleaning_service import get_document_cleaner
@@ -64,6 +65,7 @@ async def ingest_file(ctx: dict[str, Any], file_pk: str) -> dict[str, Any]:
     cleaner = get_document_cleaner()
     extractor = get_course_structure_extractor()
     chunker = get_chunker()
+    question_generator = get_chunk_question_generator()
     content_store = get_course_content_store()
     vectors = get_vector_service()
 
@@ -89,6 +91,7 @@ async def ingest_file(ctx: dict[str, Any], file_pk: str) -> dict[str, Any]:
             source_filename=filename,
         )
         chunks = chunker.chunk_course_document(course_document, source_file_id=object_key)
+        chunks = await question_generator.annotate_chunks(chunks)
 
         async with session_scope() as session:
             await content_store.replace_document(

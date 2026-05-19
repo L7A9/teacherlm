@@ -6,9 +6,6 @@ import uuid
 from datetime import timedelta
 from pathlib import PurePosixPath
 
-from minio import Minio
-from minio.error import S3Error
-
 from config import Settings, get_settings
 
 
@@ -27,6 +24,8 @@ class StorageService:
         # fails when the sign client points at a host only reachable from
         # the browser, e.g. localhost:9000).
         region = "us-east-1"
+        from minio import Minio
+
         self._client = Minio(
             endpoint=self._settings.minio_endpoint,
             access_key=self._settings.minio_access_key,
@@ -116,6 +115,8 @@ class StorageService:
 
     async def delete(self, key: str) -> None:
         def _delete() -> None:
+            from minio.error import S3Error
+
             try:
                 self._client.remove_object(self._bucket, key)
             except S3Error as exc:

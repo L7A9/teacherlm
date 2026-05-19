@@ -12,6 +12,10 @@ _NUMBERED_HEADING = re.compile(r"^\s*((?:\d+\.)+\d*|[IVXLC]+\.)\s+(.{3,140})$")
 _TABLE_ROW = re.compile(r"^\s*\|.+\|\s*$")
 _TABLE_DIVIDER = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$")
 _PAGE_COUNTER = re.compile(r"^\s*\d{1,3}\s*/\s*\d{1,3}\s*$")
+_NOISY_HEADING_TITLE_RE = re.compile(
+    r"^\s*(?:figure|fig\.?|image|table\s+des\s+mati[eÃ¨]res|table\s+of\s+contents|contents?)\s*[:#-]",
+    re.IGNORECASE,
+)
 _MONTH_DATE_LINE = re.compile(
     r"^\s*(?:"
     r"january|february|march|april|may|june|july|august|september|october|november|december|"
@@ -222,7 +226,11 @@ def _is_noise_line(line: str) -> bool:
     value = line.strip()
     if not value:
         return False
-    return bool(_PAGE_COUNTER.fullmatch(value) or _MONTH_DATE_LINE.fullmatch(value))
+    return bool(
+        _PAGE_COUNTER.fullmatch(value)
+        or _MONTH_DATE_LINE.fullmatch(value)
+        or _NOISY_HEADING_TITLE_RE.match(value)
+    )
 
 
 def _clean_title(value: str) -> str:

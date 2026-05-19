@@ -55,14 +55,14 @@ $$ \\hat{r}_{ui} = f(emb_u, emb_i) $$
     def test_removes_footer_remnants_after_partial_cleanup(self) -> None:
         cleaner = DocumentCleaningService()
         cleaned = cleaner.clean_markdown(
-            "# de Meknès Nous vivons dans une ère d’abondance de choix.\n"
-            "( , Intelligents pour l’Éducation) Les embeddings représentent les utilisateurs."
+            "Professor Ada Lovelace University of Example May 1, 2026 15 / 35 **Motivation**: Models need evidence.\n"
+            "Department of Biology | Intro course | 16 / 35"
         )
 
-        self.assertNotIn("de Meknès", cleaned)
-        self.assertNotIn("Intelligents pour l’Éducation", cleaned)
-        self.assertIn("Nous vivons", cleaned)
-        self.assertIn("embeddings", cleaned)
+        self.assertNotIn("Professor Ada", cleaned)
+        self.assertNotIn("Department of Biology", cleaned)
+        self.assertIn("Motivation", cleaned)
+        self.assertIn("Models need evidence", cleaned)
 
 
 if __name__ == "__main__":

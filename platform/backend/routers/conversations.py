@@ -17,7 +17,6 @@ from schemas.conversation import (
 )
 from schemas.message import MessageList, MessageRead
 from services.storage_service import get_storage
-from services.vector_service import get_vector_service
 
 
 logger = logging.getLogger(__name__)
@@ -140,4 +139,6 @@ async def delete_conversation(
     await session.delete(conversation)
     await session.flush()
     # Drop the per-conversation Qdrant collection so embeddings don't linger.
+    from services.vector_service import get_vector_service
+
     await get_vector_service().delete_collection(conversation_id)
