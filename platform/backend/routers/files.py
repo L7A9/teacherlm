@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-import uuid
+import json
+import logging
 from typing import Any
+import uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +16,7 @@ from services.storage_service import get_storage
 
 
 router = APIRouter(prefix="/api/conversations/{conversation_id}/files", tags=["files"])
+logger = logging.getLogger(__name__)
 
 
 def get_arq(request: Request) -> Any:
@@ -27,6 +30,7 @@ def get_arq(request: Request) -> Any:
 async def upload_file(
     conversation_id: uuid.UUID,
     upload: UploadFile = File(...),
+    llm_options_json: str | None = Form(default=None),
     session: AsyncSession = Depends(get_db),
     arq: Any = Depends(get_arq),
 ) -> UploadedFileModel:
@@ -59,7 +63,7 @@ async def upload_file(
     await session.flush()
     await session.refresh(record)
 
-    await arq.enqueue_job("ingest_file", str(record.id))
+    await arq.enqueue_job("ingest_file", str(record.id), _parse_llm_options(llm_options_json))
     return record
 
 
@@ -119,6 +123,15 @@ async def delete_file(
     await session.delete(record)
     await session.flush()
 
+    from services.concept_inventory_service import get_concept_inventory_service
+    from services.learning_map_service import get_learning_map_service
+
+    try:
+        await get_concept_inventory_service().rebuild_concepts(session, conversation_id)
+        await get_learning_map_service().rebuild_map(session, conversation_id)
+    except Exception:  # noqa: BLE001
+        logger.exception("learning inventory rebuild failed after deleting file %s", file_pk)
+
 
 async def _load_file(
     session: AsyncSession,
@@ -129,3 +142,20 @@ async def _load_file(
     if record is None or record.conversation_id != conversation_id:
         raise HTTPException(status_code=404, detail="file not found")
     return record
+
+
+def _parse_llm_options(raw: str | None) -> dict[str, Any] | None:
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="invalid llm_options_json") from exc
+    if parsed is None:
+        return None
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=400, detail="llm_options_json must be an object")
+    llm = parsed.get("llm")
+    if llm is not None and not isinstance(llm, dict):
+        raise HTTPException(status_code=400, detail="llm option must be an object")
+    return parsed

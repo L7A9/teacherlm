@@ -51,7 +51,7 @@ function useRunStream() {
     setStreamError,
     endStream,
   } = useConversationStore.getState();
-  const applyOptimistic = useProgressStore.getState().applyOptimistic;
+  const { applyOptimistic, setState } = useProgressStore.getState();
 
   return useCallback(
     async ({ conversationId, path, body }: RunStreamArgs) => {
@@ -73,7 +73,9 @@ function useRunStream() {
             addArtifact,
             setStreamMeta,
             onDone: (done) => {
-              if (done.learner_updates) {
+              if (done.learner_state) {
+                setState(conversationId, done.learner_state);
+              } else if (done.learner_updates) {
                 applyOptimistic(conversationId, done.learner_updates);
               }
             },
@@ -88,12 +90,15 @@ function useRunStream() {
         endStream(conversationId);
         qc.invalidateQueries({ queryKey: ["messages", conversationId] });
         qc.invalidateQueries({ queryKey: ["conversations", "detail", conversationId] });
+        qc.invalidateQueries({ queryKey: ["conversations", "learner-state", conversationId] });
+        qc.invalidateQueries({ queryKey: ["review-tests", "status", conversationId] });
       }
     },
     [
       addArtifact,
       appendChunk,
       applyOptimistic,
+      setState,
       endStream,
       mergeSources,
       qc,

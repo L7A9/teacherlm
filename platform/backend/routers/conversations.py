@@ -6,6 +6,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from teacherlm_core.schemas.learner_state import LearnerState
 
 from db.models import Conversation, Message
 from db.session import get_db
@@ -16,6 +17,7 @@ from schemas.conversation import (
     ConversationUpdate,
 )
 from schemas.message import MessageList, MessageRead
+from services.learner_tracker import get_learner_tracker
 from services.storage_service import get_storage
 
 
@@ -62,6 +64,17 @@ async def get_conversation(
     if conversation is None:
         raise HTTPException(status_code=404, detail="conversation not found")
     return conversation
+
+
+@router.get("/{conversation_id}/learner-state", response_model=LearnerState)
+async def get_learner_state(
+    conversation_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db),
+) -> LearnerState:
+    conversation = await session.get(Conversation, conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="conversation not found")
+    return await get_learner_tracker().load_state(session, conversation_id)
 
 
 @router.patch("/{conversation_id}", response_model=ConversationRead)

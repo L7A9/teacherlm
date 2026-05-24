@@ -10,6 +10,7 @@ import { MessageList } from "@/components/chat/MessageList";
 import { OutputTypeButtons } from "@/components/chat/OutputTypeButtons";
 import {
   useConversation,
+  useLearnerState,
   useUpdateConversation,
 } from "@/hooks/useConversations";
 import type { UUID } from "@/lib/types";
@@ -24,6 +25,7 @@ interface Props {
 export function ChatPanel({ conversationId, className }: Props) {
   const inputRef = useRef<ChatInputHandle>(null);
   const { data: conversation } = useConversation(conversationId);
+  useLearnerState(conversationId);
   const learner = useProgressStore((s) => s.stateByConversation[conversationId]);
 
   const hint = buildHint(learner);

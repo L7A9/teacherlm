@@ -17,8 +17,7 @@ import { oneDark } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-
-import "katex/dist/katex.min.css";
+import type { PluggableList } from "unified";
 
 import { ArtifactRenderer } from "@/components/artifacts/ArtifactRenderer";
 import { Badge } from "@/components/ui/Badge";
@@ -234,22 +233,126 @@ const markdownComponents: Components = {
   em: ({ node, ...props }) => <em className="italic text-slate-300" {...props} />,
 };
 
-function AssistantMarkdown({ content }: { content: string }) {
+const markdownRemarkPlugins: PluggableList = [remarkGfm, remarkMath];
+const markdownRehypePlugins: PluggableList = [
+  [rehypeKatex, { strict: false, throwOnError: false }],
+];
+
+export function AssistantMarkdown({ content }: { content: string }) {
   const normalized = normalizeDisplayMath(
-    degradeMalformedTables(repairMalformedMathFences(content)),
+    normalizeLeakedLatexMatrices(
+      degradeMalformedTables(repairMalformedMathFences(content)),
+    ),
   );
 
   return (
     <div className="prose prose-invert prose-slate max-w-none">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        remarkPlugins={markdownRemarkPlugins}
+        rehypePlugins={markdownRehypePlugins}
         components={markdownComponents}
       >
         {normalized}
       </ReactMarkdown>
     </div>
   );
+}
+
+function normalizeLeakedLatexMatrices(content: string): string {
+  const lines = content.split(/\r?\n/);
+  const out: string[] = [];
+  let inFence = false;
+  let inMathBlock = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith("```")) {
+      inFence = !inFence;
+      out.push(line);
+      continue;
+    }
+
+    if (trimmed === "$$") {
+      inMathBlock = !inMathBlock;
+      out.push(line);
+      continue;
+    }
+
+    if (!inFence && !inMathBlock && containsLatexMatrix(trimmed)) {
+      const parts = splitMatrixLine(line);
+      if (parts) {
+        if (parts.before) out.push(parts.before);
+        out.push("$$", repairLatexMatrix(parts.matrix), "$$");
+        if (parts.after) out.push(parts.after);
+        continue;
+      }
+    }
+
+    out.push(line);
+  }
+
+  return out.join("\n");
+}
+
+function containsLatexMatrix(line: string): boolean {
+  return /\\begin\{[a-z]*matrix\}/.test(line) && /\\end\{[a-z]*matrix\}/.test(line);
+}
+
+function splitMatrixLine(
+  line: string,
+): { before: string; matrix: string; after: string } | null {
+  const begin = line.search(/\\begin\{[a-z]*matrix\}/);
+  const endMatch = line.match(/\\end\{[a-z]*matrix\}/);
+  if (begin < 0 || !endMatch || endMatch.index === undefined) return null;
+
+  const leading = line.slice(0, begin);
+  const assignment = leading.match(/([A-Za-z][A-Za-z0-9_{}^\\]*\s*=\s*)$/);
+  const start = assignment?.index === undefined ? begin : assignment.index;
+  const end = endMatch.index + endMatch[0].length;
+  return {
+    before: line.slice(0, start).trim(),
+    matrix: line.slice(start, end).trim(),
+    after: line.slice(end).trim(),
+  };
+}
+
+function repairLatexMatrix(raw: string): string {
+  const match = raw.match(/^(.*?)\\begin\{([a-z]*matrix)\}([\s\S]*?)\\end\{\2\}(.*)$/);
+  if (!match) return raw;
+
+  const [, prefix = "", env = "pmatrix", body = "", suffix = ""] = match;
+  const repairedBody = repairLatexMatrixBody(body);
+  const repairedPrefix = repairLatexExpression(prefix);
+  const repairedSuffix = repairLatexExpression(suffix);
+  return `${repairedPrefix}\\begin{${env}}${repairedBody}\\end{${env}}${repairedSuffix}`.trim();
+}
+
+function repairLatexMatrixBody(body: string): string {
+  let repaired = body
+    .replace(/\\dots\s+dots\b/g, "\\dots")
+    .replace(/\bdots\s+dots\b/g, "\\dots")
+    .replace(/\bdots\b/g, "\\dots")
+    .replace(/\\vdots\s+\\vdots\b/g, "\\vdots");
+
+  repaired = repaired.replace(
+    /((?:[A-Za-z]+_\{?\d+\}?)|(?:\d+))\s+_\{?\d+\}?/g,
+    "$1",
+  );
+  repaired = repaired.replace(/_([A-Za-z0-9]+)/g, "_{$1}");
+
+  repaired = repaired.replace(/\s+(?=(?:u_\{?\d+\}?|u_m|\\vdots)\s*&)/g, " \\\\ ");
+  repaired = repaired.replace(/\s*&\s*/g, " & ");
+  repaired = repaired.replace(/\s*\\\\\s*/g, " \\\\ ");
+  return repaired.replace(/\s+/g, " ").trim();
+}
+
+function repairLatexExpression(value: string): string {
+  return value
+    .replace(/\\dots\s+dots\b/g, "\\dots")
+    .replace(/\bdots\b/g, "\\dots")
+    .replace(/_([A-Za-z0-9]+)/g, "_{$1}")
+    .replace(/\s+/g, " ");
 }
 
 function normalizeDisplayMath(content: string): string {
@@ -483,6 +586,7 @@ function isFormulaLine(line: string): boolean {
   if (!line || line.includes("$") || line.endsWith(":") || line.length > 220) {
     return false;
   }
+  if (isBareLatexFormulaLine(line)) return true;
   if (!/[=≈≤≥]/.test(line)) return false;
   if (!/[√∑Σ∏πμσλΔδθαβγΩω^_]/.test(line)) return false;
   const words = line.match(/[A-Za-zÀ-ÿ]{3,}/g) ?? [];
@@ -491,6 +595,34 @@ function isFormulaLine(line: string): boolean {
     return !["sqrt", "sum", "min", "max", "log", "sin", "cos", "tan"].includes(
       word.toLowerCase(),
     );
+  });
+  return proseWords.length <= 2;
+}
+
+function isBareLatexFormulaLine(line: string): boolean {
+  if (!/\\(?:frac|sum|sqrt|hat|bar|vec|left|right|lVert|rVert|begin|end)\b|\\\|/.test(line)) {
+    return false;
+  }
+  if (/[.!?;:]$/.test(line)) return false;
+  const words = line.match(/[A-Za-zÀ-ÿ]{3,}/g) ?? [];
+  const proseWords = words.filter((word) => {
+    const normalized = word.toLowerCase();
+    return ![
+      "frac",
+      "sum",
+      "sqrt",
+      "hat",
+      "bar",
+      "vec",
+      "left",
+      "right",
+      "begin",
+      "end",
+      "pmatrix",
+      "bmatrix",
+      "matrix",
+      "operatorname",
+    ].includes(normalized);
   });
   return proseWords.length <= 2;
 }
@@ -521,7 +653,16 @@ function toLatexFormula(line: string): string {
   expr = expr.replace(/^([A-Z]{2,})\s*=/, "\\operatorname{$1} =");
   expr = expr.replace(/\^([A-Za-z0-9]+)/g, "^{$1}");
   expr = expr.replace(/_([A-Za-z0-9]+)/g, "_{$1}");
-  return expr.replace(/\s+/g, " ").trim();
+  return repairDanglingLatex(expr.replace(/\s+/g, " ").trim());
+}
+
+function repairDanglingLatex(expr: string): string {
+  if (!/\\+$/.test(expr)) return expr;
+  const normDelimiterCount = expr.match(/\\\|/g)?.length ?? 0;
+  if (normDelimiterCount % 2 === 1) {
+    return expr.replace(/\\+$/, "\\|");
+  }
+  return expr.replace(/\\+$/, "").trim();
 }
 
 function replaceSqrtGroups(input: string): string {

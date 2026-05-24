@@ -28,8 +28,8 @@ _COURSE_CONCEPT_HINTS = re.compile(
     r"methode|mod[eè]le|algorithme|approche|syst[eè]me|m[eé]trique|"
     r"mesure|formule|d[eé]finition|principe|processus|classification|"
     r"th[eé]orie|loi|cause|effet|impact|fonction|structure|propri[eé]t[eé]|"
-    r"relation|filtrage|apprentissage|recommandation|similarit[eé]|"
-    r"learning|filtering|factorization|decomposition|regression)\b|"
+    r"relation|skill|procedure|strategy|pattern|evidence|argument|"
+    r"apprentissage|comp[eé]tence|proc[eé]dure|strat[eé]gie|preuve|argument)\b|"
     r"\b(?-i:[A-Z]{2,})\b",
     re.IGNORECASE,
 )

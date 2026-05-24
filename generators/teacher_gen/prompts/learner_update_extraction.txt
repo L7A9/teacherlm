@@ -6,9 +6,16 @@ Given the student's message and the teacher's response, extract:
 - demonstrated_understanding: concepts the student showed they actually understand in their own words. Only include if there is clear evidence — a correct explanation, correct application, or correct answer. Do NOT include concepts the teacher just explained without student response.
 - showed_confusion: concepts the student was confused or wrong about in this turn. Do NOT include concepts the student handled correctly.
 
+When the turn relates to a known course concept, use the exact canonical name
+from KNOWN COURSE CONCEPTS instead of inventing a new synonym. Use aliases only
+to recognize the concept; output the canonical name.
+
 Be conservative. When in doubt, leave the concept out of demonstrated / showed_confusion — covered is the safe default.
 
 Return ONLY the structured object. No prose.
+
+=== KNOWN COURSE CONCEPTS ===
+{known_concepts}
 
 === STUDENT MESSAGE ===
 {user_message}

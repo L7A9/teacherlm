@@ -247,7 +247,7 @@ def _summarize(text: str, max_chars: int = 700) -> str:
 
 
 def _extract_key_concepts(text: str, title: str) -> list[str]:
-    concepts: list[str] = [title]
+    concepts: list[str] = []
     for match in _BOLD_TERM.finditer(text):
         concepts.append(match.group(1).strip())
     for line in text.splitlines():

@@ -2,11 +2,11 @@
 
 import { useMemo } from "react";
 
-import { Package, Sparkles } from "lucide-react";
+import { BookOpen, Package } from "lucide-react";
 
 import { ArtifactModalButton } from "@/components/artifacts/ArtifactModalButton";
 import { ArtifactRenderer } from "@/components/artifacts/ArtifactRenderer";
-import { LearnerProgress } from "@/components/progress/LearnerProgress";
+import { CourseBuilderPanel } from "@/components/coursebuilder/CourseBuilderPanel";
 import { useMessages } from "@/hooks/useMessages";
 import type { Artifact, UUID } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -70,16 +70,14 @@ export function ProgressPanel({ conversationId, className }: Props) {
       aria-label="Progress"
     >
       <header className="flex items-center gap-2 border-b border-border px-4 py-3">
-        <Sparkles className="h-4 w-4 text-primary" />
-        <h2 className="text-sm font-semibold">Progress</h2>
+        <BookOpen className="h-4 w-4 text-primary" />
+        <h2 className="text-sm font-semibold">Course</h2>
       </header>
 
       <div className="flex-1 overflow-y-auto">
-        <section className="border-b border-border px-4 py-4">
-          <LearnerProgress conversationId={conversationId} />
-        </section>
+        <CourseBuilderPanel conversationId={conversationId} />
 
-        <section className="flex flex-col gap-3 px-4 py-4">
+        <section className="flex flex-col gap-3 border-t border-border px-4 py-4">
           <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
             <Package className="h-3 w-3" />
             Generated items

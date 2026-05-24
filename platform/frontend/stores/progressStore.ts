@@ -18,6 +18,12 @@ function emptyState(conversationId: UUID): LearnerState {
     mastery_scores: {},
     session_turns: 0,
     turns_since_progress: 0,
+    known_concepts: [],
+    concept_progress: [],
+    learning_phases: [],
+    objective_progress: [],
+    phase_progress: [],
+    remediation_paths: [],
   };
 }
 
@@ -46,6 +52,7 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
       const current =
         prev.stateByConversation[conversationId] ?? emptyState(conversationId);
       const mastery = { ...current.mastery_scores };
+      const struggleEvidence = new Set(current.struggling_concepts);
 
       for (const concept of updates.concepts_covered) {
         mastery[concept] = mastery[concept] ?? 0;
@@ -57,6 +64,7 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
       for (const concept of updates.concepts_struggled) {
         const v = mastery[concept] ?? 0;
         mastery[concept] = Math.max(0, v * STRUGGLE_DECAY);
+        struggleEvidence.add(concept);
       }
 
       const understood = Object.entries(mastery)
@@ -64,7 +72,7 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
         .map(([k]) => k)
         .sort();
       const struggling = Object.entries(mastery)
-        .filter(([, v]) => v <= STRUGGLING_THRESHOLD)
+        .filter(([k, v]) => v <= STRUGGLING_THRESHOLD && struggleEvidence.has(k))
         .map(([k]) => k)
         .sort();
 

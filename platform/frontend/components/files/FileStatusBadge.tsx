@@ -12,6 +12,8 @@ const LABELS: Record<FileStatus, string> = {
   uploaded: "Queued",
   parsing: "Parsing…",
   chunking: "Chunking…",
+  extracting_concepts: "Extracting concepts...",
+  building_course: "Building course...",
   embedding: "Embedding…",
   ready: "Ready",
   failed: "Failed",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import AsyncIterator
 
 from teacherlm_core.llm.language import set_current_language
@@ -124,6 +125,39 @@ def _repair_obvious_concept_labels(questions: list[Question]) -> list[Question]:
 def _clean_concept_label(value: str) -> str:
     label = " ".join(str(value or "").split()).strip(" -:;")
     return label[:90] if label else "Course concept"
+
+
+def _attach_canonical_concept_ids(
+    questions: list[Question],
+    known_concepts: list,
+) -> list[Question]:
+    if not known_concepts:
+        return questions
+
+    by_label: dict[str, str] = {}
+    for concept in known_concepts:
+        concept_id = str(getattr(concept, "id", "") or "")
+        labels = [
+            str(getattr(concept, "name", "") or ""),
+            *[str(alias) for alias in (getattr(concept, "aliases", []) or [])],
+        ]
+        for label in labels:
+            key = _concept_key(label)
+            if key and concept_id:
+                by_label.setdefault(key, concept_id)
+
+    out: list[Question] = []
+    for question in questions:
+        concept_id = by_label.get(_concept_key(question.concept))
+        if concept_id:
+            out.append(question.model_copy(update={"concept_id": concept_id}))
+        else:
+            out.append(question)
+    return out
+
+
+def _concept_key(value: str) -> str:
+    return " ".join(re.findall(r"[a-z0-9]+", str(value or "").casefold()))
 
 
 async def _build_intro(
@@ -320,6 +354,7 @@ async def run(inp: GeneratorInput) -> AsyncIterator[str]:
         enhanced = raw_questions
 
     enhanced = _repair_obvious_concept_labels(enhanced)
+    enhanced = _attach_canonical_concept_ids(enhanced, learner.known_concepts)
     validated, dropped = validate_questions(enhanced, inp.context_chunks)
     questions, duplicates = deduplicate_questions(validated)
     dropped.extend(duplicates)
@@ -331,6 +366,7 @@ async def run(inp: GeneratorInput) -> AsyncIterator[str]:
         chunks=inp.context_chunks,
         target_count=n_target,
     )
+    questions = _attach_canonical_concept_ids(questions, learner.known_concepts)
     top_up_count = len(questions) - before_top_up
     bloom_counts = bloom_distribution(questions)
     yield _sse(

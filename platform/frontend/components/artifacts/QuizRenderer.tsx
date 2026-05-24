@@ -7,19 +7,29 @@ import { CheckCircle2, RotateCcw, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import type { QuizPayload, QuizQuestion } from "@/lib/types";
+import { useSubmitQuizAttempt } from "@/hooks/useKnowledgeChecks";
+import type {
+  KnowledgeCheckResult,
+  QuizPayload,
+  QuizQuestion,
+  UUID,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 interface Props {
   payload: QuizPayload;
+  conversationId?: UUID;
 }
 
 type AnswerMap = Record<number, string>;
+type ResultMap = Record<number, KnowledgeCheckResult>;
 
-export function QuizRenderer({ payload }: Props) {
+export function QuizRenderer({ payload, conversationId }: Props) {
   const { title, questions } = payload;
   const [answers, setAnswers] = useState<AnswerMap>({});
   const [submitted, setSubmitted] = useState(false);
+  const [backendResults, setBackendResults] = useState<ResultMap>({});
+  const submitQuiz = useSubmitQuizAttempt(conversationId);
 
   const answeredCount = Object.keys(answers).length;
   const total = questions.length;
@@ -27,17 +37,55 @@ export function QuizRenderer({ payload }: Props) {
   const score = useMemo(
     () =>
       submitted
-        ? questions.reduce(
-            (sum, q, idx) => sum + (isCorrect(q, answers[idx]) ? 1 : 0),
-            0,
-          )
+        ? Object.keys(backendResults).length > 0
+          ? Object.values(backendResults).reduce(
+              (sum, result) => sum + (result.is_correct ? 1 : 0),
+              0,
+            )
+          : questions.reduce(
+              (sum, q, idx) => sum + (isCorrect(q, answers[idx]) ? 1 : 0),
+              0,
+            )
         : 0,
-    [submitted, questions, answers],
+    [submitted, questions, answers, backendResults],
   );
 
   const reset = () => {
     setAnswers({});
     setSubmitted(false);
+    setBackendResults({});
+  };
+
+  const submit = async () => {
+    if (!conversationId) {
+      setSubmitted(true);
+      return;
+    }
+    const response = await submitQuiz.mutateAsync({
+      questions,
+      answers: Object.entries(answers).map(([questionIndex, answer]) => ({
+        question_index: Number(questionIndex),
+        answer,
+      })),
+    });
+    const results: ResultMap = {};
+    response.results.forEach((result, resultIndex) => {
+      let index =
+        typeof result.question_index === "number"
+          ? result.question_index
+          : -1;
+      if (index < 0) {
+        index = questions.findIndex(
+          (question) =>
+            question.concept_id === result.concept_id ||
+            question.concept === result.concept_name,
+        );
+      }
+      if (index < 0) index = resultIndex;
+      if (index >= 0) results[index] = result;
+    });
+    setBackendResults(results);
+    setSubmitted(true);
   };
 
   if (total === 0) {
@@ -81,6 +129,7 @@ export function QuizRenderer({ payload }: Props) {
             index={idx}
             question={q}
             answer={answers[idx]}
+            result={backendResults[idx]}
             submitted={submitted}
             onAnswer={(value) =>
               setAnswers((prev) => ({ ...prev, [idx]: value }))
@@ -92,10 +141,10 @@ export function QuizRenderer({ payload }: Props) {
       {!submitted && (
         <div className="flex justify-end">
           <Button
-            disabled={answeredCount < total}
-            onClick={() => setSubmitted(true)}
+            disabled={answeredCount < total || submitQuiz.isPending}
+            onClick={() => void submit()}
           >
-            Submit quiz
+            {submitQuiz.isPending ? "Submitting..." : "Submit quiz"}
           </Button>
         </div>
       )}
@@ -107,17 +156,19 @@ function QuestionCard({
   index,
   question,
   answer,
+  result,
   submitted,
   onAnswer,
 }: {
   index: number;
   question: QuizQuestion;
   answer?: string;
+  result?: KnowledgeCheckResult;
   submitted: boolean;
   onAnswer: (value: string) => void;
 }) {
   const options = resolveOptions(question);
-  const correct = isCorrect(question, answer);
+  const correct = result?.is_correct ?? isCorrect(question, answer);
   const correctLabel = correctAnswerLabel(question);
 
   return (
@@ -191,6 +242,9 @@ function QuestionCard({
           </div>
           {question.explanation && (
             <p className="text-muted-foreground">{question.explanation}</p>
+          )}
+          {result?.feedback && (
+            <p className="text-muted-foreground">{result.feedback}</p>
           )}
         </div>
       )}

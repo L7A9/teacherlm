@@ -6,15 +6,20 @@ from typing import Any
 
 from arq.connections import RedisSettings
 from sqlalchemy import select
+from teacherlm_core.llm.language import reset_current_language, set_current_language
 
 from config import Settings, get_settings
 from db.models import UploadedFile
 from db.session import session_scope
 from services.chunking_service import get_chunker
 from services.chunk_question_generator import get_chunk_question_generator
+from services.concept_inventory_service import get_concept_inventory_service
+from services.coursebuilder_service import get_coursebuilder_service
 from services.course_content_store import get_course_content_store
 from services.course_structure_service import get_course_structure_extractor
 from services.document_cleaning_service import get_document_cleaner
+from services.learning_map_service import get_learning_map_service
+from services.knowledge_graph_service import get_knowledge_graph_service
 from services.parsing_service import get_parser
 from services.storage_service import get_storage
 from services.vector_service import get_vector_service
@@ -46,7 +51,101 @@ async def _set_status(
             record.parsed_markdown_path = parsed_markdown_path
 
 
-async def ingest_file(ctx: dict[str, Any], file_pk: str) -> dict[str, Any]:
+async def _all_conversation_files_ready(conversation_id: uuid.UUID) -> bool:
+    async with session_scope() as session:
+        result = await session.execute(
+            select(UploadedFile).where(UploadedFile.conversation_id == conversation_id)
+        )
+        files = list(result.scalars().all())
+    return bool(files) and all(file.status == "ready" for file in files)
+
+
+async def _rebuild_learning_course_if_ready(
+    ctx: dict[str, Any],
+    conversation_id: uuid.UUID,
+    *,
+    llm_options: dict[str, Any] | None = None,
+) -> None:
+    if not await _all_conversation_files_ready(conversation_id):
+        return
+
+    language_token = set_current_language(_language_from_options(llm_options))
+    async with session_scope() as session:
+        try:
+            await get_concept_inventory_service().rebuild_concepts(
+                session,
+                conversation_id,
+                llm_options=llm_options,
+            )
+            await get_learning_map_service().rebuild_map(
+                session,
+                conversation_id,
+                llm_options=llm_options,
+            )
+            await get_knowledge_graph_service().rebuild_graph(
+                session,
+                conversation_id,
+                llm_options=llm_options,
+            )
+            service = get_coursebuilder_service()
+            existing = await service.current_course(session, conversation_id)
+            if existing and existing.status in {
+                "queued",
+                "analyzing",
+                "generating_outline",
+                "generating_chapters",
+                "generating_lessons",
+                "generating_quizzes",
+                "validating",
+            }:
+                return
+            await service.queue_course(session, conversation_id, llm_options=llm_options)
+            redis = ctx.get("redis")
+            if redis is not None:
+                await redis.enqueue_job(
+                    "build_coursebuilder_course",
+                    str(conversation_id),
+                    llm_options or {},
+                )
+            else:
+                logger.warning("coursebuilder queue unavailable; building inline")
+                await service.generate_course(session, conversation_id, llm_options=llm_options)
+        finally:
+            reset_current_language(language_token)
+
+
+def _language_from_options(llm_options: dict[str, Any] | None) -> str | None:
+    if not isinstance(llm_options, dict):
+        return None
+    language = str(llm_options.get("language") or "").strip().lower()
+    return language if language and language not in {"auto", "__auto__"} else None
+
+
+async def build_coursebuilder_course(
+    ctx: dict[str, Any],
+    conversation_id: str,
+    llm_options: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    conversation_uuid = uuid.UUID(conversation_id)
+    language_token = set_current_language(_language_from_options(llm_options))
+    try:
+        async with session_scope() as session:
+            service = get_coursebuilder_service()
+            course = await service.generate_course(
+                session,
+                conversation_uuid,
+                llm_options=llm_options,
+            )
+            return {"ok": course.status == "ready", "status": course.status, "course_id": str(course.id) if course.id else None}
+    finally:
+        reset_current_language(language_token)
+
+
+async def ingest_file(
+    ctx: dict[str, Any],
+    file_pk: str,
+    llm_options: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """arq job: parse → chunk → embed → upsert for one UploadedFile row."""
     pk = uuid.UUID(file_pk)
 
@@ -110,6 +209,10 @@ async def ingest_file(ctx: dict[str, Any], file_pk: str) -> dict[str, Any]:
         await vectors.delete_by_file(conversation_id, object_key)
         if not chunks:
             await _set_status(pk, "ready", chunk_count=0)
+            try:
+                await _rebuild_learning_course_if_ready(ctx, conversation_id, llm_options=llm_options)
+            except Exception:  # noqa: BLE001
+                logger.exception("final course rebuild failed for %s; file remains ready", filename)
             return {"ok": True, "chunks": 0, "cleaned_key": cleaned_key}
 
         # --- embedding + upsert ---
@@ -120,6 +223,10 @@ async def ingest_file(ctx: dict[str, Any], file_pk: str) -> dict[str, Any]:
         logger.info("embedded and upserted %s chunks for %s", upserted, filename)
 
         await _set_status(pk, "ready", chunk_count=upserted)
+        try:
+            await _rebuild_learning_course_if_ready(ctx, conversation_id, llm_options=llm_options)
+        except Exception:  # noqa: BLE001
+            logger.exception("final course rebuild failed for %s; file remains ready", filename)
         return {
             "ok": True,
             "chunks": upserted,
@@ -144,6 +251,7 @@ async def startup(ctx: dict[str, Any]) -> None:
     # Warm the MinIO bucket so the first upload doesn't race the check.
     await get_storage().ensure_bucket()
     await _recover_interrupted_uploads(ctx, settings)
+    await _recover_coursebuilder_jobs(ctx)
 
 
 async def _recover_interrupted_uploads(ctx: dict[str, Any], settings: Settings) -> None:
@@ -154,7 +262,7 @@ async def _recover_interrupted_uploads(ctx: dict[str, Any], settings: Settings) 
         logger.warning("cannot recover interrupted uploads: arq redis handle missing")
         return
 
-    interrupted_statuses = ("parsing", "chunking", "embedding")
+    interrupted_statuses = ("parsing", "chunking", "extracting_concepts", "building_course", "embedding")
     async with session_scope() as session:
         result = await session.execute(
             select(UploadedFile)
@@ -175,12 +283,51 @@ async def _recover_interrupted_uploads(ctx: dict[str, Any], settings: Settings) 
     logger.warning("requeued %s interrupted ingestion jobs", len(records))
 
 
+async def _recover_coursebuilder_jobs(ctx: dict[str, Any]) -> None:
+    redis = ctx.get("redis")
+    if redis is None:
+        return
+    running_statuses = (
+        "queued",
+        "analyzing",
+        "generating_outline",
+        "generating_chapters",
+        "generating_lessons",
+        "generating_quizzes",
+        "validating",
+    )
+    try:
+        from db.models import CourseBuilderCourseRecord
+
+        async with session_scope() as session:
+            service = get_coursebuilder_service()
+            await service.ensure_schema(session)
+            result = await session.execute(
+                select(CourseBuilderCourseRecord)
+                .where(CourseBuilderCourseRecord.status.in_(running_statuses))
+                .order_by(CourseBuilderCourseRecord.created_at.asc())
+            )
+            courses = list(result.scalars().all())
+            for course in courses:
+                if await _all_conversation_files_ready(course.conversation_id):
+                    course.status = "queued"
+                    await redis.enqueue_job(
+                        "build_coursebuilder_course",
+                        str(course.conversation_id),
+                        (course.generation_metadata or {}).get("llm_options") or {},
+                    )
+        if courses:
+            logger.warning("requeued %s interrupted CourseBuilder jobs", len(courses))
+    except Exception:  # noqa: BLE001
+        logger.exception("CourseBuilder job recovery failed")
+
+
 async def shutdown(ctx: dict[str, Any]) -> None:
     await get_vector_service().aclose()
 
 
 class WorkerSettings:
-    functions = [ingest_file]
+    functions = [ingest_file, build_coursebuilder_course]
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
