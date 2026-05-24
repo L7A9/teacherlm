@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { conversationsApi } from "@/lib/api";
@@ -8,6 +10,7 @@ import type {
   ConversationUpdate,
   UUID,
 } from "@/lib/types";
+import { useProgressStore } from "@/stores/progressStore";
 
 const ROOT_KEY = ["conversations"] as const;
 
@@ -24,6 +27,21 @@ export function useConversation(id: UUID | null | undefined) {
     queryFn: () => conversationsApi.get(id as UUID),
     enabled: Boolean(id),
   });
+}
+
+export function useLearnerState(id: UUID | null | undefined) {
+  const setProgressState = useProgressStore((s) => s.setState);
+  const query = useQuery({
+    queryKey: [...ROOT_KEY, "learner-state", id],
+    queryFn: () => conversationsApi.learnerState(id as UUID),
+    enabled: Boolean(id),
+  });
+  useEffect(() => {
+    if (query.data) {
+      setProgressState(query.data.conversation_id, query.data);
+    }
+  }, [query.data, setProgressState]);
+  return query;
 }
 
 export function useCreateConversation() {

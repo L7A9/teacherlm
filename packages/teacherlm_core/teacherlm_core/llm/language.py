@@ -38,11 +38,15 @@ _current_language: contextvars.ContextVar[str | None] = contextvars.ContextVar(
 )
 
 
-def set_current_language(code: str | None) -> None:
+def set_current_language(code: str | None) -> contextvars.Token[str | None]:
     """Set the forced language for every LLM call inside the current
     async context (typically a single FastAPI request). Pass None to
     clear. Each generator's pipeline calls this at the start of run()."""
-    _current_language.set(code or None)
+    return _current_language.set(code or None)
+
+
+def reset_current_language(token: contextvars.Token[str | None]) -> None:
+    _current_language.reset(token)
 
 
 def get_current_language() -> str | None:

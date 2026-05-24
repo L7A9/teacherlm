@@ -266,6 +266,8 @@ def _is_generic_course_label(value: str) -> bool:
 
 
 def _is_noisy_course_label(value: str) -> bool:
+    if _is_artifact_label(value):
+        return True
     normalized = _norm_label(value)
     if not normalized or _is_generic_course_label(normalized):
         return True
@@ -287,7 +289,7 @@ def _is_noisy_course_label(value: str) -> bool:
 
 
 def _clean_heading(raw: str) -> str:
-    heading = raw.strip().lstrip("-•0123456789. ").strip()
+    heading = _strip_artifacts(raw).lstrip("-•0123456789. ").strip()
     if ">" in heading:
         parts = [part.strip() for part in heading.split(">") if part.strip()]
         for part in reversed(parts):
@@ -295,6 +297,46 @@ def _clean_heading(raw: str) -> str:
                 return part
         return parts[-1] if parts else heading
     return heading
+
+
+def _strip_artifacts(value: str) -> str:
+    text = re.sub(
+        r"</?(?:th|td|tr|table|tbody|thead|mark|b)\b[^>]*>?",
+        " ",
+        str(value),
+        flags=re.IGNORECASE,
+    )
+    text = text.replace("</th", " ").replace("</td", " ").replace("</tr", " ")
+    text = text.replace("<th", " ").replace("<td", " ").replace("<tr", " ")
+    text = text.replace("**", "").replace("__", "")
+    return re.sub(r"\s+", " ", text).strip(" -:;,.")
+
+
+def _ascii_norm(value: str) -> str:
+    text = unicodedata.normalize("NFKD", str(value or "").casefold())
+    return "".join(ch for ch in text if not unicodedata.combining(ch))
+
+
+def _is_artifact_label(value: str) -> bool:
+    text = str(value or "").strip()
+    folded = _ascii_norm(text)
+    if not folded:
+        return True
+    if re.search(r"</?(?:th|td|tr|table|tbody|thead|mark|b)\b|</(?:th|td|tr|mark|b)?$", folded):
+        return True
+    if any(token in text for token in ("\\begin", "\\end", "$", "\\vec", "\\frac", "_{", "^", "{", "}")):
+        return True
+    if re.search(r"\b(?:section path|section summary|source file|key details|formal pieces)\b", folded):
+        return True
+    if re.fullmatch(r"(?:ratings|analysis of ratings|input from user|output to user)", folded):
+        return True
+    if re.search(r"^\s*(?:doc|position|rang|rank|groupe|group|facteur|factor|systeme|system|etape|step)\s+\w+", folded):
+        return True
+    if re.search(r"^\s*\d+(?:\.\d+)*\s*[:.)-]?\s+", folded):
+        return True
+    if re.search(r"\b(?:sim\(|num\s*:|den\s*:|calculer|note\s+\d|classement parfait)\b", folded):
+        return True
+    return False
 
 
 def _extract_course_topics(chunks: list[Chunk], *, limit: int = 6) -> list[CourseTopic]:
@@ -392,7 +434,7 @@ def _infer_course_title(chunks: list[Chunk], topics: list[CourseTopic]) -> str:
         if chunk.source in {"course_outline", "course"}:
             match = re.search(r"(?im)^(?:Course|Central topic|Topic):\s*(.+?)\s*$", chunk.text)
             if match and not _is_noisy_course_label(match.group(1)):
-                candidates.append(match.group(1).strip())
+                candidates.append(_clean_heading(match.group(1)))
         title = str(chunk.metadata.get("document_title") or "").strip()
         if title:
             metadata_titles.append(title)
@@ -450,7 +492,7 @@ def _collect_overview_concepts(topics: list[CourseTopic], chunks: list[Chunk], *
     for concept in concepts:
         label = _clean_heading(str(concept))
         key = _norm_label(label)
-        if _is_noisy_course_label(label) or key in seen:
+        if _is_noisy_course_label(label) or _is_artifact_label(label) or key in seen:
             continue
         seen.add(key)
         out.append(label)
@@ -485,7 +527,6 @@ def _course_overview_response(chunks: list[Chunk]) -> str | None:
 
     title = _infer_course_title(chunks, topics)
     concepts = _collect_overview_concepts(topics, chunks)
-    formulas = _collect_overview_formulas(chunks)
     lines = [
         f"Here is the big picture: this course is about **{title}**, based on the uploaded files.",
         "",
@@ -504,9 +545,6 @@ def _course_overview_response(chunks: list[Chunk]) -> str | None:
             source_names.append(topic.source)
     if concepts:
         lines.extend(["", "## Key ideas to learn", "", ", ".join(concepts[:12]) + "."])
-    if formulas:
-        lines.extend(["", "## Formal pieces I noticed", ""])
-        lines.extend(f"- {formula}" for formula in formulas)
 
     first_steps = [topic.title for topic in topics[:3]]
     if first_steps:
@@ -777,6 +815,7 @@ async def run(inp: GeneratorInput) -> AsyncIterator[str]:
         user_message=inp.user_message,
         assistant_response=full_response,
         llm=llm,
+        known_concepts=[item.model_dump() for item in inp.learner_state.known_concepts],
     )
     learner_updates = LearnerUpdates(
         concepts_covered=extraction.covered,

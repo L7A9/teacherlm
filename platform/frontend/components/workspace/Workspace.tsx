@@ -7,6 +7,7 @@ import Link from "next/link";
 import { GraduationCap, PanelLeft, PanelRight, Settings } from "lucide-react";
 
 import { GeneratorDialog } from "@/components/chat/GeneratorDialog";
+import { ReviewTestDialog } from "@/components/review/ReviewTestDialog";
 import { Button } from "@/components/ui/Button";
 import { ChatPanel } from "@/components/workspace/ChatPanel";
 import { ProgressPanel } from "@/components/workspace/ProgressPanel";
@@ -61,6 +62,7 @@ export function Workspace({ conversationId }: Props) {
       </div>
 
       <GeneratorDialog />
+      <ReviewTestDialog conversationId={conversationId} />
     </div>
   );
 }

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
 from teacherlm_core.schemas.generator_io import GeneratorInput, LearnerUpdates
+from teacherlm_core.schemas.learner_state import LearnerState
 
 from db.models import Conversation, Message
 from db.session import get_db, session_scope
@@ -121,6 +122,7 @@ async def _stream_generate(
     sources: list[dict[str, Any]] = []
     artifacts: list[dict[str, Any]] = []
     done_payload: dict[str, Any] | None = None
+    persisted = False
 
     try:
         async for event in grouter.dispatch_stream(entry, payload):
@@ -136,6 +138,18 @@ async def _stream_generate(
                 artifacts.append(data)
             elif event.event == "done" and isinstance(data, dict):
                 done_payload = data
+                learner_state = await _persist_assistant_turn(
+                    conversation_id=conversation_id,
+                    generator_id=entry.id,
+                    output_type=output_type,
+                    collected_text=collected_text,
+                    sources=sources,
+                    artifacts=artifacts,
+                    done_payload=done_payload,
+                )
+                done_payload = {**done_payload, "learner_state": learner_state.model_dump()}
+                data = done_payload
+                persisted = True
 
             yield {"event": event.event, "data": json.dumps(data, default=str)}
 
@@ -146,15 +160,16 @@ async def _stream_generate(
         yield {"event": "error", "data": json.dumps({"message": str(exc)})}
         return
 
-    await _persist_assistant_turn(
-        conversation_id=conversation_id,
-        generator_id=entry.id,
-        output_type=output_type,
-        collected_text=collected_text,
-        sources=sources,
-        artifacts=artifacts,
-        done_payload=done_payload,
-    )
+    if not persisted:
+        await _persist_assistant_turn(
+            conversation_id=conversation_id,
+            generator_id=entry.id,
+            output_type=output_type,
+            collected_text=collected_text,
+            sources=sources,
+            artifacts=artifacts,
+            done_payload=done_payload,
+        )
 
 
 async def _persist_assistant_turn(
@@ -166,7 +181,7 @@ async def _persist_assistant_turn(
     sources: list[dict[str, Any]],
     artifacts: list[dict[str, Any]],
     done_payload: dict[str, Any] | None,
-) -> None:
+) -> LearnerState:
     done = done_payload or {}
     response_text = done.get("response") or "".join(collected_text)
     final_sources = done.get("sources") if isinstance(done.get("sources"), list) else sources
@@ -192,7 +207,12 @@ async def _persist_assistant_turn(
                 artifacts=list(final_artifacts or []),
             )
         )
-        await get_learner_tracker().apply_updates(bg_session, conversation_id, updates)
+        return await get_learner_tracker().apply_updates(
+            bg_session,
+            conversation_id,
+            updates,
+            allow_mastery_updates=False,
+        )
 
 
 async def _load_history(

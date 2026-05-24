@@ -85,6 +85,30 @@
     backface-visibility: hidden;
     -webkit-backface-visibility: hidden;
   }
+
+  .course-markdown .prose {
+    max-width: none;
+    font-size: 0.75rem;
+    line-height: 1.35rem;
+  }
+
+  .course-markdown .prose :where(p, ul, ol, blockquote, table) {
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+  }
+
+  .course-markdown .prose :where(h1, h2, h3, h4, h5, h6) {
+    margin-top: 0.5rem;
+    margin-bottom: 0.35rem;
+    font-size: 0.8rem;
+    line-height: 1.2rem;
+  }
+
+  .course-markdown .katex-display {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 0.25rem;
+  }
 }
 
 @layer utilities {

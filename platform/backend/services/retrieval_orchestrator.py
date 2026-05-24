@@ -257,7 +257,8 @@ class RetrievalOrchestrator:
         expanded: list[Chunk] = []
         for chunk in chunks[: self._settings.retrieval_top_k]:
             neighbors = await self._neighbors(chunk)
-            parts = self._context_parts(chunk, neighbors)
+            graph_neighbors = await self._graph_neighbors(conversation_id, chunk, chunks)
+            parts = self._context_parts(chunk, [*neighbors, *graph_neighbors])
             metadata = dict(chunk.metadata)
             metadata.update({"retrieval_expanded": True, "retrieval_mode": mode})
             expanded.append(
@@ -281,6 +282,54 @@ class RetrievalOrchestrator:
                 chunk,
                 window=self._settings.retrieval_neighbor_window,
             )
+
+    async def _graph_neighbors(
+        self,
+        conversation_id: uuid.UUID | str,
+        chunk: Chunk,
+        current_chunks: list[Chunk],
+    ) -> list[Chunk]:
+        if not chunk.chunk_id:
+            return []
+        try:
+            from db.models import SearchChunkRecord
+            from db.session import session_scope
+            from services.knowledge_graph_service import get_knowledge_graph_service
+            from sqlalchemy import select
+
+            async with session_scope() as session:
+                related_ids = await get_knowledge_graph_service().graph_related_chunk_ids(
+                    session,
+                    conversation_id,
+                    [str(item.chunk_id) for item in current_chunks if item.chunk_id],
+                    limit=4,
+                )
+                if not related_ids:
+                    return []
+                result = await session.execute(
+                    select(SearchChunkRecord).where(
+                        SearchChunkRecord.conversation_id == uuid.UUID(str(conversation_id)),
+                        SearchChunkRecord.id.in_(related_ids),
+                    )
+                )
+                records = list(result.scalars().all())
+            return [
+                Chunk(
+                    text=record.text[: self._settings.retrieval_expansion_max_chars],
+                    source=record.source_filename,
+                    score=0.55,
+                    chunk_id=record.id,
+                    metadata={
+                        "context_type": "knowledge_graph_neighbor",
+                        "section_id": str(record.section_id),
+                        "heading_path": " > ".join(record.heading_path or []),
+                    },
+                )
+                for record in records
+            ]
+        except Exception:
+            logger.exception("knowledge graph context expansion failed; continuing with local neighbors")
+            return []
 
     def _context_parts(self, chunk: Chunk, neighbors: list[Chunk]) -> list[str]:
         parts: list[str] = []

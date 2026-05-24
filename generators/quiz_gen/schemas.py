@@ -19,6 +19,7 @@ class MCQ(BaseModel):
     correct_index: int = Field(ge=0)
     explanation: str
     concept: str
+    concept_id: str | None = None
     source_chunk_id: str
 
 
@@ -29,6 +30,7 @@ class TrueFalse(BaseModel):
     answer: bool
     explanation: str
     concept: str
+    concept_id: str | None = None
     source_chunk_id: str
 
 
@@ -40,6 +42,7 @@ class FillBlank(BaseModel):
     accepted_answers: list[str] = Field(default_factory=list)
     explanation: str
     concept: str
+    concept_id: str | None = None
     source_chunk_id: str
 
 

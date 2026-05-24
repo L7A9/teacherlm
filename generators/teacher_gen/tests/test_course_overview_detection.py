@@ -123,6 +123,48 @@ class CourseOverviewDetectionTests(unittest.TestCase):
         self.assertIn("## What to study first", response)
         self.assertNotIn("recommendation systems", response.casefold())
 
+    def test_overview_response_filters_table_and_formula_artifacts(self) -> None:
+        chunks = [
+            Chunk(
+                text=(
+                    "Module 1: Qu’est-ce qu’un Système de Recommandation?\n"
+                    "Source file: Lecture_01_organized.pdf\n"
+                    "Major headings:\n"
+                    "- Input from User</th\n"
+                    "- Output to User</th\n"
+                    "- Filtrage Collaboratif\n"
+                    "- $\\vec{h}_t$\n"
+                    "Study outline details:\n"
+                    "- Ratings</td: Analysis of ratings</td\n"
+                    "- Section path: sim(Cours C, Cours A)**\n"
+                    "- Filtrage Collaboratif: method based on user-item interactions\n"
+                    "$$ R = \\begin{pmatrix} 1 & ? \\\\ 2 & 5 \\end{pmatrix} $$\n"
+                ),
+                source="Lecture_01_organized.pdf",
+                score=1,
+                chunk_id="bad-overview",
+                metadata={
+                    "context_type": "mindmap_module_pack",
+                    "document_title": "Systèmes de Recommandation",
+                    "key_concepts": [
+                        "Input from User</th",
+                        "Ratings</td",
+                        "Filtrage Collaboratif",
+                    ],
+                },
+            )
+        ]
+
+        response = _course_overview_response(chunks)
+
+        assert response is not None
+        self.assertIn("Filtrage Collaboratif", response)
+        self.assertNotIn("</th", response)
+        self.assertNotIn("</td", response)
+        self.assertNotIn("Formal pieces", response)
+        self.assertNotIn("\\begin{pmatrix}", response)
+        self.assertNotIn("Section path", response)
+
 
 if __name__ == "__main__":
     unittest.main()

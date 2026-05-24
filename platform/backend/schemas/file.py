@@ -7,7 +7,16 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 
-FileStatus = Literal["uploaded", "parsing", "chunking", "embedding", "ready", "failed"]
+FileStatus = Literal[
+    "uploaded",
+    "parsing",
+    "chunking",
+    "extracting_concepts",
+    "building_course",
+    "embedding",
+    "ready",
+    "failed",
+]
 
 
 class UploadedFileRead(BaseModel):

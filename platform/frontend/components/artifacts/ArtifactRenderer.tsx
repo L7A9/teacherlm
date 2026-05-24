@@ -33,7 +33,9 @@ export function ArtifactRenderer({
     case "quiz":
       return (
         <JsonBoundary<QuizPayload> url={artifact.url}>
-          {(payload) => <QuizRenderer payload={payload} />}
+          {(payload) => (
+            <QuizRenderer payload={payload} conversationId={conversationId} />
+          )}
         </JsonBoundary>
       );
 

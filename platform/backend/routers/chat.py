@@ -21,6 +21,7 @@ from dispatcher.registry import GeneratorEntry, GeneratorNotFound
 from dispatcher.router import GeneratorRouter, get_router
 from schemas.message import ChatRequest
 from services.interaction_router import InteractionDecision, get_interaction_router
+from services.review_test_service import get_review_test_service
 from services.learner_tracker import get_learner_tracker
 
 
@@ -63,14 +64,14 @@ async def chat(
     )
 
     # Persist the user turn up-front so a failure mid-stream still leaves it.
-    session.add(
-        Message(
-            conversation_id=conversation_id,
-            role="user",
-            content=body.user_message,
-        )
+    user_message = Message(
+        conversation_id=conversation_id,
+        role="user",
+        content=body.user_message,
     )
+    session.add(user_message)
     await session.flush()
+    user_message_id = user_message.id
     await session.commit()
 
     if route.action != "retrieve":
@@ -98,7 +99,7 @@ async def chat(
     )
 
     return EventSourceResponse(
-        _stream_chat(conversation_id, entry, payload, grouter),
+        _stream_chat(conversation_id, entry, payload, grouter, user_message_id=user_message_id),
         media_type="text/event-stream",
     )
 
@@ -124,9 +125,7 @@ async def _stream_direct_chat(
 
     yield {"event": "token", "data": json.dumps({"delta": response}, default=str)}
     yield {"event": "sources", "data": json.dumps([], default=str)}
-    yield {"event": "done", "data": json.dumps(done_payload, default=str)}
-
-    await _persist_assistant_turn(
+    learner_state = await _persist_assistant_turn(
         conversation_id=conversation_id,
         generator_id="teacher_gen",
         output_type="text",
@@ -135,6 +134,8 @@ async def _stream_direct_chat(
         artifacts=[],
         done_payload=done_payload,
     )
+    done_payload["learner_state"] = learner_state.model_dump()
+    yield {"event": "done", "data": json.dumps(done_payload, default=str)}
 
 
 async def _stream_chat(
@@ -142,12 +143,15 @@ async def _stream_chat(
     entry: GeneratorEntry,
     payload: GeneratorInput,
     grouter: GeneratorRouter,
+    *,
+    user_message_id: uuid.UUID,
 ) -> AsyncIterator[dict[str, Any]]:
     """Proxy generator events to the client and persist the assistant turn on done."""
     collected_text: list[str] = []
     sources: list[dict[str, Any]] = []
     artifacts: list[dict[str, Any]] = []
     done_payload: dict[str, Any] | None = None
+    persisted = False
 
     try:
         async for event in grouter.dispatch_stream(entry, payload):
@@ -163,6 +167,20 @@ async def _stream_chat(
                 artifacts.append(data)
             elif event.event == "done" and isinstance(data, dict):
                 done_payload = data
+                learner_state = await _persist_assistant_turn(
+                    conversation_id=conversation_id,
+                    generator_id=entry.id,
+                    output_type="text",
+                    collected_text=collected_text,
+                    sources=sources,
+                    artifacts=artifacts,
+                    done_payload=done_payload,
+                    answered_course_question_user_message_id=user_message_id,
+                    answered_course_question_text=payload.user_message,
+                )
+                done_payload = {**done_payload, "learner_state": learner_state.model_dump()}
+                data = done_payload
+                persisted = True
 
             yield {"event": event.event, "data": json.dumps(data, default=str)}
 
@@ -173,15 +191,18 @@ async def _stream_chat(
         yield {"event": "error", "data": json.dumps({"message": str(exc)})}
         return
 
-    await _persist_assistant_turn(
-        conversation_id=conversation_id,
-        generator_id=entry.id,
-        output_type="text",
-        collected_text=collected_text,
-        sources=sources,
-        artifacts=artifacts,
-        done_payload=done_payload,
-    )
+    if not persisted:
+        await _persist_assistant_turn(
+            conversation_id=conversation_id,
+            generator_id=entry.id,
+            output_type="text",
+            collected_text=collected_text,
+            sources=sources,
+            artifacts=artifacts,
+            done_payload=done_payload,
+            answered_course_question_user_message_id=user_message_id,
+            answered_course_question_text=payload.user_message,
+        )
 
 
 async def _persist_assistant_turn(
@@ -193,7 +214,9 @@ async def _persist_assistant_turn(
     sources: list[dict[str, Any]],
     artifacts: list[dict[str, Any]],
     done_payload: dict[str, Any] | None,
-) -> None:
+    answered_course_question_user_message_id: uuid.UUID | None = None,
+    answered_course_question_text: str | None = None,
+) -> LearnerState:
     done = done_payload or {}
     response_text = done.get("response") or "".join(collected_text)
     final_sources = done.get("sources") if isinstance(done.get("sources"), list) else sources
@@ -204,18 +227,39 @@ async def _persist_assistant_turn(
     updates = LearnerUpdates.model_validate(updates_raw) if isinstance(updates_raw, dict) else LearnerUpdates()
 
     async with session_scope() as bg_session:
-        bg_session.add(
-            Message(
-                conversation_id=conversation_id,
-                role="assistant",
-                content=response_text,
-                generator_id=generator_id,
-                output_type=output_type,
-                sources=list(final_sources or []),
-                artifacts=list(final_artifacts or []),
-            )
+        assistant_message = Message(
+            conversation_id=conversation_id,
+            role="assistant",
+            content=response_text,
+            generator_id=generator_id,
+            output_type=output_type,
+            sources=list(final_sources or []),
+            artifacts=list(final_artifacts or []),
         )
-        await get_learner_tracker().apply_updates(bg_session, conversation_id, updates)
+        bg_session.add(assistant_message)
+        await bg_session.flush()
+        learner_state = await get_learner_tracker().apply_updates(
+            bg_session,
+            conversation_id,
+            updates,
+            allow_mastery_updates=False,
+        )
+        source_chunk_ids = _source_chunk_ids(final_sources or sources)
+        if (
+            answered_course_question_user_message_id is not None
+            and response_text.strip()
+            and source_chunk_ids
+            and _looks_like_learning_question(answered_course_question_text or "")
+        ):
+            await get_review_test_service().record_answered_course_question(
+                bg_session,
+                conversation_id,
+                user_message_id=answered_course_question_user_message_id,
+                assistant_message_id=assistant_message.id,
+                source_chunk_ids=source_chunk_ids,
+                learner_updates=updates,
+            )
+        return learner_state
 
 
 async def _load_history(
@@ -252,3 +296,47 @@ def _extract_text(data: Any) -> str:
             if isinstance(value, str):
                 return value
     return ""
+
+
+def _source_chunk_ids(sources: list[dict[str, Any]]) -> list[str]:
+    ids: list[str] = []
+    seen: set[str] = set()
+    for source in sources:
+        raw = source.get("chunk_id")
+        if raw is None:
+            continue
+        text = str(raw)
+        if text and text not in seen:
+            seen.add(text)
+            ids.append(text)
+    return ids
+
+
+def _looks_like_learning_question(message: str) -> bool:
+    text = " ".join(message.casefold().split())
+    if len(text) < 4:
+        return False
+    if text in {"hi", "hello", "hey", "thanks", "thank you", "ok", "okay"}:
+        return False
+    if "?" in text:
+        return True
+    starters = (
+        "explain",
+        "teach",
+        "show",
+        "compare",
+        "summarize",
+        "résume",
+        "resume",
+        "explique",
+        "montre",
+        "compare",
+        "pourquoi",
+        "comment",
+        "what",
+        "why",
+        "how",
+        "can you",
+        "could you",
+    )
+    return text.startswith(starters)
