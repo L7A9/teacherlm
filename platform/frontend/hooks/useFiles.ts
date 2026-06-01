@@ -51,6 +51,7 @@ export function useUploadFile(conversationId: UUID) {
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [...ROOT_KEY, conversationId] });
+      qc.invalidateQueries({ queryKey: ["coursebuilder", conversationId] });
     },
   });
 }
@@ -61,6 +62,28 @@ export function useDeleteFile(conversationId: UUID) {
     mutationFn: (filePk: UUID) => filesApi.remove(conversationId, filePk),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [...ROOT_KEY, conversationId] });
+      qc.invalidateQueries({ queryKey: ["coursebuilder", conversationId] });
+    },
+  });
+}
+
+export function useRetryFile(conversationId: UUID) {
+  const qc = useQueryClient();
+  const modelSettings = useSettingsStore((state) => state.modelSettings);
+  const forcedLanguage = useSettingsStore((state) => state.forcedLanguage);
+  return useMutation<UploadedFile, Error, UUID>({
+    mutationFn: (filePk) =>
+      filesApi.retry(
+        conversationId,
+        filePk,
+        {
+          ...modelSettingsToOptions(modelSettings),
+          ...(forcedLanguage ? { language: forcedLanguage } : {}),
+        },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...ROOT_KEY, conversationId] });
+      qc.invalidateQueries({ queryKey: ["coursebuilder", conversationId] });
     },
   });
 }

@@ -9,6 +9,10 @@ import { Button } from "@/components/ui/Button";
 import { useChatStream } from "@/hooks/useChatStream";
 import type { MindmapPayload, UUID } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import {
+  modelSettingsToOptions,
+  useSettingsStore,
+} from "@/stores/settingsStore";
 
 // Bright palette designed for dark backgrounds (Tailwind -400 variants).
 // Each main branch and all its descendants share one color.
@@ -53,6 +57,32 @@ function collapseAllChildren(node: MMNode | undefined): void {
   }
 }
 
+function nodeExplanationPrompt(label: string, language: string | null): string {
+  switch (language) {
+    case "fr-fr":
+      return `Explique "${label}" en detail avec les supports importes. Cite les sources pertinentes.`;
+    case "es":
+      return `Explica "${label}" en detalle usando los materiales subidos. Cita las fuentes relevantes.`;
+    case "it":
+      return `Spiega "${label}" in dettaglio usando i materiali caricati. Cita le fonti pertinenti.`;
+    case "pt-br":
+      return `Explique "${label}" em detalhe usando os materiais enviados. Cite as fontes relevantes.`;
+    case "de":
+      return `Erklaere "${label}" im Detail anhand der hochgeladenen Materialien. Zitiere die relevanten Quellen.`;
+    case "ja":
+      return `アップロードされた資料を使って「${label}」を詳しく説明してください。関連する出典も示してください。`;
+    case "cmn":
+      return `请根据上传的资料详细解释“${label}”，并引用相关来源。`;
+    case "hi":
+      return `अपलोड की गई सामग्री का उपयोग करके "${label}" को विस्तार से समझाइए। संबंधित स्रोत भी बताइए।`;
+    default:
+      return (
+        `Explain "${label}" in detail, using the uploaded materials. ` +
+        `Cite the relevant sources.`
+      );
+  }
+}
+
 interface Props {
   payload: MindmapPayload;
   conversationId?: UUID;
@@ -70,6 +100,8 @@ export function MindmapRenderer({ payload, conversationId, className }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const sendChat = useChatStream();
+  const forcedLanguage = useSettingsStore((s) => s.forcedLanguage);
+  const modelSettings = useSettingsStore((s) => s.modelSettings);
 
   useEffect(() => {
     injectSafetyCss();
@@ -185,16 +217,19 @@ export function MindmapRenderer({ payload, conversationId, className }: Props) {
       e.stopPropagation();
 
       toast(`Asking your teacher about "${text}"…`);
+      const options: Record<string, unknown> = {
+        ...modelSettingsToOptions(modelSettings),
+        ...(forcedLanguage ? { language: forcedLanguage } : {}),
+      };
       void sendChat(conversationId, {
-        user_message:
-          `Explain "${text}" in detail, using the uploaded materials. ` +
-          `Cite the relevant sources.`,
+        user_message: nodeExplanationPrompt(text, forcedLanguage),
+        options,
       });
     };
 
     svg.addEventListener("click", onClick, true);
     return () => svg.removeEventListener("click", onClick, true);
-  }, [conversationId, sendChat]);
+  }, [conversationId, forcedLanguage, modelSettings, sendChat]);
 
   if (error) {
     return (

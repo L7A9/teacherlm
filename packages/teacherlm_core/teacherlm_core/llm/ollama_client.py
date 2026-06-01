@@ -310,7 +310,7 @@ class OllamaClient:
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            detail = response.text.strip()
+            detail = await _response_error_text(response)
             raise RuntimeError(
                 f"{response.status_code} from {self.provider} provider: {detail}"
             ) from exc
@@ -380,3 +380,12 @@ def _coerce_json_content(content: str) -> str:
         if end > start:
             return text[start : end + 1]
     return text
+
+
+async def _response_error_text(response: httpx.Response) -> str:
+    try:
+        await response.aread()
+        detail = response.text.strip()
+    except Exception:  # noqa: BLE001 - preserve the original HTTP failure.
+        detail = ""
+    return detail or response.reason_phrase

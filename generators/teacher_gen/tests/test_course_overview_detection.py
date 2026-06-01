@@ -15,6 +15,7 @@ for path in (GENERATOR_DIR.parent, CORE_DIR):
 from teacherlm_core.schemas.chunk import Chunk  # noqa: E402
 from teacher_gen.pipeline import (  # noqa: E402
     _course_overview_response,
+    _extract_formula_snippets,
     _has_context_evidence,
     _is_course_overview_question,
     _is_formula_only_question,
@@ -85,6 +86,22 @@ class CourseOverviewDetectionTests(unittest.TestCase):
     def test_explain_with_equations_is_not_formula_only(self) -> None:
         self.assertFalse(_is_formula_only_question("explain SVD and its equations"))
         self.assertTrue(_is_formula_only_question("what is the formula for SVD?"))
+
+    def test_hyphenated_definition_question_is_not_formula_only(self) -> None:
+        self.assertFalse(_is_formula_only_question("Qu'est-ce qu'un Intent Android ?"))
+
+    def test_xml_and_code_assignments_are_not_formula_snippets(self) -> None:
+        snippets = _extract_formula_snippets(
+            '\n'.join(
+                [
+                    'android:layout_width="match_parent"',
+                    'Intent i = new Intent(MainActivity.this, SecondActivity.class);',
+                    '$$ RMSE = \\sqrt{\\frac{1}{n}} $$',
+                ]
+            )
+        )
+
+        self.assertEqual(snippets, ["$$ RMSE = \\sqrt{\\frac{1}{n}} $$"])
 
     def test_overview_response_is_structured_and_uses_synthetic_course_terms(self) -> None:
         chunks = [

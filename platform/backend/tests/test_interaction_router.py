@@ -12,6 +12,8 @@ from services.interaction_router import (
     InteractionRouter,
     _dedupe_labels,
     _format_router_input,
+    _guard_decision,
+    _heuristic_decision,
 )
 
 
@@ -91,6 +93,26 @@ class InteractionRouterTests(unittest.TestCase):
 
         self.assertEqual(decision.action, "retrieve")
         self.assertEqual(decision.retrieval_query, "explain SVD")
+
+    def test_obvious_outside_files_are_caught_before_llm(self) -> None:
+        decision = _heuristic_decision(
+            "write me a recipe for dinner",
+            "Uploaded files: Cours 2.pdf. Main visible topics: Android, Intents.",
+        )
+
+        assert decision is not None
+        self.assertEqual(decision.action, "outside_files")
+        self.assertIn("outside the uploaded course files", decision.response)
+
+    def test_substantive_conversational_reply_is_guarded_to_retrieval(self) -> None:
+        decision = _guard_decision(
+            InteractionDecision(action="conversational_reply", response="Tell me more."),
+            "what is an Android Intent?",
+            "Uploaded files: Cours 3.pdf. Main visible topics: Android, Intents.",
+        )
+
+        self.assertEqual(decision.action, "retrieve")
+        self.assertEqual(decision.retrieval_query, "what is an Android Intent?")
 
     def test_direct_reply_fallbacks_are_source_safe(self) -> None:
         self.assertIn("outside the uploaded course files", _direct_reply_fallback("outside_files"))

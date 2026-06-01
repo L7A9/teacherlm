@@ -44,12 +44,12 @@ export default function SettingsPage() {
 
   return (
     <main className="min-h-dvh bg-background text-foreground">
-      <header className="border-b border-border">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-5">
+      <header className="app-chrome app-pane sticky top-0 z-10 border-b border-border">
+        <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3 sm:px-6">
           <div className="flex items-center gap-3">
             <Link
               href="/"
-              className="flex h-9 w-9 items-center justify-center rounded-md bg-primary/15 text-primary transition-colors hover:bg-primary/25"
+              className="flex h-9 w-9 items-center justify-center rounded-md bg-primary/15 text-primary transition-colors hover:bg-primary/25 active:bg-primary/20"
               aria-label="Back to conversations"
               title="Back to conversations"
             >
@@ -57,7 +57,7 @@ export default function SettingsPage() {
             </Link>
             <div>
               <h1 className="text-lg font-semibold">Settings</h1>
-              <p className="text-xs text-muted-foreground">
+              <p className="hidden text-xs text-muted-foreground sm:block">
                 Preferences applied to every conversation on this device.
               </p>
             </div>
@@ -68,9 +68,9 @@ export default function SettingsPage() {
         </div>
       </header>
 
-      <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-8">
-        <section className="rounded-lg border border-border bg-surface">
-          <header className="flex items-center gap-2 border-b border-border px-5 py-4">
+      <div className="mx-auto flex max-w-4xl flex-col gap-4 px-4 py-6 sm:px-6">
+        <section className="rounded-md border border-border bg-surface">
+          <header className="app-chrome flex items-center gap-2 border-b border-border px-5 py-3">
             <Bot className="h-4 w-4 text-primary" />
             <h2 className="text-sm font-semibold">Model provider</h2>
           </header>
@@ -210,8 +210,8 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        <section className="rounded-lg border border-border bg-surface">
-          <header className="flex items-center gap-2 border-b border-border px-5 py-4">
+        <section className="rounded-md border border-border bg-surface">
+          <header className="app-chrome flex items-center gap-2 border-b border-border px-5 py-3">
             <Languages className="h-4 w-4 text-primary" />
             <h2 className="text-sm font-semibold">Default language</h2>
           </header>

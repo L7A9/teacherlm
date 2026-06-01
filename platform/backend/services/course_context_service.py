@@ -7,6 +7,7 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Literal
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from teacherlm_core.retrieval.hybrid_retriever import HybridRetriever
@@ -21,7 +22,7 @@ from teacherlm_core.schemas.chunk import Chunk
 
 from config import Settings, get_settings
 from db.session import session_scope
-from services.course_content_store import CourseContentStore, get_course_content_store
+from services.course_content_store import CourseContentStore, get_course_content_store, record_to_chunk
 
 
 logger = logging.getLogger(__name__)
@@ -60,12 +61,113 @@ class CourseContextService:
                 uuid.UUID(str(conversation_id)),
                 limit=self._settings.course_context_max_chunks,
             )
+        searchable_chunks = _searchable_chunks(all_chunks)
+        if not searchable_chunks:
+            searchable_chunks = all_chunks
         return await self._retrieve_from_chunks(
             conversation_id=conversation_id,
             query=query,
             mode=mode,
-            all_chunks=all_chunks,
+            all_chunks=searchable_chunks,
         )
+
+    async def get_graph_relevant_chunks(
+        self,
+        conversation_id: uuid.UUID | str,
+        query: str,
+        *,
+        limit: int = 12,
+    ) -> list[Chunk]:
+        """Return chunks connected to query-matching knowledge graph nodes."""
+
+        terms = _important_query_terms(query)
+        if not terms:
+            return []
+        try:
+            from db.models import CourseKnowledgeEdgeRecord, CourseKnowledgeNodeRecord, SearchChunkRecord
+
+            cid = uuid.UUID(str(conversation_id))
+            async with session_scope() as session:
+                nodes = list(
+                    (
+                        await session.execute(
+                            select(CourseKnowledgeNodeRecord).where(
+                                CourseKnowledgeNodeRecord.conversation_id == cid,
+                                CourseKnowledgeNodeRecord.active.is_(True),
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                if not nodes:
+                    from services.knowledge_graph_service import get_knowledge_graph_service
+
+                    graph = await get_knowledge_graph_service().rebuild_graph(
+                        session,
+                        cid,
+                        use_llm=False,
+                    )
+                    nodes = list(graph.nodes)
+                    edges = list(graph.edges)
+                else:
+                    edges = list(
+                        (
+                            await session.execute(
+                                select(CourseKnowledgeEdgeRecord).where(
+                                    CourseKnowledgeEdgeRecord.conversation_id == cid,
+                                    CourseKnowledgeEdgeRecord.active.is_(True),
+                                )
+                            )
+                        )
+                        .scalars()
+                        .all()
+                    )
+
+                node_scores = _score_graph_nodes(nodes, terms)
+                if not node_scores:
+                    return []
+                chunk_ids = _graph_chunk_ids(node_scores, nodes, edges, limit=max(limit * 2, 16))
+                if not chunk_ids:
+                    return []
+                records = list(
+                    (
+                        await session.execute(
+                            select(SearchChunkRecord).where(
+                                SearchChunkRecord.conversation_id == cid,
+                                SearchChunkRecord.id.in_(chunk_ids),
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+        except Exception:
+            logger.exception("knowledge graph retrieval candidates failed; continuing without graph candidates")
+            return []
+
+        by_id = {record.id: record for record in records}
+        out: list[Chunk] = []
+        for index, chunk_id in enumerate(chunk_ids):
+            record = by_id.get(chunk_id)
+            if record is None:
+                continue
+            chunk = record_to_chunk(record)
+            if _is_low_information_chunk(chunk):
+                continue
+            metadata = dict(chunk.metadata or {})
+            metadata.update({"retrieval_via": "knowledge_graph"})
+            out.append(
+                chunk.model_copy(
+                    update={
+                        "score": max(0.65, 1.0 - index * 0.03),
+                        "metadata": metadata,
+                    }
+                )
+            )
+            if len(out) >= limit:
+                break
+        return out
 
     async def get_full_course_outline(self, conversation_id: uuid.UUID | str) -> list[Chunk]:
         async with session_scope() as session:
@@ -181,10 +283,19 @@ class CourseContextService:
 
         if output_type == "podcast":
             if topic:
-                return await self.get_topic_context(conversation_id, topic)
+                focused = await self.get_topic_context(conversation_id, topic)
+                if focused:
+                    return focused
+                return await self.get_generator_context(
+                    conversation_id=conversation_id,
+                    output_type=output_type,
+                    query="",
+                    topic=None,
+                )
             return _dedupe_chunks(
                 [
                     *(await self.get_full_course_outline(conversation_id)),
+                    *(await self.get_relevant_chunks(conversation_id, "", "narrative_arc")),
                     *(await self.get_representative_course_context(conversation_id)),
                 ]
             )
@@ -883,6 +994,174 @@ _MATH_TEXT_RE = re.compile(
     r"[=âˆ‘âˆšâˆ«Â±Ã—Ã·â‰¤â‰¥â‰ˆâˆž]|[A-Za-z]\s*[_^]\s*[A-Za-z0-9])",
     re.DOTALL,
 )
+_LOW_INFORMATION_RE = re.compile(
+    r"^(?:"
+    r"\d{1,4}|"
+    r"\d{1,2}\s*/\s*\d{1,2}|"
+    r"(?:19|20)\d{2}(?:\s*/\s*(?:19|20)?\d{2})?|"
+    r"page\s+\d+|"
+    r"questions?\s*\??|"
+    r"merci|thank\s+you|"
+    r"table\s+des\s+mati[eè]res|contents?"
+    r")$",
+    re.IGNORECASE,
+)
+_GRAPH_QUERY_STOPWORDS = {
+    "about",
+    "also",
+    "and",
+    "are",
+    "can",
+    "course",
+    "cours",
+    "define",
+    "describe",
+    "document",
+    "documents",
+    "explain",
+    "file",
+    "files",
+    "for",
+    "from",
+    "give",
+    "how",
+    "lesson",
+    "material",
+    "materials",
+    "me",
+    "please",
+    "show",
+    "summarize",
+    "teach",
+    "tell",
+    "the",
+    "this",
+    "what",
+    "why",
+    "with",
+    "you",
+    "quel",
+    "quelle",
+    "est",
+    "dans",
+    "pour",
+    "explique",
+    "expliquer",
+}
+
+
+def _searchable_chunks(chunks: list[Chunk]) -> list[Chunk]:
+    cleaned = [chunk for chunk in chunks if not _is_low_information_chunk(chunk)]
+    return cleaned or chunks
+
+
+def _is_low_information_chunk(chunk: Chunk) -> bool:
+    text = " ".join(str(chunk.text or "").split())
+    if not text:
+        return True
+    token_count = _safe_chunk_int((chunk.metadata or {}).get("token_count"), default=len(text.split()))
+    if len(text) < 18 or token_count <= 3:
+        return True
+    if _LOW_INFORMATION_RE.fullmatch(text.strip()):
+        return True
+    alpha_chars = sum(1 for char in text if char.isalpha())
+    if alpha_chars < 8 and len(text) < 80:
+        return True
+    words = re.findall(r"[\w\u0600-\u06ff]+", text)
+    if len(set(word.casefold() for word in words)) <= 2 and len(text) < 80:
+        return True
+    return False
+
+
+def _important_query_terms(query: str) -> set[str]:
+    terms: set[str] = set()
+    for raw in re.findall(r"[\w\u0600-\u06ff][\w\u0600-\u06ff+/#.-]*", query):
+        term = raw.casefold().strip("._-")
+        if len(term) < 3 or term in _GRAPH_QUERY_STOPWORDS:
+            continue
+        terms.add(term)
+    return terms
+
+
+def _score_graph_nodes(nodes: list[object], terms: set[str]) -> list[tuple[float, object]]:
+    scored: list[tuple[float, object]] = []
+    for node in nodes:
+        metadata = getattr(node, "node_metadata", None) or {}
+        aliases = metadata.get("aliases") if isinstance(metadata, dict) else []
+        haystack = " ".join(
+            [
+                str(getattr(node, "label", "") or ""),
+                str(getattr(node, "description", "") or ""),
+                " ".join(str(item) for item in aliases or []),
+            ]
+        ).casefold()
+        if not haystack.strip():
+            continue
+        exact_hits = sum(1 for term in terms if re.search(rf"(?<!\w){re.escape(term)}(?!\w)", haystack))
+        fuzzy_hits = sum(1 for term in terms if len(term) >= 5 and term in haystack)
+        score = float(exact_hits * 3 + fuzzy_hits)
+        node_type = str(getattr(node, "node_type", ""))
+        if node_type in {"concept", "objective", "skill", "procedure", "formula", "example"}:
+            score += 0.5
+        if score > 0:
+            scored.append((score, node))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return scored
+
+
+def _graph_chunk_ids(
+    node_scores: list[tuple[float, object]],
+    nodes: list[object],
+    edges: list[object],
+    *,
+    limit: int,
+) -> list[str]:
+    node_by_id = {getattr(node, "id"): node for node in nodes}
+    selected_node_ids = {getattr(node, "id") for _score, node in node_scores[:8]}
+    ids: list[str] = []
+
+    def add_from_node(node: object | None) -> None:
+        if node is None:
+            return
+        if str(getattr(node, "node_type", "")) == "chunk" and getattr(node, "ref_id", None):
+            ids.append(str(getattr(node, "ref_id")))
+        ids.extend(str(item) for item in (getattr(node, "source_chunk_ids", None) or []))
+
+    for _score, node in node_scores[:8]:
+        add_from_node(node)
+
+    for edge in edges:
+        source_id = getattr(edge, "source_node_id", None)
+        target_id = getattr(edge, "target_node_id", None)
+        touches_selected = source_id in selected_node_ids or target_id in selected_node_ids
+        if not touches_selected:
+            continue
+        ids.extend(str(item) for item in (getattr(edge, "source_chunk_ids", None) or []))
+        if source_id in selected_node_ids:
+            add_from_node(node_by_id.get(target_id))
+        if target_id in selected_node_ids:
+            add_from_node(node_by_id.get(source_id))
+
+    return _dedupe_graph_ids(ids)[:limit]
+
+
+def _dedupe_graph_ids(values: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = str(value).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+    return out
+
+
+def _safe_chunk_int(value: object, *, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _merge_formula_hits(

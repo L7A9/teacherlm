@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import re
 import unicodedata
@@ -7,7 +8,7 @@ from collections.abc import AsyncIterator, Awaitable
 from pathlib import Path
 from typing import TypeVar
 
-from teacherlm_core.llm.language import set_current_language
+from teacherlm_core.llm.language import language_name, set_current_language
 from teacherlm_core.llm.runtime import set_current_llm_options
 from teacherlm_core.schemas.generator_io import (
     GeneratorArtifact,
@@ -35,6 +36,13 @@ _SIZE_CONFIGS = {
     "standard": {"n_branches": 6, "max_nodes_default": 60},
     "comprehensive": {"n_branches": 9, "max_nodes_default": 100},
 }
+_FRESH_LAYOUT_STYLES = [
+    "group the course by learning path from foundations to applications",
+    "group the course by major concepts and supporting examples",
+    "group the course by student study questions and practical uses",
+    "group the course by components, processes, and relationships",
+    "group the course by exam-review themes and common confusions",
+]
 
 
 def _sse(event: str, data: dict) -> str:
@@ -84,6 +92,61 @@ async def _await_llm_with_progress(
 
 def _resolve_size(size: str) -> dict:
     return _SIZE_CONFIGS.get(size, _SIZE_CONFIGS["standard"])
+
+
+def _truthy_option(value: object) -> bool:
+    return str(value or "").strip().casefold() in {"1", "true", "yes", "on"}
+
+
+def _generation_id(options: dict) -> str:
+    raw = str(options.get("generation_id") or "").strip()
+    if raw:
+        return raw
+    return hashlib.sha1(json.dumps(options, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def _fresh_generation_hint(options: dict) -> str:
+    generation_id = _generation_id(options)
+    index = int(hashlib.sha1(generation_id.encode()).hexdigest(), 16) % len(_FRESH_LAYOUT_STYLES)
+    return (
+        "Fresh regeneration request.\n"
+        f"Generation id: {generation_id}\n"
+        f"Preferred organization for this run: {_FRESH_LAYOUT_STYLES[index]}.\n"
+        "Create a newly organized mind map from the same grounded course evidence. "
+        "Do not copy a previous branch ordering or wording when another faithful "
+        "organization is possible. Keep every node supported by the provided content."
+    )
+
+
+def _with_generation_hint(text: str, hint: str) -> str:
+    if not hint:
+        return text
+    return f"{hint}\n\nCOURSE EVIDENCE:\n{text}"
+
+
+def _use_module_pack_fast_path(
+    *,
+    has_module_packs: bool,
+    llm_refine: bool,
+    force_regenerate: bool,
+) -> bool:
+    return has_module_packs and not llm_refine and not force_regenerate
+
+
+def _apply_fresh_layout_variation(mm: MindMap, generation_id: str) -> MindMap:
+    """Small deterministic fallback variation when LLM regeneration is unavailable."""
+
+    if len(mm.branches) < 2:
+        return mm
+    digest = int(hashlib.sha1(generation_id.encode()).hexdigest(), 16)
+    offset = digest % len(mm.branches)
+    if offset == 0:
+        offset = 1
+    mm.branches = [*mm.branches[offset:], *mm.branches[:offset]]
+    for index, branch in enumerate(mm.branches):
+        if len(branch.children) > 1 and (digest >> index) & 1:
+            branch.children = list(reversed(branch.children))
+    return mm
 
 
 def _count_nodes(node: MindMapNode) -> int:
@@ -832,17 +895,90 @@ def _refine_mindmap(mm: MindMap, chunks) -> MindMap:
     return mm
 
 
+def _mindmap_response_text(mm: MindMap, node_count: int, language_code: str | None) -> str:
+    code = str(language_code or "").strip().casefold()
+    templates = {
+        "fr-fr": (
+            "J'ai construit une carte mentale de '{topic}' a partir de tes supports. "
+            "Elle couvre {branches} themes principaux et {nodes} concepts au total. "
+            "Clique sur n'importe quel noeud pour me demander de l'expliquer en detail."
+        ),
+        "es": (
+            "He creado un mapa mental de '{topic}' a partir de tus materiales. "
+            "Cubre {branches} temas principales y {nodes} conceptos en total. "
+            "Haz clic en cualquier nodo para pedirme que lo explique en detalle."
+        ),
+        "it": (
+            "Ho creato una mappa mentale di '{topic}' dai tuoi materiali. "
+            "Copre {branches} temi principali e {nodes} concetti in totale. "
+            "Fai clic su qualsiasi nodo per chiedermi di spiegarlo in dettaglio."
+        ),
+        "pt-br": (
+            "Criei um mapa mental de '{topic}' a partir dos seus materiais. "
+            "Ele cobre {branches} temas principais e {nodes} conceitos no total. "
+            "Clique em qualquer no para me pedir uma explicacao detalhada."
+        ),
+        "de": (
+            "Ich habe aus deinen Materialien eine Mindmap zu '{topic}' erstellt. "
+            "Sie deckt {branches} Hauptthemen und insgesamt {nodes} Konzepte ab. "
+            "Klicke auf einen Knoten, damit ich ihn dir im Detail erklaere."
+        ),
+        "ja": (
+            "'{topic}'について、アップロード資料に基づくマインドマップを作成しました。"
+            "主なテーマは{branches}個、概念は合計{nodes}個あります。"
+            "詳しく説明してほしいノードをクリックしてください。"
+        ),
+        "cmn": (
+            "我已根据你上传的资料生成关于“{topic}”的思维导图。"
+            "它包含 {branches} 个主要主题，共 {nodes} 个概念。"
+            "点击任意节点，我会进一步详细解释。"
+        ),
+        "hi": (
+            "मैंने आपकी सामग्री से '{topic}' का माइंड मैप बना दिया है। "
+            "इसमें {branches} मुख्य विषय और कुल {nodes} अवधारणाएं शामिल हैं। "
+            "किसी भी नोड पर क्लिक करें, मैं उसे विस्तार से समझाऊंगा।"
+        ),
+    }
+    template = templates.get(
+        code,
+        (
+            "I've built a mind map of '{topic}' from your materials. "
+            "It covers {branches} main themes and {nodes} total concepts. "
+            "Click any node to ask me to explain it in detail."
+        ),
+    )
+    return template.format(
+        topic=mm.central_topic,
+        branches=len(mm.branches),
+        nodes=node_count,
+    )
+
+
 async def run(payload: GeneratorInput) -> AsyncIterator[str]:
     """SSE generator: yields `progress` events through the pipeline and a
     final `done` event with the full GeneratorOutput payload."""
-    set_current_llm_options(payload.options or {})
-    set_current_language((payload.options or {}).get("language"))
-    size_config = _resolve_size(payload.options.get("size", settings.DEFAULT_SIZE))
+    options = dict(payload.options or {})
+    set_current_llm_options(options)
+    set_current_language(options.get("language"))
+    size_config = _resolve_size(options.get("size", settings.DEFAULT_SIZE))
     max_nodes = int(
-        payload.options.get("max_nodes", size_config["max_nodes_default"])
+        options.get("max_nodes", size_config["max_nodes_default"])
     )
+    force_regenerate = _truthy_option(options.get("force_regenerate")) or _truthy_option(
+        options.get("regenerate")
+    )
+    generation_id = _generation_id(options)
+    generation_hint = _fresh_generation_hint(options) if force_regenerate else ""
 
-    yield _sse("progress", {"stage": "starting", "size": size_config})
+    yield _sse(
+        "progress",
+        {
+            "stage": "starting",
+            "size": size_config,
+            "force_regenerate": force_regenerate,
+            "generation_id": generation_id if force_regenerate else None,
+        },
+    )
 
     # 1. Read the course in batches, extract local structure from each part,
     # then synthesize one coherent study hierarchy. This keeps coverage broad
@@ -853,12 +989,17 @@ async def run(payload: GeneratorInput) -> AsyncIterator[str]:
         ch.metadata.get("context_type") == "mindmap_module_pack"
         for ch in payload.context_chunks
     )
-    llm_refine = str(payload.options.get("llm_refine", "")).lower() in {
+    llm_refine = str(options.get("llm_refine", "")).lower() in {
         "1",
         "true",
         "yes",
     }
-    if has_module_packs and not llm_refine:
+    built_via_llm = False
+    if _use_module_pack_fast_path(
+        has_module_packs=has_module_packs,
+        llm_refine=llm_refine,
+        force_regenerate=force_regenerate,
+    ):
         mindmap = _build_from_module_packs(
             payload.context_chunks,
             max_nodes=max_nodes,
@@ -883,7 +1024,7 @@ async def run(payload: GeneratorInput) -> AsyncIterator[str]:
                 ]
             )
             batch_count = module_batch_count or {"concise": 4, "standard": 6, "comprehensive": 8}.get(
-                payload.options.get("size", settings.DEFAULT_SIZE),
+                options.get("size", settings.DEFAULT_SIZE),
                 6,
             )
             batches = _make_outline_batches(
@@ -916,7 +1057,7 @@ async def run(payload: GeneratorInput) -> AsyncIterator[str]:
                 try:
                     outline = None
                     async for kind, value in _await_llm_with_progress(
-                        llm.build_batch_outline(batch),
+                        llm.build_batch_outline(_with_generation_hint(batch, generation_hint)),
                         stage="batch_extracting",
                         timeout_s=settings.LLM_CALL_TIMEOUT_S,
                         keepalive_interval_s=settings.LLM_KEEPALIVE_INTERVAL_S,
@@ -957,7 +1098,10 @@ async def run(payload: GeneratorInput) -> AsyncIterator[str]:
                 synthesized = None
                 async for kind, value in _await_llm_with_progress(
                     llm.synthesize_course_outline(
-                        _serialize_outlines(partial_outlines),
+                        _with_generation_hint(
+                            _serialize_outlines(partial_outlines),
+                            generation_hint,
+                        ),
                         n_branches=size_config["n_branches"],
                     ),
                     stage="course_synthesizing",
@@ -975,6 +1119,7 @@ async def run(payload: GeneratorInput) -> AsyncIterator[str]:
                     central_topic=synthesized.central_topic,
                     branches=synthesized.branches,
                 )
+                built_via_llm = True
                 yield _sse(
                     "progress",
                     {
@@ -996,7 +1141,7 @@ async def run(payload: GeneratorInput) -> AsyncIterator[str]:
             outline = None
             async for kind, value in _await_llm_with_progress(
                 get_llm_service().build_course_outline(
-                    outline_text,
+                    _with_generation_hint(outline_text, generation_hint),
                     n_branches=size_config["n_branches"],
                 ),
                 stage="outline_building",
@@ -1013,6 +1158,7 @@ async def run(payload: GeneratorInput) -> AsyncIterator[str]:
                 central_topic=outline.central_topic,
                 branches=outline.branches,
             )
+            built_via_llm = True
             yield _sse(
                 "progress",
                 {
@@ -1087,8 +1233,50 @@ async def run(payload: GeneratorInput) -> AsyncIterator[str]:
                 mindmap = await hierarchy_builder.build(
                     themes, payload.context_chunks, size_config, central_topic
                 )
+                built_via_llm = True
 
+    if force_regenerate and not built_via_llm:
+        mindmap = _apply_fresh_layout_variation(mindmap, generation_id)
     mindmap = _refine_mindmap(mindmap, payload.context_chunks)
+
+    target_language_code = str(options.get("language") or "").strip()
+    target_language = language_name(target_language_code)
+    if target_language:
+        yield _sse(
+            "progress",
+            {
+                "stage": "language_adapting",
+                "language": target_language,
+            },
+        )
+        try:
+            translated_mindmap = None
+            async for kind, value in _await_llm_with_progress(
+                get_llm_service().translate_mindmap_labels(
+                    mindmap,
+                    target_language_code,
+                ),
+                stage="language_adapting",
+                timeout_s=settings.LLM_CALL_TIMEOUT_S,
+                keepalive_interval_s=settings.LLM_KEEPALIVE_INTERVAL_S,
+                progress={"language": target_language},
+            ):
+                if kind == "progress":
+                    yield value
+                else:
+                    translated_mindmap = value
+            if translated_mindmap is not None:
+                mindmap = translated_mindmap
+        except Exception as language_exc:
+            yield _sse(
+                "progress",
+                {
+                    "stage": "language_adapt_fallback",
+                    "language": target_language,
+                    "error": str(language_exc),
+                },
+            )
+
     yield _sse(
         "progress",
         {
@@ -1129,11 +1317,10 @@ async def run(payload: GeneratorInput) -> AsyncIterator[str]:
         yield _sse("artifact", art.model_dump())
 
     # 7. Teacher-voice response
-    response_text = (
-        f"I've built a mind map of '{mindmap.central_topic}' from your materials. "
-        f"It covers {len(mindmap.branches)} main themes and "
-        f"{node_count} total concepts. "
-        f"Click any node to ask me to explain it in detail."
+    response_text = _mindmap_response_text(
+        mindmap,
+        node_count,
+        target_language_code,
     )
 
     output = GeneratorOutput(
@@ -1151,6 +1338,7 @@ async def run(payload: GeneratorInput) -> AsyncIterator[str]:
             "depth": _mindmap_depth(mindmap),
             "central_topic": mindmap.central_topic,
             "main_branches": [b.text for b in mindmap.branches],
+            "language": target_language_code or None,
         },
     )
 

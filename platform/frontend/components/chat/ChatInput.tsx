@@ -29,6 +29,8 @@ export interface ChatInputHandle {
 interface Props {
   conversationId: UUID;
   className?: string;
+  disabled?: boolean;
+  disabledReason?: string;
   placeholder?: string;
 }
 
@@ -36,7 +38,13 @@ const MAX_HEIGHT_PX = 220;
 const MIN_HEIGHT_PX = 44;
 
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
-  { conversationId, className, placeholder = "Ask your teacher anything…" },
+  {
+    conversationId,
+    className,
+    disabled = false,
+    disabledReason = "Upload at least one course file first.",
+    placeholder = "Ask your teacher anything...",
+  },
   ref,
 ) {
   const [value, setValue] = useState("");
@@ -64,7 +72,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
 
   const submit = async () => {
     const trimmed = value.trim();
-    if (!trimmed || isStreaming) return;
+    if (!trimmed || isStreaming || disabled) return;
     setValue("");
     const options: Record<string, unknown> = {
       ...modelSettingsToOptions(modelSettings),
@@ -85,12 +93,14 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
   };
 
   const canSubmit = value.trim().length > 0 && !isStreaming;
+  const canSend = canSubmit && !disabled;
 
   return (
     <div
       className={cn(
-        "flex items-end gap-2 rounded-2xl border border-border bg-surface p-2",
+        "flex items-end gap-2 rounded-lg border border-border bg-surface p-2",
         "focus-within:border-primary/60 focus-within:ring-1 focus-within:ring-primary/40",
+        disabled && "opacity-75",
         className,
       )}
     >
@@ -99,7 +109,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder={placeholder}
+        placeholder={disabled ? disabledReason : placeholder}
         rows={1}
         className={cn(
           "min-h-[44px] resize-none border-0 bg-transparent px-2 py-2",
@@ -125,9 +135,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
           variant="primary"
           size="icon"
           onClick={() => void submit()}
-          disabled={!canSubmit}
+          disabled={!canSend}
           aria-label="Send message"
-          title="Send (Enter)"
+          title={disabled ? disabledReason : "Send (Enter)"}
         >
           <Send className="h-4 w-4" />
         </Button>

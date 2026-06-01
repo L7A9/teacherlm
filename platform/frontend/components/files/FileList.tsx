@@ -1,11 +1,11 @@
 "use client";
 
-import { FileText, Trash2 } from "lucide-react";
+import { FileText, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/Button";
 import { FileStatusBadge } from "@/components/files/FileStatusBadge";
-import { useDeleteFile, useFiles } from "@/hooks/useFiles";
+import { useDeleteFile, useFiles, useRetryFile } from "@/hooks/useFiles";
 import type { UUID } from "@/lib/types";
 import { formatRelativeTime } from "@/lib/utils";
 
@@ -16,6 +16,7 @@ interface Props {
 export function FileList({ conversationId }: Props) {
   const { data, isLoading, error } = useFiles(conversationId);
   const remove = useDeleteFile(conversationId);
+  const retry = useRetryFile(conversationId);
 
   if (isLoading) {
     return <div className="text-xs text-muted-foreground">Loading files…</div>;
@@ -55,6 +56,24 @@ export function FileList({ conversationId }: Props) {
             </div>
           </div>
           <FileStatusBadge status={file.status} error={file.error} />
+          {file.status === "failed" && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="transition-opacity"
+              aria-label={`Retry ${file.filename}`}
+              title="Retry from the beginning"
+              disabled={retry.isPending}
+              onClick={() =>
+                retry.mutate(file.id, {
+                  onSuccess: () => toast.success(`Retrying ${file.filename}`),
+                  onError: (err) => toast.error(`Retry failed: ${err.message}`),
+                })
+              }
+            >
+              <RotateCcw className="h-4 w-4" />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"

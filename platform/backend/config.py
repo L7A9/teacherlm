@@ -110,7 +110,7 @@ class Settings(BaseSettings):
     course_context_section_budget: int = 48
 
     # --- Ingestion worker ---
-    ingestion_max_jobs: int = 1
+    ingestion_max_jobs: int = 2
     ingestion_job_timeout_s: int = 3600
 
     # --- Generators registry ---

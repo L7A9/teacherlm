@@ -15,6 +15,8 @@ interface UiState {
   };
 
   setTheme: (theme: Theme) => void;
+  setSourcesCollapsed: (collapsed: boolean) => void;
+  setProgressCollapsed: (collapsed: boolean) => void;
   toggleSources: () => void;
   toggleProgress: () => void;
   openGeneratorDialog: (outputType: OutputType) => void;
@@ -33,6 +35,12 @@ export const useUiStore = create<UiState>((set) => ({
       document.documentElement.classList.toggle("dark", theme === "dark");
     }
   },
+
+  setSourcesCollapsed: (collapsed) =>
+    set({ sourcesCollapsed: collapsed }),
+
+  setProgressCollapsed: (collapsed) =>
+    set({ progressCollapsed: collapsed }),
 
   toggleSources: () =>
     set((s) => ({ sourcesCollapsed: !s.sourcesCollapsed })),

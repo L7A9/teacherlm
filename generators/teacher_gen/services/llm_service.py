@@ -61,6 +61,9 @@ class LLMService:
         self.chat = _client(s.ollama_host, s.chat_model, override)
         self.analysis = _client(s.ollama_host, s.analysis_model, override)
         self.extraction = _client(s.ollama_host, s.extraction_model, override)
+        self.fallback_chat = OllamaClient(s.ollama_host, s.chat_model, provider="ollama")
+        self.last_chat_used_fallback = False
+        self.last_chat_fallback_reason: str | None = None
         self._s = s
 
     async def stream_reply(
@@ -74,11 +77,29 @@ class LLMService:
             *chat_history,
             {"role": "user", "content": user_message},
         ]
-        async for chunk in self.chat.stream_chat(
-            messages=messages,
-            options={"temperature": self._s.chat_temperature},
-        ):
-            yield chunk
+        self.last_chat_used_fallback = False
+        self.last_chat_fallback_reason = None
+        try:
+            async for chunk in self.chat.stream_chat(
+                messages=messages,
+                options={"temperature": self._s.chat_temperature},
+            ):
+                yield chunk
+        except Exception as exc:
+            if not _should_retry_with_local_fallback(exc, self.chat):
+                raise
+            self.last_chat_used_fallback = True
+            self.last_chat_fallback_reason = str(exc)
+            notice = (
+                f"Note: the configured LLM provider hit a rate limit, so I am "
+                f"answering with the local fallback LLM (`{self.fallback_chat.model}`).\n\n"
+            )
+            yield notice
+            async for chunk in self.fallback_chat.stream_chat(
+                messages=messages,
+                options={"temperature": self._s.chat_temperature},
+            ):
+                yield chunk
 
     async def analyze_structured(
         self,
@@ -124,6 +145,17 @@ def _client(base_url: str, model: str, override: dict | None) -> OllamaClient:
         str(cfg["model"]),
         provider=str(cfg["provider"]),
         api_key=cfg["api_key"],
+    )
+
+
+def _should_retry_with_local_fallback(exc: Exception, client: OllamaClient) -> bool:
+    if client.provider == "ollama":
+        return False
+    message = str(exc).casefold()
+    return (
+        "429 from" in message
+        and "provider" in message
+        and ("rate limit" in message or "rate_limited" in message)
     )
 
 

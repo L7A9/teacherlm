@@ -12,6 +12,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from teacherlm_core.llm.ollama_client import OllamaClient
@@ -54,7 +55,7 @@ _LIST_OR_EXAMPLE_RE = re.compile(
     r"^\s*(?:"
     r"\d+(?:\.\d+)*\s+|"
     r"\d+(?:\.\d+)*\s*[:.)-]|"
-    r"[a-e]\s*,|"
+    r"[a-e]\s*[,.)]|"
     r"(?:doc|position|rang|rank|groupe|group|facteur|factor|systeme|system|"
     r"etape|step|probleme|problem|exemple|example|cas|case)\s+[a-z0-9]"
     r")",
@@ -66,11 +67,21 @@ _BAD_PHRASE_RE = re.compile(
     r"calcul detaille|resultats?|sortie finale|idee principale|point cle|"
     r"question cruciale|le but du jeu|c'est le|on compare|on fixe|si rel|"
     r"meme rmse|beaucoup plus eleve|liste ordonnee|classement ordonnee|"
-    r"impact critique|au-dela de|construire le profil|mettre a jour|trouver les"
+    r"impact critique|au-dela de|construire le profil|mettre a jour|trouver les|"
+    r"elle permet|il permet|la forme generale|l attribut pour preciser|"
+    r"tout type de donnees|^ref$"
     r")\b",
     re.IGNORECASE,
 )
 _INCOMPLETE_PAREN_RE = re.compile(r"\([^)]*$|\bid\s*$", re.IGNORECASE)
+_SENTENCE_LIKE_CONCEPT_RE = re.compile(
+    r"^(?:"
+    r"elle|il|ils|elles|cela|ceci|cette|cet|ce|la|le|les|l|"
+    r"this|that|it|they|the|a|an"
+    r")\b.+\b(?:est|sont|permet|permettent|contient|sert|indique|"
+    r"is|are|allows|contains|means|shows)\b",
+    re.IGNORECASE,
+)
 
 
 class ConceptCandidate(BaseModel):
@@ -210,18 +221,35 @@ class ConceptInventoryService:
         existing = await self._load_all_concepts(session, conversation_id)
         existing_by_id = {concept.id: concept for concept in existing}
         reference_counts = await self._assessment_reference_counts(session, conversation_id)
-        desired_records = [self._to_record(conversation_id, concept) for concept in concepts]
+        desired_by_id: dict[uuid.UUID, CourseConceptRecord] = {}
+        for concept in concepts:
+            record = self._to_record(conversation_id, concept)
+            desired_by_id.setdefault(record.id, record)
+        desired_records = list(desired_by_id.values())
         desired_ids = {record.id for record in desired_records}
         persisted: list[CourseConceptRecord] = []
 
         for desired in desired_records:
             current = existing_by_id.get(desired.id)
-            if current is None:
-                session.add(desired)
-                persisted.append(desired)
-            else:
+            if current is not None:
                 _copy_concept_record(current, desired)
                 persisted.append(current)
+                continue
+
+            values = _concept_record_values(desired)
+            update_values = {
+                key: value
+                for key, value in values.items()
+                if key not in {"id", "conversation_id", "created_at"}
+            }
+            statement = pg_insert(CourseConceptRecord).values(**values)
+            await session.execute(
+                statement.on_conflict_do_update(
+                    index_elements=[CourseConceptRecord.id],
+                    set_=update_values,
+                )
+            )
+            persisted.append(desired)
 
         now = datetime.now(timezone.utc)
         for current in existing:
@@ -242,7 +270,15 @@ class ConceptInventoryService:
                 await session.delete(current)
 
         await session.flush()
-        return persisted
+        return [
+            concept
+            for concept in persisted
+            if _active_course_concept(concept)
+            if _valid_learning_concept_name(
+                concept.canonical_name,
+                f"{concept.description} {' '.join(concept.aliases or [])}",
+            )
+        ]
 
     async def _assessment_reference_counts(
         self,
@@ -560,6 +596,28 @@ def _copy_concept_record(target: CourseConceptRecord, source: CourseConceptRecor
     target.updated_at = source.updated_at
 
 
+def _concept_record_values(record: CourseConceptRecord) -> dict[str, Any]:
+    metadata = dict(record.concept_metadata or {})
+    metadata.pop("inactive", None)
+    metadata.pop("inactive_reason", None)
+    return {
+        "id": record.id,
+        "conversation_id": record.conversation_id,
+        "canonical_key": record.canonical_key,
+        "canonical_name": record.canonical_name,
+        "aliases": list(record.aliases or []),
+        "description": record.description,
+        "bloom_level": record.bloom_level,
+        "importance": record.importance,
+        "source_file_ids": list(record.source_file_ids or []),
+        "source_section_ids": list(record.source_section_ids or []),
+        "source_chunk_ids": list(record.source_chunk_ids or []),
+        "concept_metadata": metadata,
+        "created_at": record.created_at,
+        "updated_at": record.updated_at,
+    }
+
+
 def stable_concept_id(conversation_id: uuid.UUID | str, canonical_name: str) -> uuid.UUID:
     key = normalize_concept_key(canonical_name)
     seed = f"concept:{conversation_id}:{key}"
@@ -692,6 +750,7 @@ def _valid_learning_concept_name(value: str, context: str = "") -> bool:
         or _LIST_OR_EXAMPLE_RE.search(ascii_text)
         or _BAD_PHRASE_RE.search(ascii_text)
         or _INCOMPLETE_PAREN_RE.search(text)
+        or _SENTENCE_LIKE_CONCEPT_RE.search(ascii_text)
         or "%" in text
         or "=" in text
     ):

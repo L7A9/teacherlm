@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from functools import lru_cache
 from typing import Any, Literal
@@ -43,9 +44,12 @@ class InteractionRouter:
         options: dict[str, Any],
     ) -> InteractionDecision:
         course_summary = await build_course_summary(conversation_id)
+        heuristic = _heuristic_decision(user_message, course_summary)
+        if heuristic is not None:
+            return heuristic
         client = self._client(options)
         try:
-            return await client.chat_structured(
+            decision = await client.chat_structured(
                 messages=[
                     {"role": "system", "content": _ROUTER_SYSTEM_PROMPT},
                     {
@@ -61,6 +65,7 @@ class InteractionRouter:
                 schema=InteractionDecision,
                 options={"temperature": 0.1, "num_predict": 500, "max_tokens": 500},
             )
+            return _guard_decision(decision, user_message, course_summary)
         except Exception:
             logger.exception("interaction routing failed; falling back to retrieval")
             return InteractionDecision(
@@ -162,6 +167,85 @@ def _dedupe_labels(values: list[str], *, limit: int) -> list[str]:
         if len(out) >= limit:
             break
     return out
+
+
+def _heuristic_decision(user_message: str, course_summary: str) -> InteractionDecision | None:
+    if _is_obvious_outside_files(user_message, course_summary):
+        return InteractionDecision(
+            action="outside_files",
+            response=_outside_files_response(),
+            reasoning="obvious_outside_files",
+        )
+    return None
+
+
+def _guard_decision(
+    decision: InteractionDecision,
+    user_message: str,
+    course_summary: str,
+) -> InteractionDecision:
+    if decision.action == "conversational_reply" and _is_substantive_question(user_message):
+        if _is_obvious_outside_files(user_message, course_summary):
+            return InteractionDecision(
+                action="outside_files",
+                response=decision.response or _outside_files_response(),
+                reasoning="guarded_obvious_outside_files",
+            )
+        return InteractionDecision(
+            action="retrieve",
+            retrieval_query=decision.retrieval_query or user_message,
+            reasoning="guarded_substantive_question",
+        )
+    if decision.action == "outside_files" and not decision.response.strip():
+        return decision.model_copy(update={"response": _outside_files_response()})
+    if decision.action == "retrieve" and not decision.retrieval_query.strip():
+        return decision.model_copy(update={"retrieval_query": user_message})
+    return decision
+
+
+def _is_substantive_question(user_message: str) -> bool:
+    text = " ".join(user_message.casefold().split())
+    if not text or text in {"hi", "hello", "hey", "thanks", "thank you", "ok", "okay"}:
+        return False
+    if "?" in user_message:
+        return True
+    return bool(
+        re.search(
+            r"\b(what|why|how|explain|define|summarize|compare|write|create|generate|"
+            r"give|show|teach|tell|calculate|solve|recipe|plan|code|"
+            r"quoi|pourquoi|comment|explique|ecris|cr[eé]e|donne)\b",
+            text,
+        )
+    )
+
+
+def _is_obvious_outside_files(user_message: str, course_summary: str) -> bool:
+    text = " ".join(user_message.casefold().split())
+    if not text:
+        return False
+    outside_patterns = [
+        r"\b(recipe|dinner|lunch|breakfast|cook|meal)\b",
+        r"\b(weather|forecast|temperature)\b",
+        r"\b(stock price|crypto|bitcoin|exchange rate)\b",
+        r"\b(movie|netflix|restaurant|hotel|flight|travel itinerary)\b",
+        r"\bmedical advice|legal advice\b",
+    ]
+    if not any(re.search(pattern, text) for pattern in outside_patterns):
+        return False
+    summary_terms = {
+        term
+        for term in re.findall(r"[a-zA-Z][a-zA-Z0-9+/#-]{2,}", course_summary.casefold())
+        if term not in {"uploaded", "files", "main", "visible", "topics", "course", "cours"}
+    }
+    message_terms = set(re.findall(r"[a-zA-Z][a-zA-Z0-9+/#-]{2,}", text))
+    return not bool(summary_terms & message_terms)
+
+
+def _outside_files_response() -> str:
+    return (
+        "That appears outside the uploaded course files, so I can't answer it "
+        "from your sources. Ask me about the course material and I'll help."
+    )
 
 
 _ROUTER_SYSTEM_PROMPT = """You are TeacherLM's interaction router.

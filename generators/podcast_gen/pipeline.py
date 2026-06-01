@@ -20,6 +20,11 @@ from .config import get_settings
 from .schemas import PodcastBundle, PodcastScript
 from .services.artifact_store import get_artifact_store
 from .services.audio_composer import build_transcript, compose_audio
+from .services.grounding_guard import (
+    deterministic_script_from_arc,
+    script_claims_no_materials,
+    usable_context_chunks,
+)
 from .services.llm_service import get_llm_service
 from .services.narrative_extractor import extract_narrative_arc
 from .services.script_generator import (
@@ -149,7 +154,8 @@ async def run(inp: GeneratorInput) -> AsyncIterator[str]:
         },
     )
 
-    if not inp.context_chunks:
+    usable_chunks = usable_context_chunks(inp.context_chunks)
+    if not usable_chunks:
         msg = _empty_response("no context chunks were retrieved")
         yield _sse("token", {"delta": msg})
         yield _sse(
@@ -167,7 +173,7 @@ async def run(inp: GeneratorInput) -> AsyncIterator[str]:
     yield _sse("progress", {"stage": "extracting_arc"})
     lang_hint = language_hint(language)
     arc = await extract_narrative_arc(
-        inp.context_chunks,
+        usable_chunks,
         topic_focus=topic,
         language_hint=lang_hint,
         llm=llm,
@@ -184,13 +190,32 @@ async def run(inp: GeneratorInput) -> AsyncIterator[str]:
     yield _sse("progress", {"stage": "scripting", "duration": duration})
     script: PodcastScript = await generate_script(
         arc,
-        inp.context_chunks,
+        usable_chunks,
         duration=duration,
         language=language,
         host_a_name=host_a_name,
         host_b_name=host_b_name,
         llm=llm,
     )
+    if script_claims_no_materials(script):
+        logger.warning("podcast script claimed no materials despite %d usable chunks; retrying once", len(usable_chunks))
+        arc = await extract_narrative_arc(
+            usable_chunks,
+            topic_focus="",
+            language_hint=lang_hint,
+            llm=llm,
+        )
+        script = await generate_script(
+            arc,
+            usable_chunks,
+            duration=duration,
+            language=language,
+            host_a_name=host_a_name,
+            host_b_name=host_b_name,
+            llm=llm,
+        )
+        if script_claims_no_materials(script):
+            script = deterministic_script_from_arc(arc)
     yield _sse("progress", {"stage": "language_check", "language": language})
     script = await enforce_language(script, language=language, llm=llm)
     word_count = script_word_count(script)
@@ -287,7 +312,7 @@ async def run(inp: GeneratorInput) -> AsyncIterator[str]:
         generator_id=settings.generator_id,
         output_type=settings.output_type,
         artifacts=artifacts,
-        sources=inp.context_chunks,
+        sources=usable_chunks,
         learner_updates=LearnerUpdates(concepts_covered=concepts_covered),
         metadata={
             "podcast": bundle.model_dump(),

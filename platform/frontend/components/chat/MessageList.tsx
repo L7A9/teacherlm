@@ -42,7 +42,7 @@ export function MessageList({ conversationId, className }: Props) {
   }, [asTempMessage, conversationId, data, streaming]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
   }, [messages.length, streaming?.text.length]);
 
   if (isLoading) {
@@ -65,14 +65,13 @@ export function MessageList({ conversationId, className }: Props) {
 
   if (messages.length === 0) {
     return (
-      <div className={cn("flex h-full flex-col items-center justify-center gap-3 px-6 text-center", className)}>
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/15 text-primary">
+      <div className={cn("app-chrome flex h-full flex-col items-center justify-center gap-3 px-6 text-center", className)}>
+        <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/15 text-primary">
           <MessageSquare className="h-5 w-5" />
         </div>
         <div className="text-sm font-medium">Start learning</div>
         <p className="max-w-sm text-xs text-muted-foreground">
-          Upload a file and ask your teacher a question, or click one of the
-          buttons above the input to generate a quiz, report, or more.
+          Upload course files, then ask a question.
         </p>
       </div>
     );
@@ -81,7 +80,7 @@ export function MessageList({ conversationId, className }: Props) {
   return (
     <div
       ref={scrollRef}
-      className={cn("flex flex-col gap-4 overflow-y-auto px-4 py-5", className)}
+      className={cn("content-selectable flex flex-col gap-4 overflow-y-auto px-3 py-5 sm:px-4", className)}
     >
       {messages.map((message) => (
         <MessageBubble

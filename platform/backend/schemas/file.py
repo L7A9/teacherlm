@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -36,3 +36,7 @@ class UploadedFileRead(BaseModel):
 class UploadedFileList(BaseModel):
     items: list[UploadedFileRead]
     total: int
+
+
+class FileRetryRequest(BaseModel):
+    options: dict[str, Any] | None = None
