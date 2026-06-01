@@ -49,15 +49,15 @@ export default function HomePage() {
 
   return (
     <main className="min-h-dvh bg-background text-foreground">
-      <header className="border-b border-border">
-        <div className="mx-auto flex max-w-4xl items-center justify-between px-6 py-5">
+      <header className="app-chrome app-pane sticky top-0 z-10 border-b border-border">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3 sm:px-6">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary/15 text-primary">
               <GraduationCap className="h-5 w-5" />
             </div>
             <div>
               <h1 className="text-lg font-semibold">TeacherLM</h1>
-              <p className="text-xs text-muted-foreground">
+              <p className="hidden text-xs text-muted-foreground sm:block">
                 Your AI teacher, grounded in the files you upload.
               </p>
             </div>
@@ -73,19 +73,21 @@ export default function HomePage() {
               variant="primary"
               onClick={handleNew}
               disabled={create.isPending}
+              className="px-3 sm:px-4"
             >
               {create.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Plus className="h-4 w-4" />
               )}
-              New conversation
+              <span className="hidden sm:inline">New conversation</span>
+              <span className="sm:hidden">New</span>
             </Button>
           </div>
         </div>
       </header>
 
-      <div className="mx-auto max-w-4xl px-6 py-8">
+      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
         {isLoading ? (
           <LoadingState />
         ) : error ? (
@@ -93,7 +95,7 @@ export default function HomePage() {
         ) : (data?.items.length ?? 0) === 0 ? (
           <EmptyState onCreate={handleNew} pending={create.isPending} />
         ) : (
-          <ConversationGrid items={data?.items ?? []} />
+          <ConversationList items={data?.items ?? []} />
         )}
       </div>
     </main>
@@ -102,7 +104,7 @@ export default function HomePage() {
 
 function LoadingState() {
   return (
-    <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+    <div className="app-chrome flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
       <Loader2 className="h-4 w-4 animate-spin" />
       Loading conversations…
     </div>
@@ -111,7 +113,7 @@ function LoadingState() {
 
 function ErrorState({ message }: { message: string }) {
   return (
-    <div className="rounded-lg border border-[hsl(var(--danger)/0.4)] bg-[hsl(var(--danger)/0.08)] px-4 py-6 text-sm text-[hsl(var(--danger))]">
+    <div className="rounded-md border border-[hsl(var(--danger)/0.4)] bg-[hsl(var(--danger)/0.08)] px-4 py-6 text-sm text-[hsl(var(--danger))]">
       Couldn't load conversations: {message}
     </div>
   );
@@ -125,8 +127,8 @@ function EmptyState({
   pending: boolean;
 }) {
   return (
-    <div className="flex flex-col items-center gap-4 rounded-lg border border-dashed border-border bg-surface px-6 py-16 text-center">
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/15 text-primary">
+    <div className="app-chrome flex flex-col items-center gap-4 rounded-md border border-dashed border-border bg-surface px-6 py-16 text-center">
+      <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/15 text-primary">
         <Sparkles className="h-5 w-5" />
       </div>
       <div className="flex flex-col gap-1">
@@ -148,9 +150,9 @@ function EmptyState({
   );
 }
 
-function ConversationGrid({ items }: { items: Conversation[] }) {
+function ConversationList({ items }: { items: Conversation[] }) {
   return (
-    <ul className="grid gap-3 md:grid-cols-2">
+    <ul className="overflow-hidden rounded-md border border-border bg-surface">
       {items.map((c) => (
         <ConversationCard key={c.id} conversation={c} />
       ))}
@@ -174,13 +176,13 @@ function ConversationCard({ conversation }: { conversation: Conversation }) {
   return (
     <li
       className={cn(
-        "group relative rounded-lg border border-border bg-surface transition-colors",
-        "hover:border-primary/50",
+        "group relative border-b border-border transition-colors last:border-b-0",
+        "hover:bg-muted/60",
       )}
     >
       <Link
         href={`/c/${conversation.id}`}
-        className="flex flex-col gap-2 px-4 py-4"
+        className="flex flex-col gap-2 px-4 py-3"
       >
         <div className="flex items-start gap-2">
           <MessageSquare className="mt-0.5 h-4 w-4 shrink-0 text-primary" />

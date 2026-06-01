@@ -4,6 +4,7 @@ import sys
 import uuid
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -15,9 +16,11 @@ from services.concept_inventory_service import stable_concept_id  # noqa: E402
 from services.review_test_service import (  # noqa: E402
     WINDOW_SIZE,
     _review_question_count,
+    _window_source_chunks,
     _window_due,
     _window_from_questions,
 )
+from services.knowledge_assessment_service import _fallback_check_data  # noqa: E402
 
 
 CONV_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
@@ -54,6 +57,31 @@ class ReviewTestServiceTests(unittest.TestCase):
         concepts = [_concept(0)]
 
         self.assertEqual(_review_question_count(window, concepts), 1)
+
+    def test_review_uses_only_source_chunks_from_answered_window(self) -> None:
+        window = _window_from_questions(CONV_ID, [_answered_question(index) for index in range(3)], 3)
+        chunks = [
+            SimpleNamespace(id="chunk-0"),
+            SimpleNamespace(id="chunk-1"),
+            SimpleNamespace(id="outside"),
+        ]
+
+        scoped = _window_source_chunks(chunks, window)
+
+        self.assertEqual([chunk.id for chunk in scoped], ["chunk-0", "chunk-1"])
+
+    def test_review_mcq_fallback_stays_multiple_choice_without_distractors(self) -> None:
+        qtype, prompt, options, answer_key, _rubric = _fallback_check_data(
+            concept=_concept(0),
+            question_type="mcq",
+            description="A key idea discussed in the recent answers.",
+            alternatives=[],
+        )
+
+        self.assertEqual(qtype, "mcq")
+        self.assertIn("which option", prompt)
+        self.assertGreaterEqual(len(options), 3)
+        self.assertIn("correct_index", answer_key)
 
 
 def _answered_question(index: int) -> AnsweredCourseQuestionRecord:

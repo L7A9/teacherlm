@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import { CssBaseline, ThemeProvider, createTheme } from "@mui/material";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 
@@ -27,15 +28,81 @@ export function Providers({ children }: { children: React.ReactNode }) {
     document.documentElement.classList.toggle("dark", theme === "dark");
   }, [theme]);
 
+  const muiTheme = useMemo(
+    () =>
+      createTheme({
+        palette: {
+          mode: theme,
+          background: {
+            default: "hsl(var(--background))",
+            paper: "hsl(var(--surface))",
+          },
+          text: {
+            primary: "hsl(var(--foreground))",
+            secondary: "hsl(var(--muted-foreground))",
+          },
+          primary: {
+            main: "hsl(var(--primary))",
+            contrastText: "hsl(var(--primary-foreground))",
+          },
+          secondary: {
+            main: "hsl(var(--accent))",
+            contrastText: "hsl(var(--accent-foreground))",
+          },
+          divider: "hsl(var(--border))",
+          error: {
+            main: "hsl(var(--danger))",
+          },
+          warning: {
+            main: "hsl(var(--warning))",
+          },
+          success: {
+            main: "hsl(var(--success))",
+          },
+        },
+        shape: {
+          borderRadius: 8,
+        },
+        typography: {
+          fontFamily: "var(--font-sans)",
+          button: {
+            textTransform: "none",
+            fontWeight: 600,
+          },
+        },
+        components: {
+          MuiCssBaseline: {
+            styleOverrides: {
+              body: {
+                backgroundColor: "hsl(var(--background))",
+                color: "hsl(var(--foreground))",
+              },
+            },
+          },
+          MuiPaper: {
+            styleOverrides: {
+              root: {
+                backgroundImage: "none",
+              },
+            },
+          },
+        },
+      }),
+    [theme],
+  );
+
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
-      <Toaster
-        theme={theme}
-        position="bottom-right"
-        richColors
-        closeButton
-      />
+      <ThemeProvider theme={muiTheme}>
+        <CssBaseline />
+        {children}
+        <Toaster
+          theme={theme}
+          position="bottom-right"
+          richColors
+          closeButton
+        />
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

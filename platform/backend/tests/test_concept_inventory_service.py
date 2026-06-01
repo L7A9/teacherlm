@@ -98,6 +98,11 @@ class ConceptInventoryServiceTests(unittest.TestCase):
             "Advanced Python (id",
             "Hypothèse de linéarité stricte</mark",
             "beaucoup plus élevé",
+            "Elle permet de récupérer tout type de données",
+            "La forme générale est",
+            "L'attribut pour préciser cette orientation est Android",
+            "a. en XML",
+            "Ref",
         ]
         for name in bad:
             with self.subTest(name=name):

@@ -74,9 +74,7 @@ def _extract_formula_snippets(text: str, *, limit: int = 4) -> list[str]:
         line = raw_line.strip()
         if not line or "$$" in line:
             continue
-        if not re.search(r"[=∑√\\]|\\frac|\\sum|\\sqrt|\\hat|RMSE|MSE|MAE|DCG|nDCG", line):
-            continue
-        if not re.search(r"\$|\\|[=∑√^_]", line):
+        if not _looks_like_formula_line(line):
             continue
         snippets.append(line)
 
@@ -93,14 +91,39 @@ def _extract_formula_snippets(text: str, *, limit: int = 4) -> list[str]:
     return out
 
 
-def _is_formula_question(message: str) -> bool:
+_MATH_QUERY_EXPR_RE = re.compile(
+    r"(\b[A-Za-z]\w*\s*(?:=|\+|\*|/|\^)\s*[A-Za-z0-9\\$]|\b\w+\s*[_^]\s*\w+|\\(?:frac|sum|sqrt|hat|bar|vec|int|prod)\b)"
+)
+_FORMULA_WORD_RE = re.compile(
+    r"\b(equation|formula|formule|calculate|calculer|compute|derive|symbol|math|Ã©quation|معادلة|صيغة|احسب)\b",
+    re.IGNORECASE,
+)
+_CODE_OR_MARKUP_RE = re.compile(
+    r"(<\w+|</\w+|android:|xmlns:|=\s*[\"']|;\s*$|\b(?:new|class|return|public|private|protected|const|let|var)\b)",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_formula_line(line: str) -> bool:
+    if _CODE_OR_MARKUP_RE.search(line):
+        return False
+    if re.search(r"\\(?:frac|sum|sqrt|hat|bar|vec|int|prod)\b|[∑√∫±×÷≤≥≈∞]", line):
+        return True
+    if re.search(r"\b(?:RMSE|MSE|MAE|DCG|nDCG|TF-IDF)\b", line):
+        return bool(re.search(r"[=^_]", line))
+    if "$" in line:
+        return bool(re.search(r"[=^_]|\\", line))
     return bool(
         re.search(
-            r"\b(equation|formula|formule|calculate|calculer|compute|derive|symbol|math|Ã©quation|معادلة|صيغة|احسب)\b|[=+\-*/^_]",
-            message,
-            flags=re.IGNORECASE,
+            r"\b[A-Za-z]\w*\s*=\s*[-+*/^().,\w\s]+$|"
+            r"\b[A-Za-z]\w*\s*[_^]\s*[A-Za-z0-9]",
+            line,
         )
     )
+
+
+def _is_formula_question(message: str) -> bool:
+    return bool(_FORMULA_WORD_RE.search(message) or _MATH_QUERY_EXPR_RE.search(message))
 
 
 _QUERY_EVIDENCE_STOPWORDS = {
@@ -198,9 +221,10 @@ def _is_formula_only_question(message: str) -> bool:
     direct_formula = bool(
         re.search(
             r"\b(?:what|give|show|write|provide|list)\b.*\b(?:formula|formulas|equation|equations|symbol|symbols)\b|"
-            r"\b(?:formula|formulas|equation|equations)\s+for\b|[=+\-*/^_]",
+            r"\b(?:formula|formulas|equation|equations)\s+for\b",
             normalized,
         )
+        or _MATH_QUERY_EXPR_RE.search(message)
     )
     asks_for_explanation = bool(
         re.search(r"\b(?:explain|teach|describe|overview|definition|define)\b", normalized)
@@ -837,6 +861,8 @@ async def run(inp: GeneratorInput) -> AsyncIterator[str]:
                 "analysis": analysis.model_dump(),
                 "confidence": confidence,
                 "context_ranker": "backend",
+                "llm_fallback": llm.last_chat_used_fallback,
+                "llm_fallback_reason": llm.last_chat_fallback_reason,
             },
         },
     )

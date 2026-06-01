@@ -679,7 +679,9 @@ def _normalize_generated_check(
     requested_type: str,
     fallback_description: str,
 ) -> tuple[str, str, list[str], dict[str, Any], str]:
-    qtype = generated.question_type if generated.question_type in _QUESTION_TYPES else requested_type
+    qtype = requested_type if requested_type == "mcq" else generated.question_type
+    if qtype not in _QUESTION_TYPES:
+        qtype = requested_type
     prompt = " ".join(generated.prompt.split()).strip()
     rubric = " ".join((generated.rubric or fallback_description).split()).strip()
     if not prompt:
@@ -724,8 +726,19 @@ def _fallback_check_data(
     short_description = _clean_description(description)
     answer_key: dict[str, Any] = {"concept_name": concept.canonical_name}
 
-    if question_type == "mcq" and len(alternatives) >= 2:
-        options = _stable_shuffle(_dedupe([concept.canonical_name, *alternatives[:3]])[:4], str(concept.id))
+    if question_type == "mcq":
+        distractors = _dedupe(
+            [
+                *alternatives,
+                f"A different course concept, not {concept.canonical_name}",
+                "A general example that is not the course idea",
+                "An unrelated term from outside this review",
+            ]
+        )
+        options = _stable_shuffle(
+            _dedupe([concept.canonical_name, *distractors])[:4],
+            str(concept.id),
+        )
         answer_key["correct_index"] = options.index(concept.canonical_name)
         prompt = f"In the course, which option best matches this idea: {short_description}"
         return "mcq", prompt, options, answer_key, short_description

@@ -45,7 +45,7 @@ export function CourseBuilderQuiz({ conversationId, chapterId, quiz }: Props) {
   };
 
   return (
-    <section className="flex flex-col gap-3 rounded-md border border-border bg-background p-3">
+    <section className="app-chrome flex flex-col gap-3 rounded-md border border-border bg-background p-3">
       <div className="flex items-center justify-between gap-2">
         <h4 className="text-xs font-semibold">Chapter quiz</h4>
         <Badge variant="muted">Pass {Math.round(quiz.pass_score * 100)}%</Badge>
@@ -64,7 +64,7 @@ export function CourseBuilderQuiz({ conversationId, chapterId, quiz }: Props) {
                     key={`${question.id}-${optionIndex}`}
                     type="button"
                     className={cn(
-                      "rounded-md border border-border px-2 py-1.5 text-left text-xs leading-4 transition-colors",
+                      "rounded-md border border-border px-2 py-1.5 text-left text-xs leading-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       answers[question.id] === optionIndex && "border-primary bg-primary/10",
                       result?.correct_index === optionIndex && "border-[hsl(var(--success))] bg-[hsl(var(--success)/0.12)]",
                       result &&

@@ -2,8 +2,9 @@
 # TeacherLM — start / stop / logs / rebuild the whole stack.
 #
 # Usage:
-#   ./run.sh              # start everything (builds only if needed)
+#   ./run.sh              # start everything and expose it on your LAN
 #   ./run.sh up           # same as above
+#   ./run.sh build        # rebuild images, start, and expose it on your LAN
 #   ./run.sh rebuild      # force rebuild all images, then start
 #   ./run.sh stop         # stop containers (keeps volumes)
 #   ./run.sh down         # stop + remove containers (keeps volumes)
@@ -16,36 +17,96 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE="docker compose -f $ROOT/platform/docker-compose.yml"
 
+detect_lan_host() {
+  if [ -n "${TEACHERLM_LAN_HOST:-}" ]; then
+    printf '%s\n' "$TEACHERLM_LAN_HOST"
+    return
+  fi
+
+  local ip=""
+
+  if command -v ip >/dev/null 2>&1; then
+    ip="$(ip route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i <= NF; i++) if ($i == "src") { print $(i + 1); exit }}' || true)"
+  fi
+
+  if [ -z "$ip" ] && command -v hostname >/dev/null 2>&1; then
+    ip="$(hostname -I 2>/dev/null | tr ' ' '\n' | awk '/^([0-9]{1,3}\.){3}[0-9]{1,3}$/ && $0 !~ /^127\./ { print; exit }' || true)"
+  fi
+
+  if [ -z "$ip" ] && command -v powershell.exe >/dev/null 2>&1; then
+    ip="$(
+      powershell.exe -NoProfile -Command 'Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.254.*" -and $_.PrefixOrigin -ne "WellKnown" } | Sort-Object InterfaceMetric | Select-Object -First 1 -ExpandProperty IPAddress' 2>/dev/null \
+        | tr -d '\r' \
+        | awk 'NF { print; exit }' \
+        || true
+    )"
+  fi
+
+  if [ -z "$ip" ]; then
+    ip="localhost"
+  fi
+
+  printf '%s\n' "$ip"
+}
+
+prepare_lan_exports() {
+  FRONTEND_PORT="${FRONTEND_PORT:-3000}"
+  BACKEND_PORT="${BACKEND_PORT:-8000}"
+  MINIO_PORT="${MINIO_PORT:-9000}"
+  MINDMAP_GEN_PORT="${MINDMAP_GEN_PORT:-8008}"
+  TEACHERLM_LAN_HOST_RESOLVED="$(detect_lan_host)"
+
+  export FRONTEND_PORT BACKEND_PORT MINIO_PORT MINDMAP_GEN_PORT TEACHERLM_LAN_HOST_RESOLVED
+  export NEXT_PUBLIC_API_BASE_URL="${NEXT_PUBLIC_API_BASE_URL:-http://$TEACHERLM_LAN_HOST_RESOLVED:$BACKEND_PORT}"
+  export MINIO_PUBLIC_ENDPOINT="${MINIO_PUBLIC_ENDPOINT:-$TEACHERLM_LAN_HOST_RESOLVED:$MINIO_PORT}"
+  export MINDMAP_GEN_PUBLIC_URL="${MINDMAP_GEN_PUBLIC_URL:-http://$TEACHERLM_LAN_HOST_RESOLVED:$MINDMAP_GEN_PORT}"
+
+  echo "LAN host:      $TEACHERLM_LAN_HOST_RESOLVED"
+  echo "Frontend API:  $NEXT_PUBLIC_API_BASE_URL"
+  echo
+}
+
+print_stack_urls() {
+  local host="${TEACHERLM_LAN_HOST_RESOLVED:-$(detect_lan_host)}"
+
+  echo "Frontend:     http://localhost:${FRONTEND_PORT:-3000}"
+  echo "Phone URL:    http://$host:${FRONTEND_PORT:-3000}"
+  echo "Backend API:  http://$host:${BACKEND_PORT:-8000}/api/health"
+  echo "teacher_gen:  http://$host:${TEACHER_GEN_PORT:-8001}/health"
+  echo "quiz_gen:     http://$host:${QUIZ_GEN_PORT:-8002}/health"
+  echo "podcast_gen:  http://$host:${PODCAST_GEN_PORT:-8007}/health"
+  echo "mindmap_gen:  http://$host:${MINDMAP_GEN_PORT:-8008}/health"
+  echo
+  echo "Open the Phone URL on a device connected to the same Wi-Fi."
+  echo "If it cannot connect, allow Docker/these ports through the firewall."
+}
+
 cmd="${1:-up}"
 shift || true
 
 case "$cmd" in
   up)
+    prepare_lan_exports
+    $COMPOSE build frontend
     $COMPOSE up -d --remove-orphans
     $COMPOSE ps
     echo
-    echo "Frontend:     http://localhost:3000"
-    echo "Backend API:  http://localhost:8000/api/health"
-    echo "teacher_gen:  http://localhost:8001/health"
-    echo "quiz_gen:     http://localhost:8002/health"
-    echo "podcast_gen:  http://localhost:8007/health"
-    echo "mindmap_gen:  http://localhost:8008/health"
+    print_stack_urls
     ;;
   build)
+    prepare_lan_exports
     $COMPOSE up -d --build --remove-orphans
     $COMPOSE ps
     echo
-    echo "Frontend:     http://localhost:3000"
-    echo "Backend API:  http://localhost:8000/api/health"
-    echo "teacher_gen:  http://localhost:8001/health"
-    echo "quiz_gen:     http://localhost:8002/health"
-    echo "podcast_gen:  http://localhost:8007/health"
-    echo "mindmap_gen:  http://localhost:8008/health"
+    print_stack_urls
     ;;
   rebuild)
+    prepare_lan_exports
     $COMPOSE build --no-cache "$@"
     $COMPOSE up -d
     $COMPOSE ps
+    echo
+    print_stack_urls
     ;;
   stop)
     $COMPOSE stop
@@ -65,7 +126,7 @@ case "$cmd" in
     ;;
   *)
     echo "unknown command: $cmd" >&2
-    echo "usage: ./run.sh [up|rebuild|stop|down|logs|ps|shell]" >&2
+    echo "usage: ./run.sh [up|build|rebuild|stop|down|logs|ps|shell]" >&2
     exit 1
     ;;
 esac

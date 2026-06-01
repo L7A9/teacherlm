@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState, type RefObject } from "react";
 
 import {
   BookOpen,
@@ -41,8 +41,10 @@ interface Props {
 
 export function MessageBubble({ message, conversationId, streaming }: Props) {
   const isUser = message.role === "user";
+  const messageBodyRef = useRef<HTMLDivElement | null>(null);
   const hasArtifacts = message.artifacts.length > 0;
   const hasSources = message.sources.length > 0;
+  const canCopy = !isUser && message.content.trim().length > 0;
   // Quiz / podcast / mind-map artifacts are surfaced in the right-rail panel
   // only — see SIDEBAR_ONLY_OUTPUT_TYPES above. The teacher's text intro still
   // shows in chat so the user has context for what was generated.
@@ -61,16 +63,17 @@ export function MessageBubble({ message, conversationId, streaming }: Props) {
 
       <div
         className={cn(
-          "flex max-w-[85%] flex-col gap-2",
+          "flex max-w-[min(88%,760px)] flex-col gap-2",
           isUser ? "items-end" : "items-start",
         )}
       >
         <div
+          ref={messageBodyRef}
           className={cn(
-            "rounded-2xl px-4 py-3 text-sm",
+            "content-selectable rounded-lg px-4 py-3 text-sm",
             isUser
               ? "bg-primary text-primary-foreground leading-7"
-              : "border border-slate-800 bg-slate-900 text-slate-200",
+              : "border border-border bg-surface text-surface-foreground",
           )}
         >
           {message.content ? (
@@ -91,6 +94,14 @@ export function MessageBubble({ message, conversationId, streaming }: Props) {
           )}
         </div>
 
+        {canCopy && (
+          <CopyMessageButton
+            content={message.content}
+            contentRef={messageBodyRef}
+            disabled={Boolean(streaming)}
+          />
+        )}
+
         {showInlineArtifacts && (
           <div className="flex w-full flex-col gap-3">
             {message.artifacts.map((a, idx) => (
@@ -108,6 +119,81 @@ export function MessageBubble({ message, conversationId, streaming }: Props) {
       </div>
     </div>
   );
+}
+
+function CopyMessageButton({
+  content,
+  contentRef,
+  disabled,
+}: {
+  content: string;
+  contentRef: RefObject<HTMLElement | null>;
+  disabled?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const onCopy = async () => {
+    if (disabled) return;
+    const renderedText = normalizeCopiedText(contentRef.current?.innerText ?? "");
+    const text = renderedText || content;
+    if (!text.trim()) return;
+    const ok = await copyToClipboard(text);
+    if (!ok) return;
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={() => void onCopy()}
+      disabled={disabled}
+      className={cn(
+        "app-chrome inline-flex h-7 items-center gap-1.5 rounded-md border border-border px-2 text-[11px]",
+        "text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+        "disabled:pointer-events-none disabled:opacity-50",
+      )}
+      aria-label={copied ? "Copied message" : "Copy message"}
+      title={disabled ? "Copy is available when generation finishes" : "Copy message"}
+    >
+      {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+      <span>{copied ? "Copied" : "Copy message"}</span>
+    </button>
+  );
+}
+
+function normalizeCopiedText(value: string): string {
+  return value
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
+}
+
+async function copyToClipboard(value: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch {
+    // Fall through to the legacy copy path.
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.top = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  } finally {
+    document.body.removeChild(textarea);
+  }
 }
 
 const markdownComponents: Components = {
@@ -757,7 +843,7 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
         <button
           type="button"
           onClick={onCopy}
-          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200"
+          className="app-chrome inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200 active:bg-slate-700"
           aria-label={copied ? "Copied" : "Copy code"}
         >
           {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
@@ -790,7 +876,7 @@ function Avatar({ role }: { role: Message["role"] }) {
   return (
     <div
       className={cn(
-        "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+        "app-chrome flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
         isUser
           ? "bg-muted text-muted-foreground"
           : "bg-primary/15 text-primary",
@@ -832,7 +918,7 @@ function Sources({ message }: { message: Message }) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground"
+        className="app-chrome inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground"
       >
         {open ? (
           <ChevronDown className="h-3 w-3" />

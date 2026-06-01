@@ -14,6 +14,9 @@ Read the SOURCE EXCERPTS below and produce a tight narrative arc:
 Rules:
 - Stay strictly grounded in the source excerpts. Do NOT invent facts,
   numbers, or claims that aren't in the material.
+- The title must name the actual course topic found in the excerpts.
+  Never title the episode about "podcast planning", "content planning",
+  "source excerpts", or material availability.
 - LANGUAGE: {language_hint} Every field (title, intro, key_points,
   conclusion) MUST be written in this language. If the source excerpts
   are in a different language, translate as you summarise — do not

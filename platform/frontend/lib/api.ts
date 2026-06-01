@@ -309,6 +309,16 @@ export const filesApi = {
       `/api/conversations/${conversationId}/files/${filePk}`,
       { method: "DELETE" },
     ),
+  retry: (conversationId: UUID, filePk: UUID, options?: UploadOptions) =>
+    apiFetch<UploadedFile>(
+      `/api/conversations/${conversationId}/files/${filePk}/retry`,
+      {
+        method: "POST",
+        body: options && Object.keys(options).length > 0
+          ? { options }
+          : undefined,
+      },
+    ),
 };
 
 // ---------- generators ----------

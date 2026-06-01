@@ -1,9 +1,11 @@
+import json
 from functools import lru_cache
 from importlib.resources import files
 from pathlib import Path
 
 import httpx
 
+from teacherlm_core.llm.language import language_name
 from teacherlm_core.llm.ollama_client import OllamaClient
 from teacherlm_core.llm.runtime import (
     build_llm_client_kwargs,
@@ -13,7 +15,7 @@ from teacherlm_core.llm.runtime import (
 from teacherlm_core.llm.structured import generate_structured
 
 from ..config import settings
-from ..schemas import CourseOutline, SubtopicExpansion, ThemeList
+from ..schemas import CourseOutline, MindMap, SubtopicExpansion, ThemeList
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
@@ -149,6 +151,25 @@ class LLMService:
             options={"temperature": 0.2},
         )
         return response["message"]["content"].strip().strip('"').strip("'")
+
+    async def translate_mindmap_labels(
+        self, mindmap: MindMap, target_language_code: str
+    ) -> MindMap:
+        target_language = language_name(target_language_code) or target_language_code
+        system = (
+            "You rewrite mind-map JSON for a student. Translate or rewrite every "
+            f"label into {target_language}. Preserve the exact hierarchy, meaning, "
+            "and approximate node count. Keep labels concise, study-oriented, and "
+            "grounded in the original labels. Return only valid JSON for the schema."
+        )
+        user = json.dumps(mindmap.model_dump(mode="json"), ensure_ascii=False, indent=2)
+        return await generate_structured(
+            client=self._client,
+            schema=MindMap,
+            system_prompt=system,
+            user_prompt=user,
+            options={"temperature": 0.05, "num_ctx": 8192, "num_predict": 2200},
+        )
 
 
 @lru_cache

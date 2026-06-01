@@ -248,21 +248,24 @@ class ReviewTestService:
                 .order_by(KnowledgeCheckRecord.created_at)
             )
             checks = list(result.scalars().all())
-            if checks:
+            if checks and all(check.question_type == "mcq" for check in checks):
                 return checks
+            window.generated_check_ids = []
 
         ranked = await self._rank_window_concepts(session, conversation_id, window, concepts, objectives)
         count = _review_question_count(window, ranked)
-        chunks = await assessment._load_chunks(session, conversation_id)
+        chunks = _window_source_chunks(
+            await assessment._load_chunks(session, conversation_id),
+            window,
+        )
         checks: list[KnowledgeCheckRecord] = []
         for index, concept in enumerate(ranked[:count]):
-            qtype = assessment._choose_question_type(index, concept, None)
             phase, objective = _learning_context_for_concept_id(concept.id, phases, objectives)
             check = await assessment._build_check(
                 conversation_id,
                 concept,
                 chunks,
-                qtype,
+                "mcq",
                 concepts,
                 phase=phase,
                 objective=objective,
@@ -272,6 +275,8 @@ class ReviewTestService:
                 **dict(check.check_metadata or {}),
                 "source": "review_test",
                 "review_window_id": str(window.id),
+                "question_types": ["mcq"],
+                "source_scope": "answered_review_window",
             }
             session.add(check)
             checks.append(check)
@@ -471,6 +476,17 @@ def _review_question_count(
     if richness >= 7:
         return min(len(concepts), 7)
     return min(len(concepts), 5)
+
+
+def _window_source_chunks(
+    chunks: list[Any],
+    window: LearningReviewWindowRecord,
+) -> list[Any]:
+    source_ids = {str(item) for item in window.source_chunk_ids or []}
+    if not source_ids:
+        return chunks
+    scoped = [chunk for chunk in chunks if str(getattr(chunk, "id", "")) in source_ids]
+    return scoped or chunks
 
 
 def _resolve_update_concepts(

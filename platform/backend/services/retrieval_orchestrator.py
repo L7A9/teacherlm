@@ -117,7 +117,15 @@ class RetrievalOrchestrator:
             if output_type == "presentation":
                 sections.extend(await self._context.get_equations(conversation_id))
                 sections.extend(await self._context.get_tables(conversation_id))
-            return _dedupe_chunks([*sections, *chunks])
+            focused = _dedupe_chunks([*sections, *chunks])
+            if focused:
+                return focused
+            return await self._context.get_generator_context(
+                conversation_id=conversation_id,
+                output_type=output_type,
+                query="",
+                topic=None,
+            )
 
         return chunks
 
@@ -133,6 +141,14 @@ class RetrievalOrchestrator:
             return await self._context.get_course_sections(conversation_id)
 
         chunks = await self._context.get_relevant_chunks(conversation_id, query, mode)
+        if query.strip():
+            graph_chunks = await self._context.get_graph_relevant_chunks(
+                conversation_id,
+                query,
+                limit=max(self._settings.retrieval_top_k, self._settings.retrieval_rerank_top_k),
+            )
+            if graph_chunks:
+                chunks = _dedupe_chunks([*graph_chunks, *chunks])
         chunks = await self._maybe_rerank(mode, query, chunks)
         return await self._maybe_expand_context(mode, conversation_id, chunks)
 

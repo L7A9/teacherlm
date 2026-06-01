@@ -2,17 +2,17 @@
 
 import { useMemo } from "react";
 
-import { BookOpen, Package } from "lucide-react";
+import { Package, X } from "lucide-react";
 
 import { ArtifactModalButton } from "@/components/artifacts/ArtifactModalButton";
 import { ArtifactRenderer } from "@/components/artifacts/ArtifactRenderer";
-import { CourseBuilderPanel } from "@/components/coursebuilder/CourseBuilderPanel";
+import { Button } from "@/components/ui/Button";
 import { useMessages } from "@/hooks/useMessages";
 import type { Artifact, UUID } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useConversationStore } from "@/stores/conversationStore";
 
-// Mirrors MessageBubble: these output types render in the right rail as a
+// Mirrors MessageBubble: these output types render in the generated-items rail as a
 // clickable button that opens a modal preview, and are NOT shown inline in
 // chat. Other output types (chart, report, presentation) stay inline here.
 const MODAL_OUTPUT_TYPES: ReadonlySet<string> = new Set([
@@ -24,6 +24,7 @@ const MODAL_OUTPUT_TYPES: ReadonlySet<string> = new Set([
 interface Props {
   conversationId: UUID;
   className?: string;
+  onClose?: () => void;
 }
 
 interface ArtifactGroup {
@@ -33,7 +34,7 @@ interface ArtifactGroup {
   artifacts: Artifact[];
 }
 
-export function ProgressPanel({ conversationId, className }: Props) {
+export function ProgressPanel({ conversationId, className, onClose }: Props) {
   const { data } = useMessages(conversationId);
   const streaming = useConversationStore(
     (s) => s.streamingByConversation[conversationId] ?? null,
@@ -64,67 +65,72 @@ export function ProgressPanel({ conversationId, className }: Props) {
   return (
     <aside
       className={cn(
-        "flex h-full min-h-0 flex-col overflow-hidden border-l border-border bg-background",
+        "app-pane flex h-full min-h-0 flex-col overflow-hidden border-l border-border",
         className,
       )}
-      aria-label="Progress"
+      aria-label="Generated items"
     >
-      <header className="flex items-center gap-2 border-b border-border px-4 py-3">
-        <BookOpen className="h-4 w-4 text-primary" />
-        <h2 className="text-sm font-semibold">Course</h2>
+      <header className="app-chrome flex h-11 items-center justify-between gap-2 border-b border-border px-4">
+        <div className="flex min-w-0 items-center gap-2">
+          <Package className="h-4 w-4 text-primary" />
+          <h2 className="truncate text-sm font-semibold">Generated items</h2>
+        </div>
+        {onClose && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 lg:hidden"
+            onClick={onClose}
+            aria-label="Close generated items"
+            title="Close"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        )}
       </header>
 
-      <div className="flex-1 overflow-y-auto">
-        <CourseBuilderPanel conversationId={conversationId} />
-
-        <section className="flex flex-col gap-3 border-t border-border px-4 py-4">
-          <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
-            <Package className="h-3 w-3" />
-            Generated items
-          </div>
-
-          {groups.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
-              Quizzes, diagrams, mind maps, podcasts, and other generated
-              items will appear here once you create them.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {groups.map((group) =>
-                MODAL_OUTPUT_TYPES.has(group.outputType ?? "") ? (
-                  <ArtifactModalButton
-                    key={group.messageId}
-                    outputType={group.outputType ?? ""}
-                    artifacts={group.artifacts}
-                    conversationId={conversationId}
-                    createdAt={group.createdAt}
-                  />
-                ) : (
-                  <div
-                    key={group.messageId}
-                    className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-2"
-                  >
-                    {group.outputType && (
-                      <div className="px-1 text-[11px] uppercase tracking-wide text-muted-foreground">
-                        {group.outputType}
-                      </div>
-                    )}
-                    <div className="flex flex-col gap-2">
-                      {group.artifacts.map((a, idx) => (
-                        <ArtifactRenderer
-                          key={`${a.url}-${idx}`}
-                          artifact={a}
-                          siblings={group.artifacts.filter((_, i) => i !== idx)}
-                          conversationId={conversationId}
-                        />
-                      ))}
+      <div className="flex-1 overflow-y-auto px-4 py-4">
+        {groups.length === 0 ? (
+          <p className="app-chrome text-xs leading-5 text-muted-foreground">
+            Generated items will appear here.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {groups.map((group) =>
+              MODAL_OUTPUT_TYPES.has(group.outputType ?? "") ? (
+                <ArtifactModalButton
+                  key={group.messageId}
+                  outputType={group.outputType ?? ""}
+                  artifacts={group.artifacts}
+                  conversationId={conversationId}
+                  createdAt={group.createdAt}
+                />
+              ) : (
+                <div
+                  key={group.messageId}
+                  className="flex flex-col gap-2 rounded-md border border-border bg-surface p-2"
+                >
+                  {group.outputType && (
+                    <div className="px-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                      {group.outputType}
                     </div>
+                  )}
+                  <div className="flex flex-col gap-2">
+                    {group.artifacts.map((a, idx) => (
+                      <ArtifactRenderer
+                        key={`${a.url}-${idx}`}
+                        artifact={a}
+                        siblings={group.artifacts.filter((_, i) => i !== idx)}
+                        conversationId={conversationId}
+                      />
+                    ))}
                   </div>
-                ),
-              )}
-            </div>
-          )}
-        </section>
+                </div>
+              ),
+            )}
+          </div>
+        )}
       </div>
     </aside>
   );

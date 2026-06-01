@@ -26,7 +26,7 @@ interface Props {
 
 export function LessonBlockRenderer({ block }: Props) {
   return (
-    <article className="rounded-md border border-border bg-surface p-3">
+    <article className="content-selectable rounded-md border border-border bg-surface p-3">
       {block.title && (
         <h5 className="mb-2 text-xs font-semibold text-foreground">{block.title}</h5>
       )}

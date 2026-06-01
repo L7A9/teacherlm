@@ -14,6 +14,7 @@ from db.session import session_scope
 from services.chunking_service import get_chunker
 from services.chunk_question_generator import get_chunk_question_generator
 from services.concept_inventory_service import get_concept_inventory_service
+from services.coursebuilder_jobs import coursebuilder_job_id
 from services.coursebuilder_service import get_coursebuilder_service
 from services.course_content_store import get_course_content_store
 from services.course_structure_service import get_course_structure_extractor
@@ -99,15 +100,29 @@ async def _rebuild_learning_course_if_ready(
                 "validating",
             }:
                 return
-            await service.queue_course(session, conversation_id, llm_options=llm_options)
             redis = ctx.get("redis")
             if redis is not None:
-                await redis.enqueue_job(
-                    "build_coursebuilder_course",
-                    str(conversation_id),
-                    llm_options or {},
-                )
+                course = await service.queue_course(session, conversation_id, llm_options=llm_options)
+                generation_id = _coursebuilder_generation_id(course.generation_metadata)
+                await session.commit()
+                try:
+                    await redis.enqueue_job(
+                        "build_coursebuilder_course",
+                        str(conversation_id),
+                        llm_options or {},
+                        generation_id,
+                        _job_id=coursebuilder_job_id(conversation_id, generation_id),
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.exception("coursebuilder enqueue failed; building inline")
+                    await service.generate_course(
+                        session,
+                        conversation_id,
+                        llm_options=llm_options,
+                        course=course,
+                    )
             else:
+                await service.queue_course(session, conversation_id, llm_options=llm_options)
                 logger.warning("coursebuilder queue unavailable; building inline")
                 await service.generate_course(session, conversation_id, llm_options=llm_options)
         finally:
@@ -125,16 +140,28 @@ async def build_coursebuilder_course(
     ctx: dict[str, Any],
     conversation_id: str,
     llm_options: dict[str, Any] | None = None,
+    generation_id: str | None = None,
 ) -> dict[str, Any]:
     conversation_uuid = uuid.UUID(conversation_id)
     language_token = set_current_language(_language_from_options(llm_options))
     try:
         async with session_scope() as session:
             service = get_coursebuilder_service()
+            course_record = await service.current_course(session, conversation_uuid)
+            if generation_id and course_record is not None:
+                current_generation_id = _coursebuilder_generation_id(course_record.generation_metadata)
+                if current_generation_id != generation_id:
+                    return {
+                        "ok": False,
+                        "status": course_record.status,
+                        "stale": True,
+                        "course_id": str(course_record.id),
+                    }
             course = await service.generate_course(
                 session,
                 conversation_uuid,
                 llm_options=llm_options,
+                course=course_record,
             )
             return {"ok": course.status == "ready", "status": course.status, "course_id": str(course.id) if course.id else None}
     finally:
@@ -308,18 +335,45 @@ async def _recover_coursebuilder_jobs(ctx: dict[str, Any]) -> None:
                 .order_by(CourseBuilderCourseRecord.created_at.asc())
             )
             courses = list(result.scalars().all())
+            jobs: list[tuple[str, dict[str, Any], str | None]] = []
             for course in courses:
                 if await _all_conversation_files_ready(course.conversation_id):
                     course.status = "queued"
+                    generation_id = _coursebuilder_generation_id(course.generation_metadata)
+                    jobs.append(
+                        (
+                            str(course.conversation_id),
+                            (course.generation_metadata or {}).get("llm_options") or {},
+                            generation_id,
+                        )
+                    )
+            await session.commit()
+            for conversation_id, llm_options, generation_id in jobs:
+                try:
                     await redis.enqueue_job(
                         "build_coursebuilder_course",
-                        str(course.conversation_id),
-                        (course.generation_metadata or {}).get("llm_options") or {},
+                        conversation_id,
+                        llm_options,
+                        generation_id,
+                        _job_id=coursebuilder_job_id(conversation_id, generation_id),
                     )
-        if courses:
-            logger.warning("requeued %s interrupted CourseBuilder jobs", len(courses))
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("recovered CourseBuilder job enqueue failed")
+                    async with session_scope() as fail_session:
+                        await get_coursebuilder_service().mark_course_failed(
+                            fail_session,
+                            uuid.UUID(conversation_id),
+                            f"CourseBuilder recovery queue failed: {exc}",
+                        )
+        if jobs:
+            logger.warning("requeued %s interrupted CourseBuilder jobs", len(jobs))
     except Exception:  # noqa: BLE001
         logger.exception("CourseBuilder job recovery failed")
+
+
+def _coursebuilder_generation_id(metadata: dict[str, Any] | None) -> str | None:
+    value = (metadata or {}).get("generation_id")
+    return str(value) if value else None
 
 
 async def shutdown(ctx: dict[str, Any]) -> None:

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import { AlertCircle, BookOpen, RefreshCw, Sparkles } from "lucide-react";
+import { toast } from "sonner";
 
 import { AssistantMarkdown } from "@/components/chat/MessageBubble";
 import { Badge } from "@/components/ui/Badge";
@@ -41,6 +42,14 @@ export function CourseBuilderPanel({ conversationId }: Props) {
   const rebuild = useRebuildCourseBuilder(conversationId);
   const running = data ? Boolean(data.id && RUNNING.has(data.status)) : false;
   useCourseBuilderProgress(conversationId, running);
+  const generateCourse = () =>
+    generate.mutate(undefined, {
+      onError: (err) => toast.error(`Course generation failed: ${err.message}`),
+    });
+  const rebuildCourse = () =>
+    rebuild.mutate(undefined, {
+      onError: (err) => toast.error(`Course rebuild failed: ${err.message}`),
+    });
 
   const chapters = useMemo(() => data?.chapters ?? [], [data?.chapters]);
   const [activeChapterId, setActiveChapterId] = useState<UUID | null>(null);
@@ -103,7 +112,7 @@ export function CourseBuilderPanel({ conversationId }: Props) {
           <Button
             size="sm"
             variant="secondary"
-            onClick={() => void generate.mutateAsync()}
+            onClick={generateCourse}
             disabled={generate.isPending}
           >
             <Sparkles className="h-3.5 w-3.5" />
@@ -126,7 +135,7 @@ export function CourseBuilderPanel({ conversationId }: Props) {
         <Button
           size="sm"
           variant="secondary"
-          onClick={() => void rebuild.mutateAsync()}
+          onClick={rebuildCourse}
           disabled={rebuild.isPending}
         >
           <RefreshCw className="h-3.5 w-3.5" />
@@ -146,7 +155,7 @@ export function CourseBuilderPanel({ conversationId }: Props) {
         />
         <Button
           size="sm"
-          onClick={() => void generate.mutateAsync()}
+          onClick={generateCourse}
           disabled={generate.isPending}
         >
           <Sparkles className="h-3.5 w-3.5" />
@@ -174,7 +183,7 @@ export function CourseBuilderPanel({ conversationId }: Props) {
           size="sm"
           variant="ghost"
           className="justify-start px-0 text-xs"
-          onClick={() => void rebuild.mutateAsync()}
+          onClick={rebuildCourse}
           disabled={rebuild.isPending}
         >
           <RefreshCw className="h-3.5 w-3.5" />

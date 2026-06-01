@@ -18,18 +18,19 @@ export function CourseBuilderChapterList({
   onSelect,
 }: Props) {
   return (
-    <ol className="flex flex-col gap-2">
+    <ol className="app-chrome flex flex-col gap-2">
       {chapters.map((chapter) => (
         <li
           key={chapter.id}
           className={cn(
-            "rounded-md border border-border bg-surface",
-            activeChapterId === chapter.id && "border-primary/60",
+            "rounded-md border border-border bg-surface transition-colors",
+            chapter.is_locked ? "opacity-70" : "hover:bg-muted/60",
+            activeChapterId === chapter.id && "border-primary/60 bg-primary/10",
           )}
         >
           <button
             type="button"
-            className="flex w-full items-start gap-2 px-3 py-2 text-left"
+            className="flex w-full items-start gap-2 px-3 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={() => onSelect(chapter.id)}
             disabled={chapter.is_locked}
           >

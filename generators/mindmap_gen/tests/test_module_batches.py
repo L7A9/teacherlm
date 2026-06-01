@@ -13,7 +13,15 @@ for path in (GENERATORS_DIR, CORE_DIR):
 
 from teacherlm_core.schemas.chunk import Chunk  # noqa: E402
 
-from mindmap_gen.pipeline import _build_from_module_packs, _make_outline_batches  # noqa: E402
+from mindmap_gen.pipeline import (  # noqa: E402
+    _apply_fresh_layout_variation,
+    _build_from_module_packs,
+    _fresh_generation_hint,
+    _make_outline_batches,
+    _mindmap_response_text,
+    _use_module_pack_fast_path,
+)
+from mindmap_gen.schemas import MindMap, MindMapNode  # noqa: E402
 
 
 class MindmapModuleBatchTests(unittest.TestCase):
@@ -75,6 +83,62 @@ class MindmapModuleBatchTests(unittest.TestCase):
             ["Foundations", "Methods", "Evaluation"],
         )
         self.assertIn("Definitions", [child.text for child in mindmap.branches[0].children])
+
+    def test_force_regenerate_skips_module_pack_fast_path(self) -> None:
+        self.assertFalse(
+            _use_module_pack_fast_path(
+                has_module_packs=True,
+                llm_refine=False,
+                force_regenerate=True,
+            )
+        )
+        self.assertTrue(
+            _use_module_pack_fast_path(
+                has_module_packs=True,
+                llm_refine=False,
+                force_regenerate=False,
+            )
+        )
+
+    def test_generation_hint_changes_with_generation_id(self) -> None:
+        first = _fresh_generation_hint({"generation_id": "run-a"})
+        second = _fresh_generation_hint({"generation_id": "run-b"})
+
+        self.assertIn("Fresh regeneration request", first)
+        self.assertNotEqual(first, second)
+
+    def test_fallback_variation_rotates_layout_for_fresh_run(self) -> None:
+        mindmap = _build_from_module_packs(
+            [
+                _module("Module 1: Foundations\nMajor headings:\n- A", "a.pdf", 0),
+                _module("Module 2: Methods\nMajor headings:\n- B", "b.pdf", 1),
+                _module("Module 3: Evaluation\nMajor headings:\n- C", "c.pdf", 2),
+            ],
+            max_nodes=30,
+        )
+
+        assert mindmap is not None
+        original = [branch.text for branch in mindmap.branches]
+        varied = _apply_fresh_layout_variation(mindmap, "fresh-run")
+
+        self.assertCountEqual([branch.text for branch in varied.branches], original)
+        self.assertNotEqual([branch.text for branch in varied.branches], original)
+
+    def test_mindmap_response_uses_forced_language_template(self) -> None:
+        mindmap = MindMap(
+            central_topic="Reseaux",
+            branches=[
+                MindMapNode(text="TCP", children=[]),
+                MindMapNode(text="IP", children=[]),
+                MindMapNode(text="DNS", children=[]),
+            ],
+        )
+
+        response = _mindmap_response_text(mindmap, 4, "fr-fr")
+
+        self.assertIn("carte mentale", response)
+        self.assertIn("Reseaux", response)
+        self.assertNotIn("I've built", response)
 
 
 def _module(text: str, source: str, order: int) -> Chunk:

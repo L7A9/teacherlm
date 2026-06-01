@@ -73,6 +73,10 @@ async def generate(
     topic = _effective_topic(body.output_type, body.topic)
     synth_message = _synthesize_prompt(body.output_type, topic)
     retrieval_query = _retrieval_query(body.output_type, body.topic)
+    generation_options = dict(body.options)
+    if body.output_type == "mindmap":
+        generation_options["force_regenerate"] = True
+        generation_options["generation_id"] = uuid.uuid4().hex
 
     chat_history = await _load_history(session, conversation_id, limit=CHAT_HISTORY_LIMIT)
     learner_state = await get_learner_tracker().load_state(session, conversation_id)
@@ -102,7 +106,7 @@ async def generate(
         context_chunks=context_chunks,
         learner_state=learner_state,
         chat_history=chat_history,
-        options={**body.options, "topic": topic} if topic else dict(body.options),
+        options={**generation_options, "topic": topic} if topic else generation_options,
     )
 
     return EventSourceResponse(
