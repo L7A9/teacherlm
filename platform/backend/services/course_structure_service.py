@@ -5,6 +5,7 @@ import uuid
 from dataclasses import dataclass, field
 from hashlib import sha1
 from pathlib import PurePosixPath
+from typing import Any
 
 
 _MARKDOWN_HEADING = re.compile(r"^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$")
@@ -61,6 +62,7 @@ class CourseSection:
     timeline_events: list[str] = field(default_factory=list)
     page_start: int | None = None
     page_end: int | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -87,9 +89,12 @@ class CourseStructureExtractor:
         conversation_id: uuid.UUID | str,
         source_file_id: str,
         source_filename: str,
+        intake_metadata: dict[str, Any] | None = None,
+        infer_plain_headings: bool = True,
     ) -> CourseDocument:
         title = self._document_title(markdown, source_filename)
         document_id = _stable_uuid(f"document:{conversation_id}:{source_file_id}")
+        intake_units = _intake_units_by_title(intake_metadata or {})
 
         sections: list[CourseSection] = []
         heading_stack: list[tuple[int, str, uuid.UUID]] = []
@@ -122,13 +127,14 @@ class CourseStructureExtractor:
                 equations=_extract_equations(text),
                 tables=_extract_tables(text),
                 timeline_events=_extract_timeline_events(text),
+                metadata=_section_intake_metadata(path, current_title, intake_units),
             )
             sections.append(section)
             section_order += 1
 
         for raw_line in markdown.splitlines():
             line = raw_line.rstrip()
-            heading = _parse_heading(line)
+            heading = _parse_heading(line, infer_plain_headings=infer_plain_headings)
             if heading:
                 flush()
                 level, heading_title = heading
@@ -164,6 +170,7 @@ class CourseStructureExtractor:
                     equations=_extract_equations(text),
                     tables=_extract_tables(text),
                     timeline_events=_extract_timeline_events(text),
+                    metadata={},
                 )
             )
 
@@ -176,6 +183,7 @@ class CourseStructureExtractor:
                 "extractor": "course-structure-v1",
                 "source_file_id": source_file_id,
                 "section_count": len(sections),
+                **(intake_metadata or {}),
             },
         )
 
@@ -188,12 +196,14 @@ class CourseStructureExtractor:
         return PurePosixPath(source_filename).stem.replace("_", " ").strip() or source_filename
 
 
-def _parse_heading(line: str) -> tuple[int, str] | None:
+def _parse_heading(line: str, *, infer_plain_headings: bool = True) -> tuple[int, str] | None:
     if _is_noise_line(line):
         return None
     markdown = _MARKDOWN_HEADING.match(line)
     if markdown:
         return len(markdown.group(1)), _clean_title(markdown.group(2))
+    if not infer_plain_headings:
+        return None
     numbered = _NUMBERED_HEADING.match(line)
     if numbered:
         return max(1, numbered.group(1).count(".")), _clean_title(numbered.group(2))
@@ -300,6 +310,62 @@ def _dedupe(values: list[str]) -> list[str]:
         seen.add(normalized)
         out.append(value)
     return out
+
+
+def _intake_units_by_title(metadata: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    units = metadata.get("course_units") or []
+    out: dict[str, dict[str, Any]] = {}
+    if not isinstance(units, list):
+        return out
+    for raw in units:
+        if not isinstance(raw, dict):
+            continue
+        title = _clean_title(str(raw.get("course_unit_title") or ""))
+        if not title:
+            continue
+        out[_metadata_key(title)] = raw
+    return out
+
+
+def _section_intake_metadata(
+    heading_path: list[str],
+    section_title: str,
+    units_by_title: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    if not units_by_title:
+        return {}
+    unit: dict[str, Any] | None = None
+    for title in heading_path:
+        unit = units_by_title.get(_metadata_key(title))
+        if unit is not None:
+            break
+    if unit is None:
+        return {}
+
+    subchapter_titles = [
+        _clean_title(str(item))
+        for item in (unit.get("subchapter_titles") or [])
+        if _clean_title(str(item))
+    ]
+    section_key = _metadata_key(section_title)
+    subchapter_title = next(
+        (title for title in subchapter_titles if _metadata_key(title) == section_key),
+        "",
+    )
+    metadata = {
+        "course_unit_index": unit.get("course_unit_index"),
+        "course_unit_title": unit.get("course_unit_title"),
+        "course_unit_role": unit.get("course_unit_role") or "primary",
+        "subchapter_titles": subchapter_titles,
+        "intake_confidence": unit.get("intake_confidence", 0.0),
+    }
+    if subchapter_title:
+        metadata["subchapter_title"] = subchapter_title
+    return metadata
+
+
+def _metadata_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").casefold())
 
 
 def _stable_uuid(seed: str) -> uuid.UUID:

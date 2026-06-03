@@ -51,6 +51,22 @@ class Conversation(Base):
     )
 
 
+class AppRuntimeSettingsRecord(Base):
+    __tablename__ = "app_runtime_settings"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default="global")
+    llm_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    llm_provider: Mapped[str] = mapped_column(String(32), default="ollama", nullable=False)
+    llm_model: Mapped[str] = mapped_column(String(256), default="", nullable=False)
+    llm_base_url: Mapped[str] = mapped_column(String(1024), default="", nullable=False)
+    llm_api_key_encrypted: Mapped[str | None] = mapped_column(Text)
+    llama_cloud_api_key_encrypted: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+    )
+
+
 class Message(Base):
     __tablename__ = "messages"
 

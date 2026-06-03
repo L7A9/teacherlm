@@ -14,6 +14,7 @@ from db.session import get_db
 from schemas.file import FileRetryRequest, UploadedFileList, UploadedFileRead
 from services.coursebuilder_jobs import coursebuilder_job_id
 from services.coursebuilder_service import get_coursebuilder_service
+from services.runtime_settings_service import get_runtime_settings_service
 from services.storage_service import get_storage
 
 
@@ -218,10 +219,7 @@ def _validate_llm_options(parsed: Any) -> dict[str, Any] | None:
         return None
     if not isinstance(parsed, dict):
         raise HTTPException(status_code=400, detail="llm_options_json must be an object")
-    llm = parsed.get("llm")
-    if llm is not None and not isinstance(llm, dict):
-        raise HTTPException(status_code=400, detail="llm option must be an object")
-    return parsed
+    return get_runtime_settings_service().sanitize_client_options(parsed)
 
 
 async def _sync_coursebuilder_after_file_delete(
@@ -243,10 +241,13 @@ async def _sync_coursebuilder_after_file_delete(
     if any(file.status != "ready" for file in remaining_files):
         return
 
+    runtime_settings = get_runtime_settings_service()
+    queue_options = runtime_settings.sanitize_client_options(llm_options)
+    resolved_options = await runtime_settings.resolve_options(session, queue_options)
     course = await service.queue_course(
         session,
         conversation_id,
-        llm_options=llm_options,
+        llm_options=resolved_options,
         restart_queued=True,
     )
     generation_id = str((course.generation_metadata or {}).get("generation_id") or "") or None
@@ -257,7 +258,7 @@ async def _sync_coursebuilder_after_file_delete(
         await service.generate_course(
             session,
             conversation_id,
-            llm_options=llm_options,
+            llm_options=resolved_options,
             course=course,
         )
         return
@@ -266,7 +267,7 @@ async def _sync_coursebuilder_after_file_delete(
         await arq.enqueue_job(
             "build_coursebuilder_course",
             str(conversation_id),
-            llm_options or {},
+            queue_options,
             generation_id,
             _job_id=coursebuilder_job_id(conversation_id, generation_id),
         )

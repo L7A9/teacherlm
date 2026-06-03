@@ -22,8 +22,8 @@ import type { OutputType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useConversationStore } from "@/stores/conversationStore";
 import {
+  forcedLanguageToOptions,
   languageLabel,
-  modelSettingsToOptions,
   useSettingsStore,
 } from "@/stores/settingsStore";
 import { useUiStore } from "@/stores/uiStore";
@@ -53,7 +53,6 @@ export function GeneratorDialog() {
   const closeDialog = useUiStore((s) => s.closeGeneratorDialog);
   const activeConversationId = useConversationStore((s) => s.activeConversationId);
   const forcedLanguage = useSettingsStore((s) => s.forcedLanguage);
-  const modelSettings = useSettingsStore((s) => s.modelSettings);
   const runGenerate = useGenerateStream();
 
   if (!outputType) {
@@ -70,11 +69,8 @@ export function GeneratorDialog() {
     // options can still override it (advanced power-user path), but the
     // dialog no longer surfaces a language picker.
     const mergedOptions: Record<string, unknown> = {
-      ...modelSettingsToOptions(modelSettings),
       ...options,
-      ...(forcedLanguage && options.language === undefined
-        ? { language: forcedLanguage }
-        : {}),
+      ...(options.language === undefined ? forcedLanguageToOptions(forcedLanguage) : {}),
     };
     try {
       await runGenerate(activeConversationId, {

@@ -3,7 +3,19 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
-import { AlertCircle, BookOpen, RefreshCw, Sparkles } from "lucide-react";
+import {
+  AlertCircle,
+  BookOpen,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  ClipboardCheck,
+  FileText,
+  Lock,
+  PlayCircle,
+  RefreshCw,
+  Sparkles,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { AssistantMarkdown } from "@/components/chat/MessageBubble";
@@ -15,10 +27,15 @@ import {
   useGenerateCourseBuilder,
   useRebuildCourseBuilder,
 } from "@/hooks/useCourseBuilder";
-import type { CourseBuilderChapter, CourseBuilderStatus, UUID } from "@/lib/types";
+import type {
+  CourseBuilderChapter,
+  CourseBuilderLesson,
+  CourseBuilderQuiz as CourseBuilderQuizType,
+  CourseBuilderStatus,
+  UUID,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-import { CourseBuilderChapterList } from "./ChapterList";
 import { LessonBlockRenderer } from "./LessonBlockRenderer";
 import { CourseBuilderQuiz } from "./Quiz";
 
@@ -53,6 +70,7 @@ export function CourseBuilderPanel({ conversationId }: Props) {
 
   const chapters = useMemo(() => data?.chapters ?? [], [data?.chapters]);
   const [activeChapterId, setActiveChapterId] = useState<UUID | null>(null);
+  const [activeContentKey, setActiveContentKey] = useState<string | null>(null);
   const activeChapter = useMemo(
     () =>
       chapters.find((chapter) => chapter.id === activeChapterId && !chapter.is_locked) ??
@@ -62,11 +80,33 @@ export function CourseBuilderPanel({ conversationId }: Props) {
     [activeChapterId, chapters],
   );
 
+  const selectChapter = (chapterId: UUID) => {
+    if (chapterId !== activeChapterId) {
+      setActiveContentKey(null);
+    }
+    setActiveChapterId(chapterId);
+  };
+
+  const toggleContent = (contentKey: string) => {
+    setActiveContentKey((current) => (current === contentKey ? null : contentKey));
+  };
+
   useEffect(() => {
     if (activeChapter && activeChapter.id !== activeChapterId) {
       setActiveChapterId(activeChapter.id);
     }
   }, [activeChapter, activeChapterId]);
+
+  useEffect(() => {
+    if (!activeChapter || !activeContentKey) return;
+    const validKeys = new Set(activeChapter.lessons.map((lesson) => lessonContentKey(lesson.id)));
+    if (activeChapter.quiz) {
+      validKeys.add(quizContentKey(activeChapter.id));
+    }
+    if (!validKeys.has(activeContentKey)) {
+      setActiveContentKey(null);
+    }
+  }, [activeChapter, activeContentKey]);
 
   if (isLoading) {
     return (
@@ -191,78 +231,273 @@ export function CourseBuilderPanel({ conversationId }: Props) {
         </Button>
       </section>
 
-      <CourseBuilderChapterList
+      <CourseBuilderAccordion
+        conversationId={conversationId}
         chapters={chapters}
         activeChapterId={activeChapter?.id ?? null}
-        onSelect={setActiveChapterId}
+        activeContentKey={activeContentKey}
+        onSelectChapter={selectChapter}
+        onToggleContent={toggleContent}
       />
+    </div>
+  );
+}
 
-      {activeChapter && (
-        <ChapterDetail
-          conversationId={conversationId}
-          chapter={activeChapter}
-        />
+function CourseBuilderAccordion({
+  conversationId,
+  chapters,
+  activeChapterId,
+  activeContentKey,
+  onSelectChapter,
+  onToggleContent,
+}: {
+  conversationId: UUID;
+  chapters: CourseBuilderChapter[];
+  activeChapterId: UUID | null;
+  activeContentKey: string | null;
+  onSelectChapter: (chapterId: UUID) => void;
+  onToggleContent: (contentKey: string) => void;
+}) {
+  return (
+    <ol className="app-chrome flex flex-col gap-2">
+      {chapters.map((chapter) => (
+        <li key={chapter.id}>
+          <ChapterAccordionItem
+            conversationId={conversationId}
+            chapter={chapter}
+            open={chapter.id === activeChapterId && !chapter.is_locked}
+            activeContentKey={activeContentKey}
+            onSelectChapter={onSelectChapter}
+            onToggleContent={onToggleContent}
+          />
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function ChapterAccordionItem({
+  conversationId,
+  chapter,
+  open,
+  activeContentKey,
+  onSelectChapter,
+  onToggleContent,
+}: {
+  conversationId: UUID;
+  chapter: CourseBuilderChapter;
+  open: boolean;
+  activeContentKey: string | null;
+  onSelectChapter: (chapterId: UUID) => void;
+  onToggleContent: (contentKey: string) => void;
+}) {
+  return (
+    <section
+      className={cn(
+        "rounded-md border border-border bg-surface transition-colors",
+        chapter.is_locked ? "opacity-70" : "hover:bg-muted/40",
+        open && "border-primary/60 bg-primary/10",
+      )}
+    >
+      <button
+        type="button"
+        className="flex w-full items-start gap-2 px-3 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={() => onSelectChapter(chapter.id)}
+        disabled={chapter.is_locked}
+        aria-expanded={open}
+      >
+        <ChapterStatusIcon chapter={chapter} />
+        <div className="min-w-0 flex-1">
+          <p className="line-clamp-2 text-xs font-medium">{chapter.title}</p>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            {chapter.completed && <Badge variant="success">Completed</Badge>}
+            {chapter.is_locked && <Badge variant="muted">Locked</Badge>}
+            <Badge variant="muted">{chapter.lessons.length} subchapters</Badge>
+            {chapter.quiz && <Badge variant="primary">Quiz</Badge>}
+            {chapter.attempts > 0 && (
+              <span className="text-[11px] text-muted-foreground">
+                best {Math.round(chapter.best_score * 100)}%
+              </span>
+            )}
+          </div>
+        </div>
+        {open ? (
+          <ChevronDown className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        )}
+      </button>
+
+      {open && (
+        <div className="flex flex-col gap-3 border-t border-border bg-background/60 px-3 py-3">
+          {chapter.summary && (
+            <div className="course-markdown text-xs leading-5 text-muted-foreground">
+              <AssistantMarkdown content={chapter.summary} />
+            </div>
+          )}
+
+          <div className="flex flex-col gap-1.5">
+            {chapter.lessons.map((lesson, index) => (
+              <LessonAccordionItem
+                key={lesson.id}
+                lesson={lesson}
+                index={index}
+                open={activeContentKey === lessonContentKey(lesson.id)}
+                onToggle={() => onToggleContent(lessonContentKey(lesson.id))}
+              />
+            ))}
+            {chapter.quiz && (
+              <QuizAccordionItem
+                conversationId={conversationId}
+                chapterId={chapter.id}
+                quiz={chapter.quiz}
+                open={activeContentKey === quizContentKey(chapter.id)}
+                onToggle={() => onToggleContent(quizContentKey(chapter.id))}
+              />
+            )}
+            {chapter.lessons.length === 0 && !chapter.quiz && (
+              <p className="text-xs leading-5 text-muted-foreground">
+                No subchapters or quiz were generated for this chapter.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function LessonAccordionItem({
+  lesson,
+  index,
+  open,
+  onToggle,
+}: {
+  lesson: CourseBuilderLesson;
+  index: number;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <section className="flex flex-col">
+      <button
+        type="button"
+        className={cn(
+          "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          open ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted/70",
+        )}
+        onClick={onToggle}
+        aria-expanded={open}
+      >
+        <span
+          className={cn(
+            "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold",
+            open ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
+          )}
+        >
+          {index + 1}
+        </span>
+        <FileText className={cn("h-3.5 w-3.5 shrink-0", open ? "text-primary" : "text-muted-foreground")} />
+        <span className="min-w-0 flex-1 truncate font-medium">{lesson.title}</span>
+        <Badge variant={lesson.support_status === "supported" ? "success" : "warning"}>
+          {lesson.support_status === "supported" ? "Supported" : "Needs source"}
+        </Badge>
+        {open ? (
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        )}
+      </button>
+      {open && <LessonDetail lesson={lesson} />}
+    </section>
+  );
+}
+
+function LessonDetail({ lesson }: { lesson: CourseBuilderLesson }) {
+  return (
+    <div className="flex flex-col gap-3 border-l border-border py-2 pl-4">
+      {lesson.learning_objectives.length > 0 && (
+        <ul className="list-disc space-y-1 pl-4 text-[11px] leading-4 text-muted-foreground">
+          {lesson.learning_objectives.map((objective) => (
+            <li key={objective}>{objective}</li>
+          ))}
+        </ul>
+      )}
+      {lesson.blocks.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          {lesson.blocks.map((block) => (
+            <LessonBlockRenderer key={block.id} block={block} />
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs leading-5 text-muted-foreground">
+          No lesson blocks were generated for this subchapter.
+        </p>
       )}
     </div>
   );
 }
 
-function ChapterDetail({
+function QuizAccordionItem({
   conversationId,
-  chapter,
+  chapterId,
+  quiz,
+  open,
+  onToggle,
 }: {
   conversationId: UUID;
-  chapter: CourseBuilderChapter;
+  chapterId: UUID;
+  quiz: CourseBuilderQuizType;
+  open: boolean;
+  onToggle: () => void;
 }) {
-  if (chapter.is_locked) {
-    return (
-      <StateCard
-        icon={<BookOpen className="h-4 w-4 text-muted-foreground" />}
-        title="Chapter locked"
-        body="Pass the previous chapter quiz to unlock this chapter."
-      />
-    );
-  }
   return (
-    <section className="flex flex-col gap-4 border-t border-border pt-4">
-      <header>
-        <h4 className="text-sm font-semibold">{chapter.title}</h4>
-        {chapter.summary && (
-          <div className="course-markdown mt-1 text-xs leading-5 text-muted-foreground">
-            <AssistantMarkdown content={chapter.summary} />
-          </div>
+    <section className="flex flex-col">
+      <button
+        type="button"
+        className={cn(
+          "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          open ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted/70",
         )}
-      </header>
-
-      {chapter.lessons.map((lesson) => (
-        <section key={lesson.id} className="flex flex-col gap-2">
-          <div>
-            <h5 className="text-xs font-semibold">{lesson.title}</h5>
-            {lesson.learning_objectives.length > 0 && (
-              <ul className="mt-1 list-disc space-y-1 pl-4 text-[11px] leading-4 text-muted-foreground">
-                {lesson.learning_objectives.map((objective) => (
-                  <li key={objective}>{objective}</li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <div className="flex flex-col gap-2">
-            {lesson.blocks.map((block) => (
-              <LessonBlockRenderer key={block.id} block={block} />
-            ))}
-          </div>
-        </section>
-      ))}
-
-      {chapter.quiz && (
-        <CourseBuilderQuiz
-          conversationId={conversationId}
-          chapterId={chapter.id}
-          quiz={chapter.quiz}
-        />
+        onClick={onToggle}
+        aria-expanded={open}
+      >
+        <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full", open ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
+          <ClipboardCheck className="h-3.5 w-3.5" />
+        </span>
+        <span className="min-w-0 flex-1 truncate font-medium">Chapter quiz</span>
+        <Badge variant="muted">Pass {Math.round(quiz.pass_score * 100)}%</Badge>
+        {open ? (
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        )}
+      </button>
+      {open && (
+        <div className="border-l border-border py-2 pl-4">
+          <CourseBuilderQuiz
+            conversationId={conversationId}
+            chapterId={chapterId}
+            quiz={quiz}
+          />
+        </div>
       )}
     </section>
   );
+}
+
+function ChapterStatusIcon({ chapter }: { chapter: CourseBuilderChapter }) {
+  if (chapter.completed) return <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--success))]" />;
+  if (chapter.is_locked) return <Lock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />;
+  return <PlayCircle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />;
+}
+
+function lessonContentKey(lessonId: UUID): string {
+  return `lesson:${lessonId}`;
+}
+
+function quizContentKey(chapterId: UUID): string {
+  return `quiz:${chapterId}`;
 }
 
 function StateCard({

@@ -4,7 +4,7 @@ import { reviewTestsApi } from "@/lib/api";
 import type { ReviewTestSubmitRequest, UUID } from "@/lib/types";
 import { useProgressStore } from "@/stores/progressStore";
 import {
-  modelSettingsToOptions,
+  forcedLanguageToOptions,
   useSettingsStore,
 } from "@/stores/settingsStore";
 
@@ -18,15 +18,11 @@ export function useReviewTestStatus(conversationId: UUID) {
 
 export function useStartReviewTest(conversationId: UUID) {
   const setProgressState = useProgressStore((s) => s.setState);
-  const modelSettings = useSettingsStore((s) => s.modelSettings);
   const forcedLanguage = useSettingsStore((s) => s.forcedLanguage);
   return useMutation({
     mutationFn: () =>
       reviewTestsApi.start(conversationId, {
-        options: {
-          ...modelSettingsToOptions(modelSettings),
-          ...(forcedLanguage ? { language: forcedLanguage } : {}),
-        },
+        options: forcedLanguageToOptions(forcedLanguage),
       }),
     onSuccess: (data) => {
       setProgressState(conversationId, data.learner_state);
@@ -37,17 +33,13 @@ export function useStartReviewTest(conversationId: UUID) {
 export function useSubmitReviewTest(conversationId: UUID, windowId: UUID | null) {
   const qc = useQueryClient();
   const setProgressState = useProgressStore((s) => s.setState);
-  const modelSettings = useSettingsStore((s) => s.modelSettings);
   const forcedLanguage = useSettingsStore((s) => s.forcedLanguage);
   return useMutation({
     mutationFn: (body: Omit<ReviewTestSubmitRequest, "options">) => {
       if (!windowId) throw new Error("No review window is active.");
       return reviewTestsApi.submit(conversationId, windowId, {
         ...body,
-        options: {
-          ...modelSettingsToOptions(modelSettings),
-          ...(forcedLanguage ? { language: forcedLanguage } : {}),
-        },
+        options: forcedLanguageToOptions(forcedLanguage),
       });
     },
     onSuccess: (data) => {

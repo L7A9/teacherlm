@@ -27,6 +27,42 @@ export type FileStatus =
   | "ready"
   | "failed";
 
+export type LlmProvider =
+  | "ollama"
+  | "openai"
+  | "anthropic"
+  | "openai_compatible";
+
+export interface LlmRuntimeSettings {
+  enabled: boolean;
+  provider: LlmProvider;
+  model: string;
+  api_link: string;
+  api_key_set: boolean;
+}
+
+export interface ParserRuntimeSettings {
+  api_key_set: boolean;
+}
+
+export interface RuntimeSettingsResponse {
+  llm: LlmRuntimeSettings;
+  parser: ParserRuntimeSettings;
+}
+
+export interface RuntimeSettingsUpdate {
+  llm?: {
+    enabled?: boolean;
+    provider?: LlmProvider;
+    model?: string;
+    api_link?: string;
+    api_key?: string | null;
+  };
+  parser?: {
+    api_key?: string | null;
+  };
+}
+
 // ---------- conversations ----------
 
 export interface Conversation {

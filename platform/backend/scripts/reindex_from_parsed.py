@@ -46,6 +46,7 @@ async def _update_file(file_pk: uuid.UUID, *, status: str, chunk_count: int | No
 
 async def _reindex_file(record: Any) -> dict[str, Any]:
     from services.chunking_service import get_chunker
+    from services.course_intake_normalizer import get_course_intake_normalizer
     from services.course_content_store import get_course_content_store
     from services.course_structure_service import get_course_structure_extractor
     from services.document_cleaning_service import get_document_cleaner
@@ -56,6 +57,7 @@ async def _reindex_file(record: Any) -> dict[str, Any]:
 
     storage = get_storage()
     cleaner = get_document_cleaner()
+    normalizer = get_course_intake_normalizer()
     extractor = get_course_structure_extractor()
     chunker = get_chunker()
     question_generator = get_chunk_question_generator()
@@ -65,6 +67,12 @@ async def _reindex_file(record: Any) -> dict[str, Any]:
     await _update_file(record.id, status="chunking")
     markdown = await storage.get_text(str(record.parsed_markdown_path))
     cleaned, stats = cleaner.clean_markdown_with_stats(markdown)
+    normalized = normalizer.normalize(
+        raw_markdown=markdown,
+        cleaned_markdown=cleaned,
+        source_filename=record.filename,
+    )
+    cleaned = normalized.markdown
     cleaned_key = storage.cleaned_text_key(record.conversation_id, record.file_id)
     await storage.put_text(cleaned_key, cleaned)
     document = extractor.extract(
@@ -72,6 +80,8 @@ async def _reindex_file(record: Any) -> dict[str, Any]:
         conversation_id=record.conversation_id,
         source_file_id=record.file_id,
         source_filename=record.filename,
+        intake_metadata=normalized.metadata,
+        infer_plain_headings=not normalized.normalized,
     )
     chunks = chunker.chunk_course_document(document, source_file_id=record.file_id)
     chunks = await question_generator.annotate_chunks(chunks)

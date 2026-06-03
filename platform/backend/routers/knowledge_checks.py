@@ -17,6 +17,7 @@ from schemas.knowledge_check import (
     QuizAttemptResponse,
 )
 from services.knowledge_assessment_service import get_knowledge_assessment_service
+from services.runtime_settings_service import get_runtime_settings_service
 
 
 router = APIRouter(prefix="/api/conversations", tags=["knowledge-checks"])
@@ -30,7 +31,8 @@ async def start_knowledge_checks(
 ) -> KnowledgeCheckStartResponse:
     await _require_conversation(session, conversation_id)
     service = get_knowledge_assessment_service()
-    token = set_current_language(_language_from_options(body.options))
+    resolved_options = await get_runtime_settings_service().resolve_options(session, body.options)
+    token = set_current_language(_language_from_options(resolved_options))
     try:
         response = await service.start_checks(
             session,
@@ -40,7 +42,7 @@ async def start_knowledge_checks(
             objective_id=body.objective_id,
             count=body.count,
             question_types=body.question_types,
-            llm_options=body.options,
+            llm_options=resolved_options,
         )
     finally:
         reset_current_language(token)
@@ -64,14 +66,15 @@ async def submit_knowledge_check(
 ) -> KnowledgeCheckSubmitResponse:
     await _require_conversation(session, conversation_id)
     service = get_knowledge_assessment_service()
-    token = set_current_language(_language_from_options(body.options))
+    resolved_options = await get_runtime_settings_service().resolve_options(session, body.options)
+    token = set_current_language(_language_from_options(resolved_options))
     try:
         result, learner_state = await service.submit_check(
             session,
             conversation_id,
             check_id,
             body.answer,
-            llm_options=body.options,
+            llm_options=resolved_options,
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -90,14 +93,15 @@ async def submit_quiz_attempt(
 ) -> QuizAttemptResponse:
     await _require_conversation(session, conversation_id)
     answers = {item.question_index: item.answer for item in body.answers}
-    token = set_current_language(_language_from_options(body.options))
+    resolved_options = await get_runtime_settings_service().resolve_options(session, body.options)
+    token = set_current_language(_language_from_options(resolved_options))
     try:
         return await get_knowledge_assessment_service().submit_quiz_attempt(
             session,
             conversation_id,
             body.questions,
             answers,
-            llm_options=body.options,
+            llm_options=resolved_options,
         )
     finally:
         reset_current_language(token)

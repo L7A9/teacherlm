@@ -10,6 +10,7 @@ from db.models import (
     CourseDocumentRecord,
     CourseLearningObjectiveRecord,
     CourseLearningPhaseRecord,
+    CourseSectionRecord,
     SearchChunkRecord,
 )
 from services.coursebuilder_service import (
@@ -25,6 +26,9 @@ from services.coursebuilder_service import (
     _fallback_questions,
     _format_context_pack,
     _chapter_query,
+    _intake_chapter_pool,
+    _intake_lesson_pool,
+    _lesson_supported_chunks,
     _lesson_query,
     _selected_index,
     _stable_id,
@@ -93,6 +97,150 @@ class CourseBuilderServiceTests(unittest.TestCase):
             [lesson.title for lesson in chapters[0].lessons],
             ["Human origins", "The geography of Morocco"],
         )
+
+    def test_extract_source_structure_prefers_normalized_intake_units(self) -> None:
+        chunks = [
+            _chunk(
+                "w1",
+                ["rs course", "Plan de la seance"],
+                "Source plan item: Introduction au Filtrage Collaboratif",
+                metadata={
+                    "course_unit_index": 1,
+                    "course_unit_title": "Semaine 1 : Fondements",
+                    "course_unit_role": "primary",
+                    "subchapter_titles": ["Information overload", "Definition and objectives"],
+                },
+            ),
+            _chunk(
+                "w2",
+                ["rs course", "Plan de la seance"],
+                "Source plan item: Matrix factorization",
+                metadata={
+                    "course_unit_index": 2,
+                    "course_unit_title": "Semaine 2 : Collaborative Filtering",
+                    "course_unit_role": "primary",
+                    "subchapter_titles": ["User-based CF", "Matrix factorization"],
+                },
+            ),
+            _chunk(
+                "guide",
+                ["Guide", "Introduction"],
+                "Guide table of contents.",
+                metadata={
+                    "course_unit_index": 3,
+                    "course_unit_title": "Guide Complet d'Evaluation",
+                    "course_unit_role": "supplemental",
+                    "subchapter_titles": ["Introduction"],
+                },
+            ),
+        ]
+
+        chapters = extract_source_structure(chunks)
+
+        self.assertEqual(
+            [chapter.title for chapter in chapters],
+            ["Semaine 1 : Fondements", "Semaine 2 : Collaborative Filtering"],
+        )
+        self.assertEqual(
+            [lesson.title for lesson in chapters[1].lessons],
+            ["User-based CF", "Matrix factorization"],
+        )
+
+    def test_lesson_retrieval_pool_prefers_normalized_subchapter_scope(self) -> None:
+        chapter = _OutlineChapter(title="Semaine 2 : Collaborative Filtering")
+        lesson = _OutlineLesson(title="Matrix factorization")
+        matrix = _chunk(
+            "matrix",
+            ["rs course", "Semaine 2 : Collaborative Filtering", "Matrix factorization"],
+            "SVD learns latent factors.",
+            metadata={
+                "course_unit_title": "Semaine 2 : Collaborative Filtering",
+                "course_unit_role": "primary",
+                "subchapter_title": "Matrix factorization",
+            },
+        )
+        neighbor = _chunk(
+            "neighbor",
+            ["rs course", "Semaine 2 : Collaborative Filtering", "User-based CF"],
+            "Neighbors compare similar users.",
+            metadata={
+                "course_unit_title": "Semaine 2 : Collaborative Filtering",
+                "course_unit_role": "primary",
+                "subchapter_title": "User-based CF",
+            },
+        )
+        other = _chunk(
+            "other",
+            ["rs course", "Semaine 1 : Foundations"],
+            "Introductory material.",
+            metadata={
+                "course_unit_title": "Semaine 1 : Foundations",
+                "course_unit_role": "primary",
+            },
+        )
+
+        chapter_pool = _intake_chapter_pool([matrix, neighbor, other], chapter)
+        lesson_pool = _intake_lesson_pool(chapter_pool, lesson)
+
+        self.assertEqual({chunk.id for chunk in chapter_pool}, {"matrix", "neighbor"})
+        self.assertEqual([chunk.id for chunk in lesson_pool], ["matrix"])
+
+    def test_lesson_supported_chunks_rejects_chapter_only_support(self) -> None:
+        lesson = _OutlineLesson(
+            title="Matrix factorization",
+            learning_objectives=["Understand latent factors."],
+            source_queries=["SVD"],
+        )
+        broad = _chunk(
+            "broad",
+            ["Semaine 2 : Collaborative Filtering"],
+            "Collaborative filtering recommends items from patterns in user behavior.",
+            metadata={
+                "course_unit_title": "Semaine 2 : Collaborative Filtering",
+                "course_unit_role": "primary",
+            },
+        )
+
+        selected = _lesson_supported_chunks([broad], lesson, used_chunk_ids=set())
+
+        self.assertEqual(selected, [])
+
+    def test_lesson_supported_chunks_prefers_unused_lesson_evidence(self) -> None:
+        lesson = _OutlineLesson(title="Matrix factorization", source_queries=["SVD"])
+        repeated = _chunk(
+            "repeated",
+            ["Semaine 2 : Collaborative Filtering", "Matrix factorization"],
+            "Matrix factorization introduces SVD for latent factors.",
+        )
+        fresh = _chunk(
+            "fresh",
+            ["Semaine 2 : Collaborative Filtering", "Matrix factorization"],
+            "SVD decomposes the ratings matrix into latent user and item factors.",
+        )
+
+        selected = _lesson_supported_chunks(
+            [repeated, fresh],
+            lesson,
+            used_chunk_ids={"repeated"},
+        )
+
+        self.assertEqual([chunk.id for chunk in selected], ["fresh"])
+
+    def test_lesson_supported_chunks_rejects_only_reused_lesson_evidence(self) -> None:
+        lesson = _OutlineLesson(title="Matrix factorization", source_queries=["SVD"])
+        repeated = _chunk(
+            "repeated",
+            ["Semaine 2 : Collaborative Filtering", "Matrix factorization"],
+            "Matrix factorization introduces SVD for latent factors.",
+        )
+
+        selected = _lesson_supported_chunks(
+            [repeated],
+            lesson,
+            used_chunk_ids={"repeated"},
+        )
+
+        self.assertEqual(selected, [])
 
     def test_fallback_quiz_is_grounded_in_chunk_ids(self) -> None:
         chunk = _chunk("chunk-1", ["Foundations"], "A supported statement from the uploaded file.")
@@ -278,6 +426,80 @@ class CourseBuilderServiceTests(unittest.TestCase):
         self.assertEqual(outline.chapters[0].title, "Moroccan Origins")
         self.assertEqual([lesson.title for lesson in outline.chapters[0].lessons], ["Human Origins", "Geography of Morocco"])
 
+    def test_outline_keeps_normalized_primary_units_when_markdown_contains_guide_toc(self) -> None:
+        service = CourseBuilderService()
+        captured: dict[str, str] = {}
+        source_structure = [
+            _OutlineChapter(
+                title="Semaine 1 : Fondements",
+                lessons=[_OutlineLesson(title="Definition et objectifs")],
+            ),
+            _OutlineChapter(
+                title="Semaine 2 : Collaborative Filtering",
+                lessons=[_OutlineLesson(title="Matrix factorization")],
+            ),
+        ]
+
+        async def fake_structured(messages, schema, *, llm_options):  # noqa: ANN001
+            captured["user"] = messages[1]["content"]
+            return _CourseOutline(
+                title="Guide Evaluation",
+                chapters=[
+                    _OutlineChapter(
+                        title="Introduction : Au-dela de la Notation",
+                        lessons=[_OutlineLesson(title="Le Probleme Fondamental")],
+                    )
+                ],
+            )
+
+        service._structured = fake_structured  # type: ignore[method-assign]
+        context = CourseBuilderContextPack(
+            rich_summary="Rich summary text.",
+            documents=[
+                _document(
+                    "rs_course.pdf",
+                    "rs course",
+                    metadata={"intake_normalized": True, "primary_unit_count": 2},
+                )
+            ],
+            sections=[
+                _section(
+                    "Definition et objectifs",
+                    ["rs course", "Semaine 1 : Fondements", "Definition et objectifs"],
+                    metadata={
+                        "course_unit_title": "Semaine 1 : Fondements",
+                        "course_unit_role": "primary",
+                    },
+                )
+            ],
+            phases=[],
+            objectives=[],
+            concepts=[],
+            representative_chunks=[],
+            source_structure=source_structure,
+            markdown_planning_context=(
+                "### Markdown source 1: rs_course.pdf\n"
+                "```markdown\n"
+                "Table des matieres\n"
+                "1 Introduction : Au-dela de la Notation 4\n"
+                "1.1 Le Probleme Fondamental 4\n"
+                "2 Pourquoi la RMSE Ne Suffit Pas ? 5\n"
+                "```"
+            ),
+            markdown_source_count=1,
+            markdown_raw_chars=160,
+        )
+
+        outline = asyncio.run(service._outline(CONV_ID, [], context, llm_options=None))
+
+        self.assertIn("Semaine 1 : Fondements", captured["user"])
+        self.assertNotIn("- chapter 1: Introduction : Au-dela de la Notation", captured["user"])
+        self.assertEqual(
+            [chapter.title for chapter in outline.chapters],
+            ["Semaine 1 : Fondements", "Semaine 2 : Collaborative Filtering"],
+        )
+        self.assertEqual(outline.chapters[1].lessons[0].title, "Matrix factorization")
+
     def test_markdown_planning_falls_back_to_markdown_toc_when_llm_returns_prose(self) -> None:
         service = CourseBuilderService()
 
@@ -443,6 +665,7 @@ def _chunk(
     document_id: uuid.UUID | None = None,
     section_id: uuid.UUID | None = None,
     index: int = 0,
+    metadata: dict[str, object] | None = None,
 ) -> SearchChunkRecord:
     return SearchChunkRecord(
         id=chunk_id,
@@ -455,11 +678,16 @@ def _chunk(
         chunk_index=index,
         token_count=16,
         heading_path=heading_path,
-        chunk_metadata={},
+        chunk_metadata=metadata or {},
     )
 
 
-def _document(source_filename: str, title: str) -> CourseDocumentRecord:
+def _document(
+    source_filename: str,
+    title: str,
+    *,
+    metadata: dict[str, object] | None = None,
+) -> CourseDocumentRecord:
     return CourseDocumentRecord(
         id=uuid.uuid4(),
         conversation_id=CONV_ID,
@@ -468,7 +696,31 @@ def _document(source_filename: str, title: str) -> CourseDocumentRecord:
         source_filename=source_filename,
         title=title,
         text_hash="hash",
-        course_metadata={},
+        course_metadata=metadata or {},
+    )
+
+
+def _section(
+    title: str,
+    heading_path: list[str],
+    *,
+    metadata: dict[str, object] | None = None,
+) -> CourseSectionRecord:
+    return CourseSectionRecord(
+        id=uuid.uuid4(),
+        conversation_id=CONV_ID,
+        document_id=uuid.uuid4(),
+        level=len(heading_path),
+        title=title,
+        heading_path=heading_path,
+        order_index=0,
+        text=f"{title} source text.",
+        summary=f"{title} summary.",
+        key_concepts=[],
+        equations=[],
+        tables=[],
+        timeline_events=[],
+        section_metadata=metadata or {},
     )
 
 

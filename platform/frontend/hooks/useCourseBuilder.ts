@@ -9,7 +9,7 @@ import type {
   UUID,
 } from "@/lib/types";
 import {
-  modelSettingsToOptions,
+  forcedLanguageToOptions,
   useSettingsStore,
 } from "@/stores/settingsStore";
 
@@ -95,12 +95,8 @@ export function useSubmitCourseBuilderQuiz(
 }
 
 function useCourseBuilderRequest(): CourseBuilderGenerateRequest {
-  const modelSettings = useSettingsStore((s) => s.modelSettings);
   const forcedLanguage = useSettingsStore((s) => s.forcedLanguage);
   return {
-    options: {
-      ...modelSettingsToOptions(modelSettings),
-      ...(forcedLanguage ? { language: forcedLanguage } : {}),
-    },
+    options: forcedLanguageToOptions(forcedLanguage),
   };
 }

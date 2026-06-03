@@ -23,6 +23,7 @@ from schemas.message import ChatRequest
 from services.interaction_router import InteractionDecision, get_interaction_router
 from services.review_test_service import get_review_test_service
 from services.learner_tracker import get_learner_tracker
+from services.runtime_settings_service import get_runtime_settings_service
 
 
 logger = logging.getLogger(__name__)
@@ -54,13 +55,14 @@ async def chat(
     chat_history = await _load_history(session, conversation_id, limit=CHAT_HISTORY_LIMIT)
     learner_state = await get_learner_tracker().load_state(session, conversation_id)
     learner_state_dict = learner_state.model_dump()
+    request_options = await get_runtime_settings_service().resolve_options(session, body.options)
 
     route = await get_interaction_router().route(
         conversation_id=conversation_id,
         user_message=body.user_message,
         chat_history=chat_history,
         learner_state=learner_state_dict,
-        options=body.options,
+        options=request_options,
     )
 
     # Persist the user turn up-front so a failure mid-stream still leaves it.
@@ -95,7 +97,7 @@ async def chat(
         context_chunks=context_chunks,
         learner_state=learner_state,
         chat_history=chat_history,
-        options=body.options,
+        options=request_options,
     )
 
     return EventSourceResponse(

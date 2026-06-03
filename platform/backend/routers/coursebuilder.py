@@ -20,6 +20,7 @@ from schemas.coursebuilder import (
 )
 from services.coursebuilder_jobs import coursebuilder_job_id
 from services.coursebuilder_service import get_coursebuilder_service
+from services.runtime_settings_service import get_runtime_settings_service
 
 
 router = APIRouter(prefix="/api/conversations", tags=["coursebuilder"])
@@ -49,16 +50,19 @@ async def generate_coursebuilder(
     if pending:
         raise HTTPException(status_code=409, detail="Course generation waits until every uploaded file is ready.")
     _require_queue(request)
+    runtime_settings = get_runtime_settings_service()
+    queue_options = runtime_settings.sanitize_client_options(body.options)
+    resolved_options = await runtime_settings.resolve_options(session, queue_options)
     course = await service.queue_course(
         session,
         conversation_id,
-        llm_options=body.options,
+        llm_options=resolved_options,
         restart_queued=True,
     )
     generation_id = _generation_id(course.generation_metadata)
     await session.commit()
     try:
-        await _enqueue(request, conversation_id, body.options, generation_id)
+        await _enqueue(request, conversation_id, queue_options, generation_id)
     except Exception as exc:  # noqa: BLE001
         await service.mark_course_failed(
             session,
@@ -86,16 +90,19 @@ async def rebuild_coursebuilder(
     if pending:
         raise HTTPException(status_code=409, detail="Course rebuild waits until every uploaded file is ready.")
     _require_queue(request)
+    runtime_settings = get_runtime_settings_service()
+    queue_options = runtime_settings.sanitize_client_options(body.options)
+    resolved_options = await runtime_settings.resolve_options(session, queue_options)
     course = await service.queue_course(
         session,
         conversation_id,
-        llm_options=body.options,
+        llm_options=resolved_options,
         restart_queued=True,
     )
     generation_id = _generation_id(course.generation_metadata)
     await session.commit()
     try:
-        await _enqueue(request, conversation_id, body.options, generation_id)
+        await _enqueue(request, conversation_id, queue_options, generation_id)
     except Exception as exc:  # noqa: BLE001
         await service.mark_course_failed(
             session,

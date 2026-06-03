@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from teacherlm_core.llm.ollama_client import OllamaClient
+from teacherlm_core.llm.runtime import build_llm_client_kwargs
 
 from config import Settings, get_settings
 from services.chunking_service import Chunk
@@ -31,14 +32,24 @@ class ChunkQuestionGenerator:
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
 
-    async def annotate_chunks(self, chunks: Sequence[Chunk]) -> list[Chunk]:
+    async def annotate_chunks(
+        self,
+        chunks: Sequence[Chunk],
+        *,
+        llm_options: dict[str, Any] | None = None,
+    ) -> list[Chunk]:
         if not chunks or not self._settings.chunk_question_generation_enabled:
             return list(chunks)
 
         out = list(chunks)
         for batch in _batched(out, max(1, self._settings.chunk_question_batch_size)):
             try:
-                generated = await self._generate_batch(batch)
+                try:
+                    generated = await self._generate_batch(batch, llm_options=llm_options)
+                except TypeError as exc:
+                    if "unexpected keyword argument 'llm_options'" not in str(exc):
+                        raise
+                    generated = await self._generate_batch(batch)  # type: ignore[call-arg]
             except Exception:  # noqa: BLE001
                 logger.exception("chunk question generation failed for a batch")
                 continue
@@ -55,12 +66,18 @@ class ChunkQuestionGenerator:
                 chunk.metadata["question_generator"] = "llm-v1"
         return out
 
-    async def _generate_batch(self, chunks: Sequence[Chunk]) -> ChunkQuestionBatch:
-        client = OllamaClient(
-            self._settings.ollama_host,
-            self._settings.ollama_chat_model,
-            provider="ollama",
+    async def _generate_batch(
+        self,
+        chunks: Sequence[Chunk],
+        *,
+        llm_options: dict[str, Any] | None,
+    ) -> ChunkQuestionBatch:
+        cfg = build_llm_client_kwargs(
+            default_base_url=self._settings.ollama_host,
+            default_model=self._settings.ollama_chat_model,
+            options=(llm_options or {}).get("llm") if isinstance(llm_options, dict) else None,
         )
+        client = OllamaClient(**cfg)  # type: ignore[arg-type]
         return await client.chat_structured(
             messages=[
                 {"role": "system", "content": _SYSTEM_PROMPT},

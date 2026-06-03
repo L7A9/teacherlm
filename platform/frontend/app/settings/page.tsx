@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { toast } from "sonner";
 
 import {
   ArrowLeft,
@@ -10,12 +12,16 @@ import {
   GraduationCap,
   KeyRound,
   Languages,
-  RotateCcw,
+  Save,
   Server,
+  Trash2,
+  UploadCloud,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
+import { runtimeSettingsApi } from "@/lib/api";
+import type { RuntimeSettingsResponse, RuntimeSettingsUpdate } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import {
   LANGUAGE_OPTIONS,
@@ -31,16 +37,86 @@ import {
 const AUTO_VALUE = "__auto__";
 
 export default function SettingsPage() {
+  const qc = useQueryClient();
   const forcedLanguage = useSettingsStore((s) => s.forcedLanguage);
   const setForcedLanguage = useSettingsStore((s) => s.setForcedLanguage);
-  const modelSettings = useSettingsStore((s) => s.modelSettings);
-  const setModelSettings = useSettingsStore((s) => s.setModelSettings);
-  const resetModelSettings = useSettingsStore((s) => s.resetModelSettings);
 
-  // Avoid SSR / persist hydration mismatch — render the bound value only
-  // after the persisted store has rehydrated on the client.
   const [hydrated, setHydrated] = useState(false);
+  const [llmEnabled, setLlmEnabled] = useState(false);
+  const [llmProvider, setLlmProvider] = useState<LlmProvider>("ollama");
+  const [llmModel, setLlmModel] = useState("");
+  const [llmApiLink, setLlmApiLink] = useState("");
+  const [llmApiKey, setLlmApiKey] = useState("");
+  const [parserApiKey, setParserApiKey] = useState("");
+
   useEffect(() => setHydrated(true), []);
+
+  const settingsQuery = useQuery({
+    queryKey: ["runtime-settings"],
+    queryFn: runtimeSettingsApi.get,
+  });
+
+  useEffect(() => {
+    const data = settingsQuery.data;
+    if (!data) return;
+    setLlmEnabled(data.llm.enabled);
+    setLlmProvider(data.llm.provider);
+    setLlmModel(data.llm.model || defaultModelForProvider(data.llm.provider));
+    setLlmApiLink(data.llm.api_link || defaultBaseUrlForProvider(data.llm.provider));
+    setLlmApiKey("");
+    setParserApiKey("");
+  }, [settingsQuery.data]);
+
+  const updateSettings = useMutation({
+    mutationFn: (body: RuntimeSettingsUpdate) => runtimeSettingsApi.update(body),
+    onSuccess: (data) => {
+      qc.setQueryData<RuntimeSettingsResponse>(["runtime-settings"], data);
+      toast.success("Settings saved");
+    },
+    onError: (err) => {
+      toast.error(`Settings failed: ${(err as Error).message}`);
+    },
+  });
+
+  const loading = settingsQuery.isLoading || !hydrated;
+  const saving = updateSettings.isPending;
+  const llmKeySet = Boolean(settingsQuery.data?.llm.api_key_set);
+  const parserKeySet = Boolean(settingsQuery.data?.parser.api_key_set);
+
+  const saveLlm = () => {
+    const llm: NonNullable<RuntimeSettingsUpdate["llm"]> = {
+      enabled: llmEnabled,
+      provider: llmProvider,
+      model: llmModel.trim(),
+      api_link: llmApiLink.trim(),
+    };
+    if (llmApiKey.trim()) llm.api_key = llmApiKey.trim();
+    updateSettings.mutate(
+      { llm },
+      {
+        onSuccess: () => setLlmApiKey(""),
+      },
+    );
+  };
+
+  const saveParserKey = () => {
+    const key = parserApiKey.trim();
+    if (!key) return;
+    updateSettings.mutate(
+      { parser: { api_key: key } },
+      {
+        onSuccess: () => setParserApiKey(""),
+      },
+    );
+  };
+
+  const clearLlmKey = () => {
+    updateSettings.mutate({ llm: { api_key: null } });
+  };
+
+  const clearParserKey = () => {
+    updateSettings.mutate({ parser: { api_key: null } });
+  };
 
   return (
     <main className="min-h-dvh bg-background text-foreground">
@@ -58,7 +134,7 @@ export default function SettingsPage() {
             <div>
               <h1 className="text-lg font-semibold">Settings</h1>
               <p className="hidden text-xs text-muted-foreground sm:block">
-                Preferences applied to every conversation on this device.
+                Global runtime configuration.
               </p>
             </div>
           </div>
@@ -70,47 +146,40 @@ export default function SettingsPage() {
 
       <div className="mx-auto flex max-w-4xl flex-col gap-4 px-4 py-6 sm:px-6">
         <section className="rounded-md border border-border bg-surface">
-          <header className="app-chrome flex items-center gap-2 border-b border-border px-5 py-3">
-            <Bot className="h-4 w-4 text-primary" />
-            <h2 className="text-sm font-semibold">Model provider</h2>
+          <header className="app-chrome flex items-center justify-between gap-3 border-b border-border px-5 py-3">
+            <div className="flex items-center gap-2">
+              <Bot className="h-4 w-4 text-primary" />
+              <h2 className="text-sm font-semibold">Model provider</h2>
+            </div>
+            <StatusPill active={llmEnabled}>
+              {llmEnabled ? providerLabel(llmProvider) : "Project defaults"}
+            </StatusPill>
           </header>
           <div className="flex flex-col gap-5 px-5 py-4">
-            <div className="flex items-start justify-between gap-4 rounded-md border border-border bg-background px-3 py-3">
-              <div>
-                <p className="text-sm font-medium">Use custom model settings</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  When off, TeacherLM uses the models configured in Docker/env
-                  exactly like before.
-                </p>
-              </div>
+            <label className="flex items-center justify-between gap-4 rounded-md border border-border bg-background px-3 py-3">
+              <span className="text-sm font-medium">Backend LLM profile</span>
               <input
                 type="checkbox"
-                checked={hydrated ? modelSettings.enabled : false}
-                disabled={!hydrated}
-                onChange={(e) =>
-                  setModelSettings({ enabled: e.target.checked })
-                }
-                className="mt-1 h-4 w-4 accent-primary"
-                aria-label="Use custom model settings"
+                checked={llmEnabled}
+                disabled={loading || saving}
+                onChange={(e) => setLlmEnabled(e.target.checked)}
+                className="h-4 w-4 accent-primary"
+                aria-label="Enable backend LLM profile"
               />
-            </div>
+            </label>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="llm-provider">Provider</Label>
                 <select
                   id="llm-provider"
-                  value={hydrated ? modelSettings.provider : "ollama"}
-                  disabled={!hydrated || !modelSettings.enabled}
+                  value={llmProvider}
+                  disabled={loading || saving || !llmEnabled}
                   onChange={(e) => {
                     const provider = e.target.value as LlmProvider;
-                    setModelSettings({
-                      provider,
-                      baseUrl: defaultBaseUrlForProvider(provider),
-                      model: defaultModelForProvider(provider),
-                      apiKey:
-                        provider === "ollama" ? "" : modelSettings.apiKey,
-                    });
+                    setLlmProvider(provider);
+                    setLlmModel(defaultModelForProvider(provider));
+                    setLlmApiLink(defaultBaseUrlForProvider(provider));
                   }}
                   className={cn(
                     "h-9 rounded-md border border-border bg-background px-3 text-sm",
@@ -126,85 +195,90 @@ export default function SettingsPage() {
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="llm-model">Model name</Label>
+                <Label htmlFor="llm-model">Model</Label>
                 <Input
                   id="llm-model"
-                  value={hydrated ? modelSettings.model : ""}
-                  disabled={!hydrated || !modelSettings.enabled}
-                  placeholder={defaultModelForProvider(modelSettings.provider)}
-                  onChange={(e) => setModelSettings({ model: e.target.value })}
+                  value={llmModel}
+                  disabled={loading || saving || !llmEnabled}
+                  placeholder={defaultModelForProvider(llmProvider)}
+                  onChange={(e) => setLlmModel(e.target.value)}
                 />
               </div>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="llm-base-url" className="flex items-center gap-1.5">
+              <Label htmlFor="llm-api-link" className="flex items-center gap-1.5">
                 <Server className="h-3.5 w-3.5" />
                 API link
               </Label>
               <Input
-                id="llm-base-url"
-                value={hydrated ? modelSettings.baseUrl : ""}
-                disabled={!hydrated || !modelSettings.enabled}
-                placeholder={
-                  modelSettings.provider === "ollama"
-                    ? "http://host.docker.internal:11434"
-                    : defaultBaseUrlForProvider(modelSettings.provider)
-                }
-                onChange={(e) =>
-                  setModelSettings({ baseUrl: e.target.value })
-                }
+                id="llm-api-link"
+                value={llmApiLink}
+                disabled={loading || saving || !llmEnabled}
+                placeholder={defaultBaseUrlForProvider(llmProvider)}
+                onChange={(e) => setLlmApiLink(e.target.value)}
               />
-              <p className="text-[11px] text-muted-foreground">
-                Ollama uses your local or Ollama-cloud access. OpenAI and
-                OpenAI-compatible providers use <code>/chat/completions</code>.
-                Anthropic uses its native <code>/v1/messages</code> API.
-              </p>
             </div>
 
-            {providerRequiresApiKey(modelSettings.provider) && (
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="llm-api-key" className="flex items-center gap-1.5">
-                  <KeyRound className="h-3.5 w-3.5" />
-                  API key
-                </Label>
-                <Input
-                  id="llm-api-key"
-                  type="password"
-                  value={hydrated ? modelSettings.apiKey : ""}
-                  disabled={!hydrated || !modelSettings.enabled}
-                  placeholder="sk-..."
-                  autoComplete="off"
-                  onChange={(e) =>
-                    setModelSettings({ apiKey: e.target.value })
-                  }
-                />
-                <p className="text-[11px] text-muted-foreground">
-                  Use an API key for this provider. ChatGPT Plus and Claude
-                  Pro app subscriptions are not API keys; their separate API
-                  accounts are required.
-                </p>
-              </div>
-            )}
+            <SecretField
+              id="llm-api-key"
+              label="API key"
+              icon={<KeyRound className="h-3.5 w-3.5" />}
+              value={llmApiKey}
+              keySet={llmKeySet}
+              disabled={loading || saving || !llmEnabled}
+              placeholder={providerRequiresApiKey(llmProvider) ? "Paste provider API key" : "Optional"}
+              onChange={setLlmApiKey}
+              onClear={clearLlmKey}
+              canClear={llmKeySet}
+            />
 
-            <div className="flex items-center justify-between rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
-              <span>
-                Active:{" "}
-                <strong className="text-foreground">
-                  {hydrated && modelSettings.enabled
-                    ? `${providerLabel(modelSettings.provider)} / ${modelSettings.model || "no model"}`
-                    : "Project defaults"}
-                </strong>
-              </span>
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <Button
                 type="button"
-                variant="ghost"
-                size="sm"
-                onClick={resetModelSettings}
-                disabled={!hydrated}
+                variant="primary"
+                onClick={saveLlm}
+                disabled={loading || saving}
               >
-                <RotateCcw className="h-3.5 w-3.5" />
-                Reset
+                <Save className="h-4 w-4" />
+                Save model
+              </Button>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-md border border-border bg-surface">
+          <header className="app-chrome flex items-center justify-between gap-3 border-b border-border px-5 py-3">
+            <div className="flex items-center gap-2">
+              <UploadCloud className="h-4 w-4 text-primary" />
+              <h2 className="text-sm font-semibold">LlamaCloud parser</h2>
+            </div>
+            <StatusPill active={parserKeySet}>
+              {parserKeySet ? "Key saved" : "No DB key"}
+            </StatusPill>
+          </header>
+          <div className="flex flex-col gap-4 px-5 py-4">
+            <SecretField
+              id="parser-api-key"
+              label="API key"
+              icon={<KeyRound className="h-3.5 w-3.5" />}
+              value={parserApiKey}
+              keySet={parserKeySet}
+              disabled={loading || saving}
+              placeholder="Paste LlamaCloud API key"
+              onChange={setParserApiKey}
+              onClear={clearParserKey}
+              canClear={parserKeySet}
+            />
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="primary"
+                onClick={saveParserKey}
+                disabled={loading || saving || !parserApiKey.trim()}
+              >
+                <Save className="h-4 w-4" />
+                Save parser key
               </Button>
             </div>
           </div>
@@ -215,28 +289,12 @@ export default function SettingsPage() {
             <Languages className="h-4 w-4 text-primary" />
             <h2 className="text-sm font-semibold">Default language</h2>
           </header>
-          <div className="flex flex-col gap-3 px-5 py-4">
-            <p className="text-sm text-muted-foreground">
-              When set, every generator (podcast, quiz, mind map…) and
-              the teacher's chat replies use this language — no need to
-              pick it each time. Pick <em>Auto</em> to let each generator
-              decide based on the source files.
-            </p>
-
+          <div className="flex flex-col gap-4 px-5 py-4">
             <div className="flex flex-col gap-1.5">
-              <label
-                htmlFor="forced-language"
-                className="text-xs font-medium text-muted-foreground"
-              >
-                Language
-              </label>
+              <Label htmlFor="forced-language">Language</Label>
               <select
                 id="forced-language"
-                value={
-                  hydrated
-                    ? forcedLanguage ?? AUTO_VALUE
-                    : AUTO_VALUE
-                }
+                value={hydrated ? forcedLanguage ?? AUTO_VALUE : AUTO_VALUE}
                 disabled={!hydrated}
                 onChange={(e) =>
                   setForcedLanguage(
@@ -248,9 +306,7 @@ export default function SettingsPage() {
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 )}
               >
-                <option value={AUTO_VALUE}>
-                  Auto (let each generator decide)
-                </option>
+                <option value={AUTO_VALUE}>Auto</option>
                 {LANGUAGE_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
                     {opt.label}
@@ -262,12 +318,11 @@ export default function SettingsPage() {
             {hydrated && forcedLanguage && (
               <div className="flex items-center justify-between rounded-md border border-primary/30 bg-primary/10 px-3 py-2 text-xs">
                 <span>
-                  Currently forcing every generator to use{" "}
+                  Active:{" "}
                   <strong>
                     {LANGUAGE_OPTIONS.find((o) => o.value === forcedLanguage)
                       ?.label ?? forcedLanguage}
                   </strong>
-                  .
                 </span>
                 <Button
                   type="button"
@@ -275,7 +330,7 @@ export default function SettingsPage() {
                   size="sm"
                   onClick={() => setForcedLanguage(null)}
                 >
-                  Reset to Auto
+                  Reset
                 </Button>
               </div>
             )}
@@ -283,5 +338,86 @@ export default function SettingsPage() {
         </section>
       </div>
     </main>
+  );
+}
+
+function StatusPill({
+  active,
+  children,
+}: {
+  active: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <span
+      className={cn(
+        "rounded-md border px-2 py-1 text-[11px] font-medium",
+        active
+          ? "border-primary/30 bg-primary/10 text-primary"
+          : "border-border bg-muted text-muted-foreground",
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function SecretField({
+  id,
+  label,
+  icon,
+  value,
+  keySet,
+  disabled,
+  placeholder,
+  canClear,
+  onChange,
+  onClear,
+}: {
+  id: string;
+  label: string;
+  icon: React.ReactNode;
+  value: string;
+  keySet: boolean;
+  disabled: boolean;
+  placeholder: string;
+  canClear: boolean;
+  onChange: (value: string) => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between gap-3">
+        <Label htmlFor={id} className="flex items-center gap-1.5">
+          {icon}
+          {label}
+        </Label>
+        <span className="text-[11px] text-muted-foreground">
+          {keySet ? "Configured" : "Empty"}
+        </span>
+      </div>
+      <div className="flex gap-2">
+        <Input
+          id={id}
+          type="password"
+          value={value}
+          disabled={disabled}
+          placeholder={placeholder}
+          autoComplete="off"
+          onChange={(e) => onChange(e.target.value)}
+        />
+        <Button
+          type="button"
+          variant="secondary"
+          size="icon"
+          onClick={onClear}
+          disabled={disabled || !canClear}
+          aria-label={`Clear ${label}`}
+          title={`Clear ${label}`}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
   );
 }

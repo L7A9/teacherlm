@@ -17,6 +17,7 @@ from schemas.review_test import (
     ReviewTestSubmitResponse,
 )
 from services.review_test_service import get_review_test_service
+from services.runtime_settings_service import get_runtime_settings_service
 
 
 router = APIRouter(prefix="/api/conversations", tags=["review-tests"])
@@ -38,12 +39,13 @@ async def start_review_test(
     session: AsyncSession = Depends(get_db),
 ) -> ReviewTestStartResponse:
     await _require_conversation(session, conversation_id)
-    token = set_current_language(_language_from_options(body.options))
+    resolved_options = await get_runtime_settings_service().resolve_options(session, body.options)
+    token = set_current_language(_language_from_options(resolved_options))
     try:
         response = await get_review_test_service().start_review(
             session,
             conversation_id,
-            llm_options=body.options,
+            llm_options=resolved_options,
         )
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
@@ -68,14 +70,15 @@ async def submit_review_test(
     session: AsyncSession = Depends(get_db),
 ) -> ReviewTestSubmitResponse:
     await _require_conversation(session, conversation_id)
-    token = set_current_language(_language_from_options(body.options))
+    resolved_options = await get_runtime_settings_service().resolve_options(session, body.options)
+    token = set_current_language(_language_from_options(resolved_options))
     try:
         return await get_review_test_service().submit_review(
             session,
             conversation_id,
             window_id,
             {item.check_id: item.answer for item in body.answers},
-            llm_options=body.options,
+            llm_options=resolved_options,
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
