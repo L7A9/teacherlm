@@ -4,7 +4,7 @@ import { coursePlayerApi } from "@/lib/api";
 import type { ChapterQuizSubmitRequest, UUID } from "@/lib/types";
 import { useProgressStore } from "@/stores/progressStore";
 import {
-  modelSettingsToOptions,
+  forcedLanguageToOptions,
   useSettingsStore,
 } from "@/stores/settingsStore";
 
@@ -37,17 +37,13 @@ export function useUnlockCourseChapter(conversationId: UUID) {
 export function useSubmitChapterQuiz(conversationId: UUID, chapterId: UUID | null) {
   const qc = useQueryClient();
   const setProgressState = useProgressStore((s) => s.setState);
-  const modelSettings = useSettingsStore((s) => s.modelSettings);
   const forcedLanguage = useSettingsStore((s) => s.forcedLanguage);
   return useMutation({
     mutationFn: (body: Omit<ChapterQuizSubmitRequest, "options">) => {
       if (!chapterId) throw new Error("No chapter is selected.");
       return coursePlayerApi.submitQuiz(conversationId, chapterId, {
         ...body,
-        options: {
-          ...modelSettingsToOptions(modelSettings),
-          ...(forcedLanguage ? { language: forcedLanguage } : {}),
-        },
+        options: forcedLanguageToOptions(forcedLanguage),
       });
     },
     onSuccess: (data) => {

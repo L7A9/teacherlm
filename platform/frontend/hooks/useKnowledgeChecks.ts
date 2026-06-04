@@ -9,22 +9,18 @@ import type {
 } from "@/lib/types";
 import { useProgressStore } from "@/stores/progressStore";
 import {
-  modelSettingsToOptions,
+  forcedLanguageToOptions,
   useSettingsStore,
 } from "@/stores/settingsStore";
 
 export function useStartKnowledgeCheck(conversationId: UUID) {
   const setProgressState = useProgressStore((s) => s.setState);
-  const modelSettings = useSettingsStore((s) => s.modelSettings);
   const forcedLanguage = useSettingsStore((s) => s.forcedLanguage);
   return useMutation({
     mutationFn: (body: KnowledgeCheckStartRequest = {}) =>
       knowledgeChecksApi.start(conversationId, {
         ...body,
-        options: {
-          ...modelSettingsToOptions(modelSettings),
-          ...(forcedLanguage ? { language: forcedLanguage } : {}),
-        },
+        options: forcedLanguageToOptions(forcedLanguage),
       }),
     onSuccess: (data) => {
       setProgressState(conversationId, data.learner_state);
@@ -35,7 +31,6 @@ export function useStartKnowledgeCheck(conversationId: UUID) {
 export function useSubmitKnowledgeCheck(conversationId: UUID) {
   const qc = useQueryClient();
   const setProgressState = useProgressStore((s) => s.setState);
-  const modelSettings = useSettingsStore((s) => s.modelSettings);
   const forcedLanguage = useSettingsStore((s) => s.forcedLanguage);
   return useMutation({
     mutationFn: ({
@@ -47,10 +42,7 @@ export function useSubmitKnowledgeCheck(conversationId: UUID) {
     }) =>
       knowledgeChecksApi.submit(conversationId, checkId, {
         ...body,
-        options: {
-          ...modelSettingsToOptions(modelSettings),
-          ...(forcedLanguage ? { language: forcedLanguage } : {}),
-        },
+        options: forcedLanguageToOptions(forcedLanguage),
       }),
     onSuccess: (data) => {
       setProgressState(conversationId, data.learner_state);
@@ -64,7 +56,6 @@ export function useSubmitKnowledgeCheck(conversationId: UUID) {
 export function useSubmitQuizAttempt(conversationId: UUID | undefined) {
   const qc = useQueryClient();
   const setProgressState = useProgressStore((s) => s.setState);
-  const modelSettings = useSettingsStore((s) => s.modelSettings);
   const forcedLanguage = useSettingsStore((s) => s.forcedLanguage);
   return useMutation({
     mutationFn: (body: QuizAttemptRequest) => {
@@ -73,10 +64,7 @@ export function useSubmitQuizAttempt(conversationId: UUID | undefined) {
       }
       return knowledgeChecksApi.submitQuiz(conversationId, {
         ...body,
-        options: {
-          ...modelSettingsToOptions(modelSettings),
-          ...(forcedLanguage ? { language: forcedLanguage } : {}),
-        },
+        options: forcedLanguageToOptions(forcedLanguage),
       });
     },
     onSuccess: (data) => {

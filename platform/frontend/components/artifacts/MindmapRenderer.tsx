@@ -10,7 +10,7 @@ import { useChatStream } from "@/hooks/useChatStream";
 import type { MindmapPayload, UUID } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import {
-  modelSettingsToOptions,
+  forcedLanguageToOptions,
   useSettingsStore,
 } from "@/stores/settingsStore";
 
@@ -101,7 +101,6 @@ export function MindmapRenderer({ payload, conversationId, className }: Props) {
   const [expanded, setExpanded] = useState(false);
   const sendChat = useChatStream();
   const forcedLanguage = useSettingsStore((s) => s.forcedLanguage);
-  const modelSettings = useSettingsStore((s) => s.modelSettings);
 
   useEffect(() => {
     injectSafetyCss();
@@ -217,10 +216,7 @@ export function MindmapRenderer({ payload, conversationId, className }: Props) {
       e.stopPropagation();
 
       toast(`Asking your teacher about "${text}"…`);
-      const options: Record<string, unknown> = {
-        ...modelSettingsToOptions(modelSettings),
-        ...(forcedLanguage ? { language: forcedLanguage } : {}),
-      };
+      const options = forcedLanguageToOptions(forcedLanguage);
       void sendChat(conversationId, {
         user_message: nodeExplanationPrompt(text, forcedLanguage),
         options,
@@ -229,7 +225,7 @@ export function MindmapRenderer({ payload, conversationId, className }: Props) {
 
     svg.addEventListener("click", onClick, true);
     return () => svg.removeEventListener("click", onClick, true);
-  }, [conversationId, forcedLanguage, modelSettings, sendChat]);
+  }, [conversationId, forcedLanguage, sendChat]);
 
   if (error) {
     return (

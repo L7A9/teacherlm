@@ -9,6 +9,7 @@ from db.models import Conversation
 from db.session import get_db
 from schemas.knowledge_graph import KnowledgeGraphRead, KnowledgeGraphRebuildRequest, RemediationPath
 from services.knowledge_graph_service import get_knowledge_graph_service
+from services.runtime_settings_service import get_runtime_settings_service
 
 
 router = APIRouter(prefix="/api/conversations", tags=["knowledge-graph"])
@@ -33,10 +34,14 @@ async def rebuild_knowledge_graph(
     session: AsyncSession = Depends(get_db),
 ) -> KnowledgeGraphRead:
     await _require_conversation(session, conversation_id)
+    resolved_options = await get_runtime_settings_service().resolve_options(
+        session,
+        body.options if body else None,
+    )
     return await get_knowledge_graph_service().rebuild_graph(
         session,
         conversation_id,
-        llm_options=(body.options if body else None),
+        llm_options=resolved_options,
     )
 
 

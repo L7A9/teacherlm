@@ -182,7 +182,7 @@ class CourseContentStore:
             equations=section.equations,
             tables=[{"rows": table.rows, "order_index": table.order_index} for table in section.tables],
             timeline_events=section.timeline_events,
-            section_metadata={"extractor": "course-structure-v1"},
+            section_metadata={"extractor": "course-structure-v1", **dict(section.metadata or {})},
         )
 
     @staticmethod

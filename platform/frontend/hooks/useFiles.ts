@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { filesApi } from "@/lib/api";
 import type { UploadedFile, UploadedFileList, UUID } from "@/lib/types";
 import {
-  modelSettingsToOptions,
+  forcedLanguageToOptions,
   useSettingsStore,
 } from "@/stores/settingsStore";
 
@@ -37,17 +37,13 @@ export function useFiles(conversationId: UUID | null | undefined) {
 
 export function useUploadFile(conversationId: UUID) {
   const qc = useQueryClient();
-  const modelSettings = useSettingsStore((state) => state.modelSettings);
   const forcedLanguage = useSettingsStore((state) => state.forcedLanguage);
   return useMutation<UploadedFile, Error, File>({
     mutationFn: (file) =>
       filesApi.upload(
         conversationId,
         file,
-        {
-          ...modelSettingsToOptions(modelSettings),
-          ...(forcedLanguage ? { language: forcedLanguage } : {}),
-        },
+        forcedLanguageToOptions(forcedLanguage),
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [...ROOT_KEY, conversationId] });
@@ -69,17 +65,13 @@ export function useDeleteFile(conversationId: UUID) {
 
 export function useRetryFile(conversationId: UUID) {
   const qc = useQueryClient();
-  const modelSettings = useSettingsStore((state) => state.modelSettings);
   const forcedLanguage = useSettingsStore((state) => state.forcedLanguage);
   return useMutation<UploadedFile, Error, UUID>({
     mutationFn: (filePk) =>
       filesApi.retry(
         conversationId,
         filePk,
-        {
-          ...modelSettingsToOptions(modelSettings),
-          ...(forcedLanguage ? { language: forcedLanguage } : {}),
-        },
+        forcedLanguageToOptions(forcedLanguage),
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [...ROOT_KEY, conversationId] });

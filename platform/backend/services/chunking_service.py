@@ -194,6 +194,7 @@ class ChunkingService:
                 "equation_count": len(section.equations),
                 "table_count": len(section.tables),
                 "timeline_event_count": len(section.timeline_events),
+                **dict(section.metadata or {}),
             },
         )
 

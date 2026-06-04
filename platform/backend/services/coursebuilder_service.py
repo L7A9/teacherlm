@@ -343,11 +343,13 @@ class CourseBuilderService:
                 "chapter_retrieval_count": 0,
                 "lesson_retrieval_count": 0,
                 "block_retrieval_count": 0,
+                "weak_support_lesson_count": 0,
             }
             retrieval_counts = {
                 "chapter_retrieval_count": 0,
                 "lesson_retrieval_count": 0,
                 "block_retrieval_count": 0,
+                "weak_support_lesson_count": 0,
             }
             await self._delete_course_children(session, course.id)
             await session.flush()
@@ -369,11 +371,12 @@ class CourseBuilderService:
             for chapter_index, chapter_candidate in enumerate(chapters):
                 chapter_id = _stable_id(conversation_id, f"chapter:{chapter_index}:{chapter_candidate.title}")
                 chapter_query = _chapter_query(chapter_candidate, context_pack)
+                chapter_retrieval_pool = _intake_chapter_pool(retrieval_pool, chapter_candidate)
                 retrieved_chapter_chunks = await self._rag.retrieve_lesson_chunks(
                     session,
                     conversation_id,
                     chapter_query,
-                    fallback_chunks=retrieval_pool,
+                    fallback_chunks=chapter_retrieval_pool,
                     top_k=10,
                 )
                 chapter_chunks = _title_supported_chunks(
@@ -421,9 +424,14 @@ class CourseBuilderService:
                     chapter.source_chunk_ids,
                 )
                 lesson_candidates = _usable_lessons(chapter_candidate, chunks)
+                used_lesson_chunk_ids: set[str] = set()
                 for lesson_index, lesson_candidate in enumerate(lesson_candidates):
                     lesson_query = _lesson_query(chapter_candidate, lesson_candidate, context_pack)
-                    lesson_retrieval_pool = _chunk_pool(chapter_chunks, retrieval_pool)
+                    chapter_retrieval_pool = _intake_chapter_pool(retrieval_pool, chapter_candidate)
+                    lesson_retrieval_pool = _chunk_pool(
+                        _intake_lesson_pool(chapter_retrieval_pool, lesson_candidate),
+                        chapter_chunks,
+                    )
                     lesson_chunks = await self._rag.retrieve_lesson_chunks(
                         session,
                         conversation_id,
@@ -431,18 +439,16 @@ class CourseBuilderService:
                         fallback_chunks=lesson_retrieval_pool,
                         top_k=8,
                     )
-                    lesson_specific_chunks = _title_supported_chunks(
+                    lesson_chunks = _lesson_supported_chunks(
                         lesson_chunks,
-                        lesson_candidate.title,
-                        *lesson_candidate.source_queries,
-                        *lesson_candidate.learning_objectives,
-                    )
-                    lesson_chunks = lesson_specific_chunks or _title_supported_chunks(
-                        lesson_chunks,
-                        chapter_candidate.title,
-                        *chapter_candidate.source_queries,
+                        lesson_candidate,
+                        used_chunk_ids=used_lesson_chunk_ids,
                     )
                     retrieval_counts["lesson_retrieval_count"] += 1
+                    if lesson_chunks:
+                        used_lesson_chunk_ids.update(chunk.id for chunk in lesson_chunks)
+                    else:
+                        retrieval_counts["weak_support_lesson_count"] += 1
                     lesson_id = _stable_id(
                         conversation_id,
                         f"lesson:{chapter_index}:{lesson_index}:{lesson_candidate.title}",
@@ -947,7 +953,11 @@ class CourseBuilderService:
         if not context_pack.markdown_planning_context.strip():
             return None
 
-        source_candidate = _outline_from_markdown_structure(context_pack)
+        source_candidate = (
+            source_outline
+            if source_outline is not None and _has_primary_intake_structure(context_pack)
+            else _outline_from_markdown_structure(context_pack)
+        )
         if source_candidate is None:
             return None
 
@@ -1657,6 +1667,64 @@ def _chunk_pool(
     return out
 
 
+def _intake_chapter_pool(
+    chunks: list[SearchChunkRecord],
+    chapter: _OutlineChapter,
+) -> list[SearchChunkRecord]:
+    primary = [
+        chunk
+        for chunk in chunks
+        if _chunk_unit_role(chunk) == "primary" and _title_key(_chunk_unit_title(chunk)) == _title_key(chapter.title)
+    ]
+    if not primary:
+        return chunks
+    supplemental = [chunk for chunk in chunks if _chunk_unit_role(chunk) == "supplemental"]
+    return _chunk_pool(primary, supplemental)
+
+
+def _intake_lesson_pool(
+    chunks: list[SearchChunkRecord],
+    lesson: _OutlineLesson,
+) -> list[SearchChunkRecord]:
+    matched = [
+        chunk
+        for chunk in chunks
+        if _title_key(_chunk_subchapter_title(chunk)) == _title_key(lesson.title)
+    ]
+    return matched or chunks
+
+
+def _lesson_supported_chunks(
+    chunks: list[SearchChunkRecord],
+    lesson: _OutlineLesson,
+    *,
+    used_chunk_ids: set[str] | None = None,
+) -> list[SearchChunkRecord]:
+    lesson_supported = _title_supported_chunks(
+        chunks,
+        lesson.title,
+        *lesson.source_queries,
+        *lesson.learning_objectives,
+    )
+    if not lesson_supported:
+        return []
+    if not used_chunk_ids:
+        return lesson_supported
+    return [chunk for chunk in lesson_supported if chunk.id not in used_chunk_ids]
+
+
+def _chunk_unit_title(chunk: SearchChunkRecord) -> str:
+    return str((chunk.chunk_metadata or {}).get("course_unit_title") or "")
+
+
+def _chunk_unit_role(chunk: SearchChunkRecord) -> str:
+    return str((chunk.chunk_metadata or {}).get("course_unit_role") or "primary")
+
+
+def _chunk_subchapter_title(chunk: SearchChunkRecord) -> str:
+    return str((chunk.chunk_metadata or {}).get("subchapter_title") or "")
+
+
 def _title_supported_chunks(
     chunks: list[SearchChunkRecord],
     *query_parts: str,
@@ -1671,6 +1739,8 @@ def _title_supported_chunks(
             [
                 " ".join(chunk.heading_path or []),
                 chunk.source_filename,
+                str((chunk.chunk_metadata or {}).get("course_unit_title") or ""),
+                str((chunk.chunk_metadata or {}).get("subchapter_title") or ""),
                 chunk.text,
             ]
         ).casefold()
@@ -1729,7 +1799,7 @@ async def _load_markdown_planning_context(
     remaining = MAX_MARKDOWN_PLANNING_CHARS
 
     for index, document in enumerate(documents[:10], start=1):
-        key = document.raw_markdown_path or document.cleaned_text_path
+        key = document.cleaned_text_path or document.raw_markdown_path
         if not key or remaining <= 0:
             continue
         try:
@@ -1959,6 +2029,10 @@ def extract_source_structure(
     sections: list[CourseSectionRecord] | None = None,
 ) -> list[_OutlineChapter]:
     """Extract chapter/sub-chapter skeletons from parsed headings or table-of-contents text."""
+    intake_structure = _source_structure_from_intake_metadata(chunks, sections or [])
+    if _source_structure_score(intake_structure) >= 3:
+        return intake_structure
+
     candidates = [
         _source_structure_from_sections(sections or []),
         _source_structure_from_chunk_headings(chunks),
@@ -1966,6 +2040,94 @@ def extract_source_structure(
     ]
     best = max(candidates, key=_source_structure_score, default=[])
     return best if _source_structure_score(best) >= 3 else []
+
+
+def _source_structure_from_intake_metadata(
+    chunks: list[SearchChunkRecord],
+    sections: list[CourseSectionRecord],
+) -> list[_OutlineChapter]:
+    rows: list[tuple[int, dict[str, Any], str]] = []
+    for section in sections:
+        metadata = dict(section.section_metadata or {})
+        if metadata.get("course_unit_title"):
+            rows.append((section.order_index, metadata, section.summary or section.text))
+    for chunk in chunks:
+        metadata = dict(chunk.chunk_metadata or {})
+        if metadata.get("course_unit_title"):
+            rows.append((chunk.chunk_index, metadata, chunk.text))
+    if not rows:
+        return []
+
+    roles = {str(metadata.get("course_unit_role") or "primary") for _, metadata, _ in rows}
+    wanted_role = "primary" if "primary" in roles else "supplemental"
+    units: dict[str, dict[str, Any]] = {}
+    for order, metadata, text in rows:
+        role = str(metadata.get("course_unit_role") or "primary")
+        if role != wanted_role:
+            continue
+        title = _clean_title(str(metadata.get("course_unit_title") or ""))
+        if not _valid_structure_title(title):
+            continue
+        unit_index = _safe_int(metadata.get("course_unit_index"), default=order + 1)
+        key = f"{unit_index}:{_title_key(title)}"
+        unit = units.setdefault(
+            key,
+            {
+                "title": title,
+                "description": _first_sentence(text),
+                "order": unit_index,
+                "lessons": {},
+            },
+        )
+        unit["order"] = min(unit["order"], unit_index)
+        for lesson_title in _metadata_subchapter_titles(metadata):
+            lesson_key = _title_key(lesson_title)
+            lessons: dict[str, _OutlineLesson] = unit["lessons"]
+            if lesson_key not in lessons and len(lessons) < MAX_LESSONS_PER_CHAPTER:
+                lessons[lesson_key] = _source_lesson(title, lesson_title)
+
+    chapters = []
+    for unit in sorted(units.values(), key=lambda item: (item["order"], item["title"])):
+        lessons = list(unit["lessons"].values())
+        if not lessons:
+            lessons = [_source_lesson(unit["title"], unit["title"])]
+        chapters.append(
+            _OutlineChapter(
+                title=unit["title"],
+                description=unit["description"] or f"Study {unit['title']} from the uploaded materials.",
+                source_queries=[unit["title"]],
+                lessons=lessons[:MAX_LESSONS_PER_CHAPTER],
+            )
+        )
+        if len(chapters) >= MAX_CHAPTERS:
+            break
+    return chapters
+
+
+def _metadata_subchapter_titles(metadata: dict[str, Any]) -> list[str]:
+    values: list[str] = []
+    raw_subchapter = _clean_title(str(metadata.get("subchapter_title") or ""))
+    if raw_subchapter:
+        values.append(raw_subchapter)
+    raw_titles = metadata.get("subchapter_titles") or []
+    if isinstance(raw_titles, list):
+        values.extend(_clean_title(str(item)) for item in raw_titles)
+    out: list[str] = []
+    seen: set[str] = set()
+    for title in values:
+        key = _title_key(title)
+        if not key or key in seen or not _valid_structure_title(title):
+            continue
+        seen.add(key)
+        out.append(title)
+    return out
+
+
+def _safe_int(value: Any, *, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _source_structure_from_sections(sections: list[CourseSectionRecord]) -> list[_OutlineChapter]:
@@ -2313,6 +2475,18 @@ def _merge_source_chapter_titles(
             )
         )
     return merged
+
+
+def _has_primary_intake_structure(context_pack: CourseBuilderContextPack) -> bool:
+    for document in context_pack.documents:
+        metadata = dict(document.course_metadata or {})
+        if metadata.get("intake_normalized") and _safe_int(metadata.get("primary_unit_count"), default=0) > 0:
+            return True
+    for section in context_pack.sections:
+        metadata = dict(section.section_metadata or {})
+        if metadata.get("course_unit_role") == "primary" and metadata.get("course_unit_title"):
+            return True
+    return False
 
 
 def _normalized_source_title(source_title: str, generated_title: str) -> str:

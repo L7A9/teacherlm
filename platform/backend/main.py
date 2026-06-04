@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import get_settings
 from db.session import dispose_engine
 from dispatcher.registry import get_registry
-from routers import chat, conversations, course_player, coursebuilder, files, generate, generators, health, knowledge_checks, knowledge_graph, review_tests
+from routers import chat, conversations, course_player, coursebuilder, files, generate, generators, health, knowledge_checks, knowledge_graph, review_tests, runtime_settings
 from services.storage_service import get_storage
 
 
@@ -97,6 +97,7 @@ def create_app() -> FastAPI:
     app.include_router(review_tests.router)
     app.include_router(coursebuilder.router)
     app.include_router(course_player.router)
+    app.include_router(runtime_settings.router)
 
     return app
 

@@ -61,6 +61,12 @@ class Settings(BaseSettings):
     llama_cloud_poll_interval_s: float = 2.0
     llama_cloud_timeout_s: float = 600.0
 
+    # --- Runtime settings secrets ---
+    # Required when saving API keys through the database-backed settings page.
+    # Any non-empty string is accepted; it is deterministically derived into a
+    # Fernet key by RuntimeSettingsService.
+    settings_encryption_key: str = ""
+
     # --- Embeddings ---
     embedding_model: str = "intfloat/multilingual-e5-large"
     embedding_dim: int = 1024

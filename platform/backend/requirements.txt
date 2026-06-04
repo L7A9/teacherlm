@@ -10,6 +10,7 @@ python-multipart>=0.0.18
 # --- Data validation / settings ---
 pydantic>=2.12
 pydantic-settings>=2.7
+cryptography>=43.0
 
 # --- Database ---
 sqlalchemy>=2.0.36

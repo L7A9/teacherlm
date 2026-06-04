@@ -30,6 +30,8 @@ import type {
   ReviewTestStatusResponse,
   ReviewTestSubmitRequest,
   ReviewTestSubmitResponse,
+  RuntimeSettingsResponse,
+  RuntimeSettingsUpdate,
   UploadedFile,
   UploadedFileList,
   UUID,
@@ -147,6 +149,17 @@ export const conversationsApi = {
     apiFetch<LearnerState>(`/api/conversations/${id}/learner-state`),
   remove: (id: UUID) =>
     apiFetch<void>(`/api/conversations/${id}`, { method: "DELETE" }),
+};
+
+// ---------- runtime settings ----------
+
+export const runtimeSettingsApi = {
+  get: () => apiFetch<RuntimeSettingsResponse>("/api/settings/runtime"),
+  update: (body: RuntimeSettingsUpdate) =>
+    apiFetch<RuntimeSettingsResponse>("/api/settings/runtime", {
+      method: "PATCH",
+      body,
+    }),
 };
 
 // ---------- knowledge checks ----------

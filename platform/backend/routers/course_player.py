@@ -20,6 +20,7 @@ from services.course_player_service import get_course_player_service
 from services.knowledge_graph_service import get_knowledge_graph_service
 from services.learner_tracker import get_learner_tracker
 from services.learning_map_service import get_learning_map_service
+from services.runtime_settings_service import get_runtime_settings_service
 
 
 router = APIRouter(prefix="/api/conversations", tags=["course-player"])
@@ -81,14 +82,15 @@ async def submit_chapter_quiz(
     session: AsyncSession = Depends(get_db),
 ) -> ChapterQuizSubmitResponse:
     await _require_conversation(session, conversation_id)
-    token = set_current_language(_language_from_options(body.options))
+    resolved_options = await get_runtime_settings_service().resolve_options(session, body.options)
+    token = set_current_language(_language_from_options(resolved_options))
     try:
         return await get_course_player_service().submit_chapter_quiz(
             session,
             conversation_id,
             chapter_id,
             {item.check_id: item.answer for item in body.answers},
-            llm_options=body.options,
+            llm_options=resolved_options,
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -131,10 +133,11 @@ async def _rebuild_full_course(
     session: AsyncSession,
     conversation_id: uuid.UUID,
 ) -> CoursePlayerRead:
-    await get_concept_inventory_service().rebuild_concepts(session, conversation_id)
-    await get_learning_map_service().rebuild_map(session, conversation_id)
-    await get_knowledge_graph_service().rebuild_graph(session, conversation_id)
-    return await get_course_player_service().rebuild_course(session, conversation_id)
+    llm_options = await get_runtime_settings_service().resolve_options(session, None)
+    await get_concept_inventory_service().rebuild_concepts(session, conversation_id, llm_options=llm_options)
+    await get_learning_map_service().rebuild_map(session, conversation_id, llm_options=llm_options)
+    await get_knowledge_graph_service().rebuild_graph(session, conversation_id, llm_options=llm_options)
+    return await get_course_player_service().rebuild_course(session, conversation_id, llm_options=llm_options)
 
 
 def _language_from_options(options: dict | None) -> str | None:

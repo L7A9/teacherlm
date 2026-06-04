@@ -4,8 +4,10 @@ import uuid
 from dataclasses import dataclass
 
 from llama_cloud import AsyncLlamaCloud
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import Settings, get_settings
+from services.runtime_settings_service import get_runtime_settings_service
 from services.storage_service import StorageService, get_storage
 
 
@@ -37,10 +39,6 @@ class ParsingService:
     ) -> None:
         self._settings = settings or get_settings()
         self._storage = storage or get_storage()
-        self._client = AsyncLlamaCloud(
-            api_key=self._settings.llama_cloud_api_key,
-            base_url=self._settings.llama_cloud_base_url,
-        )
 
     async def parse_to_markdown(
         self,
@@ -48,8 +46,23 @@ class ParsingService:
         conversation_id: uuid.UUID | str,
         filename: str,
         data: bytes,
+        session: AsyncSession | None = None,
+        api_key: str | None = None,
     ) -> ParseResult:
-        result = await self._client.parsing.parse(
+        api_key = (
+            api_key
+            if api_key is not None
+            else (
+                await get_runtime_settings_service().parser_api_key(session)
+                if session is not None
+                else self._settings.llama_cloud_api_key
+            )
+        )
+        client = AsyncLlamaCloud(
+            api_key=api_key,
+            base_url=self._settings.llama_cloud_base_url,
+        )
+        result = await client.parsing.parse(
             tier="cost_effective",
             version="latest",
             upload_file=(filename, data),

@@ -1,9 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-// User-facing labels for the language picker on the settings page. The
-// backend's podcast_gen + frontend GeneratorDialog had this list inline;
-// it now lives here so adding a language updates both surfaces at once.
 export const LANGUAGE_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
   { value: "en-us", label: "English (US)" },
   { value: "en-gb", label: "English (UK)" },
@@ -31,30 +28,17 @@ export const LLM_PROVIDER_OPTIONS: ReadonlyArray<{
   value: LlmProvider;
   label: string;
 }> = [
-  { value: "ollama", label: "Ollama (local / Ollama cloud)" },
-  { value: "openai", label: "OpenAI API" },
-  { value: "anthropic", label: "Anthropic Claude API" },
-  { value: "openai_compatible", label: "OpenAI-compatible provider" },
+  { value: "ollama", label: "Ollama" },
+  { value: "openai", label: "OpenAI" },
+  { value: "anthropic", label: "Anthropic" },
+  { value: "openai_compatible", label: "OpenAI-compatible" },
 ] as const;
 
-export interface ModelSettings {
-  enabled: boolean;
-  provider: LlmProvider;
-  model: string;
-  baseUrl: string;
-  apiKey: string;
-}
-
-export const DEFAULT_MODEL_SETTINGS: ModelSettings = {
-  enabled: false,
-  provider: "ollama",
-  model: "gemma4:e2b",
-  baseUrl: "http://host.docker.internal:11434",
-  apiKey: "",
-};
+export const DEFAULT_OLLAMA_MODEL = "llama3.1:8b-instruct-q4_K_M";
+export const DEFAULT_OLLAMA_BASE_URL = "http://host.docker.internal:11434";
 
 export function defaultBaseUrlForProvider(provider: LlmProvider): string {
-  if (provider === "ollama") return DEFAULT_MODEL_SETTINGS.baseUrl;
+  if (provider === "ollama") return DEFAULT_OLLAMA_BASE_URL;
   if (provider === "anthropic") return "https://api.anthropic.com";
   return "https://api.openai.com/v1";
 }
@@ -62,7 +46,7 @@ export function defaultBaseUrlForProvider(provider: LlmProvider): string {
 export function defaultModelForProvider(provider: LlmProvider): string {
   if (provider === "openai") return "gpt-4.1-mini";
   if (provider === "anthropic") return "claude-sonnet-4-5";
-  return DEFAULT_MODEL_SETTINGS.model;
+  return DEFAULT_OLLAMA_MODEL;
 }
 
 export function providerLabel(provider: LlmProvider): string {
@@ -76,51 +60,35 @@ export function providerRequiresApiKey(provider: LlmProvider): boolean {
   return provider !== "ollama";
 }
 
-export function modelSettingsToOptions(
-  modelSettings: ModelSettings,
+export function forcedLanguageToOptions(
+  forcedLanguage: string | null,
 ): Record<string, unknown> {
-  if (!modelSettings.enabled || !modelSettings.model.trim()) return {};
-  return {
-    llm: {
-      enabled: true,
-      provider: modelSettings.provider,
-      model: modelSettings.model.trim(),
-      base_url:
-        modelSettings.baseUrl.trim() ||
-        defaultBaseUrlForProvider(modelSettings.provider),
-      ...(providerRequiresApiKey(modelSettings.provider) &&
-      modelSettings.apiKey.trim()
-        ? { api_key: modelSettings.apiKey.trim() }
-        : {}),
-    },
-  };
+  return forcedLanguage ? { language: forcedLanguage } : {};
 }
 
 interface SettingsState {
-  // Forced language for every generator + chat reply. `null` means the
-  // user hasn't picked one — generators behave as before.
   forcedLanguage: string | null;
-  modelSettings: ModelSettings;
   setForcedLanguage: (value: string | null) => void;
-  setModelSettings: (value: Partial<ModelSettings>) => void;
-  resetModelSettings: () => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
       forcedLanguage: null,
-      modelSettings: DEFAULT_MODEL_SETTINGS,
       setForcedLanguage: (forcedLanguage) => set({ forcedLanguage }),
-      setModelSettings: (value) =>
-        set((state) => ({
-          modelSettings: { ...state.modelSettings, ...value },
-        })),
-      resetModelSettings: () => set({ modelSettings: DEFAULT_MODEL_SETTINGS }),
     }),
     {
       name: "teacherlm-settings",
-      version: 1,
+      version: 2,
+      partialize: (state) => ({ forcedLanguage: state.forcedLanguage }),
+      migrate: (persisted) => ({
+        forcedLanguage:
+          typeof persisted === "object" &&
+          persisted !== null &&
+          "forcedLanguage" in persisted
+            ? (persisted as { forcedLanguage?: string | null }).forcedLanguage ?? null
+            : null,
+      }),
     },
   ),
 );

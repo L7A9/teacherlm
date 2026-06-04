@@ -14,6 +14,7 @@ from db.session import session_scope
 from services.chunking_service import get_chunker
 from services.chunk_question_generator import get_chunk_question_generator
 from services.concept_inventory_service import get_concept_inventory_service
+from services.course_intake_normalizer import get_course_intake_normalizer
 from services.coursebuilder_jobs import coursebuilder_job_id
 from services.coursebuilder_service import get_coursebuilder_service
 from services.course_content_store import get_course_content_store
@@ -22,6 +23,7 @@ from services.document_cleaning_service import get_document_cleaner
 from services.learning_map_service import get_learning_map_service
 from services.knowledge_graph_service import get_knowledge_graph_service
 from services.parsing_service import get_parser
+from services.runtime_settings_service import get_runtime_settings_service
 from services.storage_service import get_storage
 from services.vector_service import get_vector_service
 
@@ -70,23 +72,26 @@ async def _rebuild_learning_course_if_ready(
     if not await _all_conversation_files_ready(conversation_id):
         return
 
-    language_token = set_current_language(_language_from_options(llm_options))
+    runtime_settings = get_runtime_settings_service()
+    queue_options = runtime_settings.sanitize_client_options(llm_options)
     async with session_scope() as session:
+        resolved_options = await runtime_settings.resolve_options(session, queue_options)
+        language_token = set_current_language(_language_from_options(resolved_options))
         try:
             await get_concept_inventory_service().rebuild_concepts(
                 session,
                 conversation_id,
-                llm_options=llm_options,
+                llm_options=resolved_options,
             )
             await get_learning_map_service().rebuild_map(
                 session,
                 conversation_id,
-                llm_options=llm_options,
+                llm_options=resolved_options,
             )
             await get_knowledge_graph_service().rebuild_graph(
                 session,
                 conversation_id,
-                llm_options=llm_options,
+                llm_options=resolved_options,
             )
             service = get_coursebuilder_service()
             existing = await service.current_course(session, conversation_id)
@@ -102,14 +107,14 @@ async def _rebuild_learning_course_if_ready(
                 return
             redis = ctx.get("redis")
             if redis is not None:
-                course = await service.queue_course(session, conversation_id, llm_options=llm_options)
+                course = await service.queue_course(session, conversation_id, llm_options=resolved_options)
                 generation_id = _coursebuilder_generation_id(course.generation_metadata)
                 await session.commit()
                 try:
                     await redis.enqueue_job(
                         "build_coursebuilder_course",
                         str(conversation_id),
-                        llm_options or {},
+                        queue_options,
                         generation_id,
                         _job_id=coursebuilder_job_id(conversation_id, generation_id),
                     )
@@ -118,13 +123,13 @@ async def _rebuild_learning_course_if_ready(
                     await service.generate_course(
                         session,
                         conversation_id,
-                        llm_options=llm_options,
+                        llm_options=resolved_options,
                         course=course,
                     )
             else:
-                await service.queue_course(session, conversation_id, llm_options=llm_options)
+                await service.queue_course(session, conversation_id, llm_options=resolved_options)
                 logger.warning("coursebuilder queue unavailable; building inline")
-                await service.generate_course(session, conversation_id, llm_options=llm_options)
+                await service.generate_course(session, conversation_id, llm_options=resolved_options)
         finally:
             reset_current_language(language_token)
 
@@ -143,9 +148,12 @@ async def build_coursebuilder_course(
     generation_id: str | None = None,
 ) -> dict[str, Any]:
     conversation_uuid = uuid.UUID(conversation_id)
-    language_token = set_current_language(_language_from_options(llm_options))
-    try:
-        async with session_scope() as session:
+    runtime_settings = get_runtime_settings_service()
+    queue_options = runtime_settings.sanitize_client_options(llm_options)
+    async with session_scope() as session:
+        resolved_options = await runtime_settings.resolve_options(session, queue_options)
+        language_token = set_current_language(_language_from_options(resolved_options))
+        try:
             service = get_coursebuilder_service()
             course_record = await service.current_course(session, conversation_uuid)
             if generation_id and course_record is not None:
@@ -160,12 +168,12 @@ async def build_coursebuilder_course(
             course = await service.generate_course(
                 session,
                 conversation_uuid,
-                llm_options=llm_options,
+                llm_options=resolved_options,
                 course=course_record,
             )
             return {"ok": course.status == "ready", "status": course.status, "course_id": str(course.id) if course.id else None}
-    finally:
-        reset_current_language(language_token)
+        finally:
+            reset_current_language(language_token)
 
 
 async def ingest_file(
@@ -175,6 +183,8 @@ async def ingest_file(
 ) -> dict[str, Any]:
     """arq job: parse → chunk → embed → upsert for one UploadedFile row."""
     pk = uuid.UUID(file_pk)
+    runtime_settings = get_runtime_settings_service()
+    queue_options = runtime_settings.sanitize_client_options(llm_options)
 
     async with session_scope() as session:
         result = await session.execute(select(UploadedFile).where(UploadedFile.id == pk))
@@ -189,6 +199,7 @@ async def ingest_file(
     storage = get_storage()
     parser = get_parser()
     cleaner = get_document_cleaner()
+    normalizer = get_course_intake_normalizer()
     extractor = get_course_structure_extractor()
     chunker = get_chunker()
     question_generator = get_chunk_question_generator()
@@ -199,15 +210,24 @@ async def ingest_file(
         # --- parsing ---
         await _set_status(pk, "parsing")
         data = await storage.get_bytes(object_key)
+        async with session_scope() as session:
+            parser_api_key = await runtime_settings.parser_api_key(session)
         parse_result = await parser.parse_to_markdown(
             conversation_id=conversation_id,
             filename=filename,
             data=data,
+            api_key=parser_api_key,
         )
         await _set_status(pk, "chunking", parsed_markdown_path=parse_result.markdown_key)
 
         # --- cleaning, structure extraction, and chunking ---
         cleaned_markdown = cleaner.clean_markdown(parse_result.markdown)
+        normalized_intake = normalizer.normalize(
+            raw_markdown=parse_result.markdown,
+            cleaned_markdown=cleaned_markdown,
+            source_filename=filename,
+        )
+        cleaned_markdown = normalized_intake.markdown
         cleaned_key = storage.cleaned_text_key(conversation_id, object_key)
         await storage.put_text(cleaned_key, cleaned_markdown)
         course_document = extractor.extract(
@@ -215,9 +235,13 @@ async def ingest_file(
             conversation_id=conversation_id,
             source_file_id=object_key,
             source_filename=filename,
+            intake_metadata=normalized_intake.metadata,
+            infer_plain_headings=not normalized_intake.normalized,
         )
         chunks = chunker.chunk_course_document(course_document, source_file_id=object_key)
-        chunks = await question_generator.annotate_chunks(chunks)
+        async with session_scope() as session:
+            ingestion_options = await runtime_settings.resolve_options(session, queue_options)
+        chunks = await question_generator.annotate_chunks(chunks, llm_options=ingestion_options)
 
         async with session_scope() as session:
             await content_store.replace_document(
@@ -237,7 +261,7 @@ async def ingest_file(
         if not chunks:
             await _set_status(pk, "ready", chunk_count=0)
             try:
-                await _rebuild_learning_course_if_ready(ctx, conversation_id, llm_options=llm_options)
+                await _rebuild_learning_course_if_ready(ctx, conversation_id, llm_options=queue_options)
             except Exception:  # noqa: BLE001
                 logger.exception("final course rebuild failed for %s; file remains ready", filename)
             return {"ok": True, "chunks": 0, "cleaned_key": cleaned_key}
@@ -251,7 +275,7 @@ async def ingest_file(
 
         await _set_status(pk, "ready", chunk_count=upserted)
         try:
-            await _rebuild_learning_course_if_ready(ctx, conversation_id, llm_options=llm_options)
+            await _rebuild_learning_course_if_ready(ctx, conversation_id, llm_options=queue_options)
         except Exception:  # noqa: BLE001
             logger.exception("final course rebuild failed for %s; file remains ready", filename)
         return {
@@ -328,6 +352,7 @@ async def _recover_coursebuilder_jobs(ctx: dict[str, Any]) -> None:
 
         async with session_scope() as session:
             service = get_coursebuilder_service()
+            runtime_settings = get_runtime_settings_service()
             await service.ensure_schema(session)
             result = await session.execute(
                 select(CourseBuilderCourseRecord)
@@ -343,7 +368,9 @@ async def _recover_coursebuilder_jobs(ctx: dict[str, Any]) -> None:
                     jobs.append(
                         (
                             str(course.conversation_id),
-                            (course.generation_metadata or {}).get("llm_options") or {},
+                            runtime_settings.sanitize_client_options(
+                                (course.generation_metadata or {}).get("llm_options")
+                            ),
                             generation_id,
                         )
                     )

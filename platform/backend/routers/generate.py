@@ -20,6 +20,7 @@ from dispatcher.registry import GeneratorEntry, GeneratorNotFound
 from dispatcher.router import GeneratorRouter, get_router
 from schemas.message import GenerateRequest
 from services.learner_tracker import get_learner_tracker
+from services.runtime_settings_service import get_runtime_settings_service
 
 
 logger = logging.getLogger(__name__)
@@ -73,7 +74,7 @@ async def generate(
     topic = _effective_topic(body.output_type, body.topic)
     synth_message = _synthesize_prompt(body.output_type, topic)
     retrieval_query = _retrieval_query(body.output_type, body.topic)
-    generation_options = dict(body.options)
+    generation_options = await get_runtime_settings_service().resolve_options(session, body.options)
     if body.output_type == "mindmap":
         generation_options["force_regenerate"] = True
         generation_options["generation_id"] = uuid.uuid4().hex
