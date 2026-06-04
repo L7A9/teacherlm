@@ -41,19 +41,27 @@ function injectSafetyCss() {
   document.head.appendChild(el);
 }
 
-// Walk the markmap tree and mark every node that has children as folded.
-// Markmap's built-in click-on-circle toggles `payload.fold` per node, so
-// the user gets progressive disclosure: click the root's circle to reveal
-// its branches, click a branch's circle to reveal its subtopics, etc.
 type MMNode = {
   payload?: { fold?: number; [k: string]: unknown };
   children?: MMNode[];
 };
-function collapseAllChildren(node: MMNode | undefined): void {
+
+// Show the study structure immediately. Deeper detail still stays expandable
+// when a generated map has more than the usual branch/topic/detail levels.
+function openInitialStudyDepth(
+  node: MMNode | undefined,
+  depth = 0,
+  maxOpenDepth = 3,
+): void {
   if (!node?.children?.length) return;
-  node.payload = { ...(node.payload ?? {}), fold: 1 };
+  node.payload = { ...(node.payload ?? {}) };
+  if (depth >= maxOpenDepth) {
+    node.payload.fold = 1;
+  } else {
+    delete node.payload.fold;
+  }
   for (const child of node.children) {
-    collapseAllChildren(child);
+    openInitialStudyDepth(child, depth + 1, maxOpenDepth);
   }
 }
 
@@ -123,7 +131,7 @@ export function MindmapRenderer({ payload, conversationId, className }: Props) {
 
         const transformer = new Transformer();
         const { root } = transformer.transform(payload.markdown);
-        collapseAllChildren(root as unknown as MMNode);
+        openInitialStudyDepth(root as unknown as MMNode);
 
         try {
           mmRef.current?.destroy?.();
@@ -135,10 +143,10 @@ export function MindmapRenderer({ payload, conversationId, className }: Props) {
           svg,
           {
             duration: 400,
-            maxWidth: 260,
-            spacingHorizontal: 80,
-            spacingVertical: 6,
-            paddingX: 12,
+            maxWidth: 300,
+            spacingHorizontal: 110,
+            spacingVertical: 12,
+            paddingX: 16,
             autoFit: true,
             // Override markmap's built-in dark text (#333) for our dark background.
             // The style option is appended after the global CSS so variables override.
@@ -161,6 +169,13 @@ export function MindmapRenderer({ payload, conversationId, className }: Props) {
           },
           root,
         ) as MarkmapInstance;
+        window.setTimeout(() => {
+          try {
+            void mmRef.current?.fit?.();
+          } catch {
+            // ignore
+          }
+        }, 80);
       } catch (err) {
         if (!cancelled) setError((err as Error).message);
       }
@@ -239,8 +254,8 @@ export function MindmapRenderer({ payload, conversationId, className }: Props) {
     <div className={cn("flex flex-col gap-2", className)}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-[11px] text-muted-foreground">
-          {payload.central_topic ? `${payload.central_topic} · ` : ""}
-          Click a node's circle to expand its children. Click a label to
+          {payload.central_topic ? `${payload.central_topic} - ` : ""}
+          Click a node's circle to expand or collapse. Click a label to
           ask your teacher to explain it.
         </span>
         <Button
@@ -260,7 +275,7 @@ export function MindmapRenderer({ payload, conversationId, className }: Props) {
       <div
         className={cn(
           "w-full overflow-hidden rounded-lg border border-border bg-[#0f172a]",
-          expanded ? "h-[80vh]" : "h-[520px]",
+          expanded ? "h-[80vh]" : "h-[640px] md:h-[700px]",
         )}
       >
         <svg ref={svgRef} className="h-full w-full" />

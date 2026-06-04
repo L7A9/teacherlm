@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 import uuid
 from collections import Counter
 from dataclasses import dataclass, field
@@ -70,6 +71,11 @@ MAX_CHAPTERS = 10
 MAX_LESSONS_PER_CHAPTER = 12
 MAX_BLOCKS_PER_LESSON = 5
 MAX_QUIZ_QUESTIONS = 7
+MAX_LESSON_EVIDENCE_CHUNKS = 12
+MIN_RICH_BLOCK_WORDS = 85
+MIN_TEACHING_SOURCE_WORDS = 140
+MIN_TEACHING_CHUNK_WORDS = 30
+RICH_BLOCK_TYPES = {"explanation", "definition", "example", "procedure", "summary"}
 MAX_MARKDOWN_PLANNING_CHARS = 70000
 
 
@@ -432,7 +438,7 @@ class CourseBuilderService:
                         _intake_lesson_pool(chapter_retrieval_pool, lesson_candidate),
                         chapter_chunks,
                     )
-                    lesson_chunks = await self._rag.retrieve_lesson_chunks(
+                    retrieved_lesson_chunks = await self._rag.retrieve_lesson_chunks(
                         session,
                         conversation_id,
                         lesson_query,
@@ -440,13 +446,25 @@ class CourseBuilderService:
                         top_k=8,
                     )
                     lesson_chunks = _lesson_supported_chunks(
-                        lesson_chunks,
+                        retrieved_lesson_chunks,
                         lesson_candidate,
                         used_chunk_ids=used_lesson_chunk_ids,
                     )
                     retrieval_counts["lesson_retrieval_count"] += 1
+                    lesson_chunks, extra_lesson_retrievals = await self._ensure_rich_lesson_chunks(
+                        session,
+                        conversation_id,
+                        chapter_candidate,
+                        lesson_candidate,
+                        lesson_query,
+                        current_chunks=lesson_chunks,
+                        retrieved_chunks=retrieved_lesson_chunks,
+                        fallback_chunks=lesson_retrieval_pool,
+                        used_chunk_ids=used_lesson_chunk_ids,
+                    )
+                    retrieval_counts["lesson_retrieval_count"] += extra_lesson_retrievals
                     if lesson_chunks:
-                        used_lesson_chunk_ids.update(chunk.id for chunk in lesson_chunks)
+                        used_lesson_chunk_ids.update(_reserved_lesson_chunk_ids(lesson_chunks))
                     else:
                         retrieval_counts["weak_support_lesson_count"] += 1
                     lesson_id = _stable_id(
@@ -462,6 +480,18 @@ class CourseBuilderService:
                         fallback_chunks=lesson_retrieval_pool,
                         llm_options=llm_options,
                     )
+                    lesson_source_pool = _chunk_pool(lesson_chunks, lesson_retrieval_pool)
+                    cited_lesson_chunks = _chunks_by_ids(
+                        lesson_source_pool,
+                        [
+                            chunk_id
+                            for block in lesson_content.blocks
+                            for chunk_id in block.source_chunk_ids
+                        ],
+                    )
+                    lesson_chunks = _chunk_pool(lesson_chunks, cited_lesson_chunks)
+                    if cited_lesson_chunks:
+                        used_lesson_chunk_ids.update(_reserved_lesson_chunk_ids(cited_lesson_chunks))
                     citations = self._rag.citations_for(lesson_chunks)
                     lesson = CourseBuilderLessonRecord(
                         id=lesson_id,
@@ -487,19 +517,26 @@ class CourseBuilderService:
                     )
                     retrieval_counts["block_retrieval_count"] += block_retrievals
                     for block_index, block_candidate in enumerate(blocks):
+                        block_type = normalize_block_type(block_candidate.block_type)
                         block_candidate.source_chunk_ids = _valid_source_chunk_ids(
                             block_candidate.source_chunk_ids,
                             lesson_chunks,
                         )
                         content = block_candidate.content.strip()
-                        if not content:
+                        if _is_thin_lesson_content(
+                            block_type,
+                            content,
+                            block_candidate.title or lesson.title,
+                        ):
                             fallback_blocks = _fallback_lesson_blocks(
                                 block_candidate.title or lesson.title,
                                 _chunks_by_ids(lesson_chunks, block_candidate.source_chunk_ids) or lesson_chunks,
                             )
-                            if fallback_blocks:
-                                fallback_block = fallback_blocks[0]
+                            fallback_block = _fallback_block_for_type(block_type, fallback_blocks)
+                            if fallback_block is not None:
+                                block_type = normalize_block_type(fallback_block.block_type or block_type)
                                 content = fallback_block.content.strip()
+                                block_candidate.title = block_candidate.title or fallback_block.title
                                 block_candidate.source_chunk_ids = _valid_source_chunk_ids(
                                     fallback_block.source_chunk_ids or block_candidate.source_chunk_ids,
                                     lesson_chunks,
@@ -508,7 +545,6 @@ class CourseBuilderService:
                             lesson_chunks,
                             block_candidate.source_chunk_ids,
                         )
-                        block_type = normalize_block_type(block_candidate.block_type)
                         data_json = block_candidate.data_json or {}
                         if block_type == "chart":
                             data_json = validate_chart_spec(data_json)
@@ -999,6 +1035,60 @@ class CourseBuilderService:
         outline = _normalize_markdown_outline(outline, context_pack)
         return _merge_outline_metadata(outline, source_candidate)
 
+    async def _ensure_rich_lesson_chunks(
+        self,
+        session: AsyncSession,
+        conversation_id: uuid.UUID,
+        chapter: _OutlineChapter,
+        lesson: _OutlineLesson,
+        lesson_query: str,
+        *,
+        current_chunks: list[SearchChunkRecord],
+        retrieved_chunks: list[SearchChunkRecord],
+        fallback_chunks: list[SearchChunkRecord],
+        used_chunk_ids: set[str],
+    ) -> tuple[list[SearchChunkRecord], int]:
+        selected = _lesson_teaching_chunks(
+            _chunk_pool(current_chunks, retrieved_chunks),
+            lesson,
+            used_chunk_ids=used_chunk_ids,
+            allow_semantic=True,
+        )
+        if _has_rich_teaching_material(selected):
+            return selected, 0
+
+        source_pool = _teaching_chunks(fallback_chunks)
+        if not source_pool:
+            return selected, 0
+
+        retrieval_count = 0
+        for query in [_expanded_lesson_query(chapter, lesson, lesson_query), lesson_query]:
+            expanded = await self._rag.retrieve_lesson_chunks(
+                session,
+                conversation_id,
+                query,
+                fallback_chunks=source_pool,
+                top_k=MAX_LESSON_EVIDENCE_CHUNKS,
+            )
+            retrieval_count += 1
+            selected = _lesson_teaching_chunks(
+                _chunk_pool(selected, expanded),
+                lesson,
+                used_chunk_ids=used_chunk_ids,
+                allow_semantic=True,
+            )
+            if _has_rich_teaching_material(selected):
+                return selected, retrieval_count
+
+        ranked = _rank_teaching_chunks_for_lesson(
+            source_pool,
+            chapter,
+            lesson,
+            used_chunk_ids=used_chunk_ids,
+        )
+        selected = _chunk_pool(selected, ranked)[:MAX_LESSON_EVIDENCE_CHUNKS]
+        return selected, retrieval_count
+
     async def _lesson_content(
         self,
         session: AsyncSession,
@@ -1021,6 +1111,7 @@ class CourseBuilderService:
 
         blocks: list[_LessonBlockCandidate] = []
         retrieval_count = 0
+        block_source_pool = _teaching_chunks(_chunk_pool(chunks, fallback_chunks)) or _chunk_pool(chunks, fallback_chunks)
         for plan_index, plan in enumerate(block_plans[:MAX_BLOCKS_PER_LESSON]):
             query = "\n".join(
                 item
@@ -1038,12 +1129,59 @@ class CourseBuilderService:
                 session,
                 conversation_id,
                 query,
-                fallback_chunks=chunks,
-                top_k=6,
+                fallback_chunks=block_source_pool,
+                top_k=8,
             )
+            block_chunks = _teaching_chunks(block_chunks) or block_chunks
             retrieval_count += 1
             block = await self._block_content(chapter, lesson, plan, block_chunks, llm_options=llm_options)
             block.source_chunk_ids = _valid_source_chunk_ids(block.source_chunk_ids, block_chunks)
+            if _is_thin_lesson_content(
+                block.block_type,
+                block.content,
+                block.title or plan.title or lesson.title,
+            ):
+                expanded_block_chunks = await self._rag.retrieve_chunks(
+                    session,
+                    conversation_id,
+                    _expanded_block_query(chapter, lesson, plan, query),
+                    fallback_chunks=block_source_pool,
+                    top_k=MAX_LESSON_EVIDENCE_CHUNKS,
+                )
+                expanded_block_chunks = _teaching_chunks(expanded_block_chunks) or expanded_block_chunks
+                retrieval_count += 1
+                if expanded_block_chunks:
+                    retry_block = await self._block_content(
+                        chapter,
+                        lesson,
+                        plan,
+                        expanded_block_chunks,
+                        llm_options=llm_options,
+                    )
+                    retry_block.source_chunk_ids = _valid_source_chunk_ids(
+                        retry_block.source_chunk_ids,
+                        expanded_block_chunks,
+                    )
+                    if not _is_thin_lesson_content(
+                        retry_block.block_type,
+                        retry_block.content,
+                        retry_block.title or plan.title or lesson.title,
+                    ):
+                        block = retry_block
+                        block_chunks = expanded_block_chunks
+                if _is_thin_lesson_content(
+                    block.block_type,
+                    block.content,
+                    block.title or plan.title or lesson.title,
+                ):
+                    fallback_blocks = _fallback_lesson_blocks(plan.title or lesson.title, block_chunks)
+                    fallback_block = _fallback_block_for_type(plan.block_type, fallback_blocks)
+                    if fallback_block is not None:
+                        block = fallback_block
+                        block.source_chunk_ids = _valid_source_chunk_ids(
+                            fallback_block.source_chunk_ids,
+                            block_chunks,
+                        )
             blocks.append(block)
         if blocks:
             return _LessonContent(blocks=blocks, support_status=f"block_retrievals:{retrieval_count}")
@@ -1066,10 +1204,16 @@ class CourseBuilderService:
             {
                 "role": "system",
                 "content": (
-                    "Generate concise text-course lesson blocks grounded only in the provided chunks. "
+                    "Generate rich text-course lesson blocks grounded only in the provided chunks. "
                     "Every block must cite chunk ids from the provided source list. "
                     "Use block types only from: explanation, definition, example, table, equation, "
-                    "chart, diagram, procedure, warning, summary. If support is weak, say so clearly."
+                    "chart, diagram, procedure, warning, summary. "
+                    "For explanation, definition, example, procedure, and summary blocks, write "
+                    "developed teaching prose: 2-4 connected paragraphs, usually 120-260 words, "
+                    "that explain what the idea means, how it works, why it matters in this lesson, "
+                    "and at least one concrete mechanism, contrast, or example when the sources support it. "
+                    "Do not merely repeat the block title, list headings, cite a plan item, or write a one-line label. "
+                    "If support is weak, say so clearly."
                 ),
             },
             {
@@ -1101,9 +1245,11 @@ class CourseBuilderService:
             {
                 "role": "system",
                 "content": (
-                    "Plan the concise blocks needed for one course lesson. "
+                    "Plan the substantial explanatory blocks needed for one course lesson. "
                     "Return only JSON. Do not write final lesson content yet. "
-                    "Each block needs a type, title, and a source_query for retrieving exact source chunks."
+                    "Each block needs a type, title, and a source_query for retrieving exact source chunks. "
+                    "Prefer blocks that can become rich teaching paragraphs with mechanisms, contrasts, "
+                    "examples, or consequences. Do not plan blocks from table-of-contents or plan markers alone."
                 ),
             },
             {
@@ -1141,9 +1287,13 @@ class CourseBuilderService:
             {
                 "role": "system",
                 "content": (
-                    "Generate exactly one concise lesson block grounded only in the provided chunks. "
+                    "Generate exactly one rich lesson block grounded only in the provided chunks. "
                     "Use exact chunk ids from the provided source list in source_chunk_ids. "
-                    "Do not invent facts. If support is weak, use a warning block."
+                    "For explanation, definition, example, procedure, and summary blocks, content must be "
+                    "2-4 connected paragraphs, usually 120-260 words, and must teach the idea rather than "
+                    "just naming it. Explain relationships, mechanisms, examples, contrasts, or consequences "
+                    "found in the chunks. Never use a parser plan marker such as 'Source plan item' as the "
+                    "lesson explanation. Do not invent facts. If support is weak, use a warning block."
                 ),
             },
             {
@@ -1678,8 +1828,63 @@ def _intake_chapter_pool(
     ]
     if not primary:
         return chunks
+    unit_window = _intake_unit_window_pool(chunks, primary, chapter)
     supplemental = [chunk for chunk in chunks if _chunk_unit_role(chunk) == "supplemental"]
-    return _chunk_pool(primary, supplemental)
+    return _chunk_pool(_chunk_pool(primary, unit_window), supplemental)
+
+
+def _intake_unit_window_pool(
+    chunks: list[SearchChunkRecord],
+    primary_chunks: list[SearchChunkRecord],
+    chapter: _OutlineChapter,
+) -> list[SearchChunkRecord]:
+    """Include source-body chunks that follow a normalized unit's plan markers."""
+
+    title_key = _title_key(chapter.title)
+    current_by_doc: dict[uuid.UUID, tuple[int, int]] = {}
+    for chunk in primary_chunks:
+        unit_index = _chunk_unit_index(chunk)
+        first_index, _existing_unit_index = current_by_doc.get(chunk.document_id, (chunk.chunk_index, unit_index))
+        current_by_doc[chunk.document_id] = (min(first_index, chunk.chunk_index), unit_index)
+
+    if not current_by_doc:
+        return []
+
+    next_start_by_doc: dict[uuid.UUID, int] = {}
+    for chunk in chunks:
+        unit_title = _chunk_unit_title(chunk)
+        if not unit_title or _chunk_unit_role(chunk) != "primary":
+            continue
+        current = current_by_doc.get(chunk.document_id)
+        if current is None:
+            continue
+        current_start, current_unit_index = current
+        unit_index = _chunk_unit_index(chunk)
+        if chunk.chunk_index <= current_start:
+            continue
+        if _title_key(unit_title) == title_key:
+            continue
+        if current_unit_index and unit_index and unit_index <= current_unit_index:
+            continue
+        previous = next_start_by_doc.get(chunk.document_id)
+        if previous is None or chunk.chunk_index < previous:
+            next_start_by_doc[chunk.document_id] = chunk.chunk_index
+
+    window: list[SearchChunkRecord] = []
+    for chunk in sorted(chunks, key=lambda item: (str(item.document_id), item.chunk_index)):
+        current = current_by_doc.get(chunk.document_id)
+        if current is None:
+            continue
+        start_index, _unit_index = current
+        end_index = next_start_by_doc.get(chunk.document_id)
+        if chunk.chunk_index < start_index:
+            continue
+        if end_index is not None and chunk.chunk_index >= end_index:
+            continue
+        if _chunk_unit_title(chunk) and _title_key(_chunk_unit_title(chunk)) != title_key:
+            continue
+        window.append(chunk)
+    return window
 
 
 def _intake_lesson_pool(
@@ -1691,7 +1896,9 @@ def _intake_lesson_pool(
         for chunk in chunks
         if _title_key(_chunk_subchapter_title(chunk)) == _title_key(lesson.title)
     ]
-    return matched or chunks
+    if matched:
+        return _chunk_pool(matched, _teaching_chunks(chunks) or chunks)
+    return chunks
 
 
 def _lesson_supported_chunks(
@@ -1708,9 +1915,25 @@ def _lesson_supported_chunks(
     )
     if not lesson_supported:
         return []
+    lesson_supported = _teaching_chunks(lesson_supported)
+    if not lesson_supported:
+        return []
     if not used_chunk_ids:
-        return lesson_supported
-    return [chunk for chunk in lesson_supported if chunk.id not in used_chunk_ids]
+        return lesson_supported[:MAX_LESSON_EVIDENCE_CHUNKS]
+    used = {str(chunk_id) for chunk_id in used_chunk_ids}
+    return [
+        chunk
+        for chunk in lesson_supported
+        if str(chunk.id) not in used or _is_reusable_unit_source_chunk(chunk, lesson)
+    ][:MAX_LESSON_EVIDENCE_CHUNKS]
+
+
+def _reserved_lesson_chunk_ids(chunks: list[SearchChunkRecord]) -> set[str]:
+    return {
+        str(chunk.id)
+        for chunk in chunks
+        if _chunk_subchapter_title(chunk)
+    }
 
 
 def _chunk_unit_title(chunk: SearchChunkRecord) -> str:
@@ -1721,8 +1944,28 @@ def _chunk_unit_role(chunk: SearchChunkRecord) -> str:
     return str((chunk.chunk_metadata or {}).get("course_unit_role") or "primary")
 
 
+def _chunk_unit_index(chunk: SearchChunkRecord) -> int:
+    return _safe_int((chunk.chunk_metadata or {}).get("course_unit_index"), default=0)
+
+
 def _chunk_subchapter_title(chunk: SearchChunkRecord) -> str:
     return str((chunk.chunk_metadata or {}).get("subchapter_title") or "")
+
+
+def _chunk_subchapter_titles(chunk: SearchChunkRecord) -> list[str]:
+    raw = (chunk.chunk_metadata or {}).get("subchapter_titles") or []
+    if not isinstance(raw, list):
+        return []
+    return [str(item) for item in raw if str(item or "").strip()]
+
+
+def _is_reusable_unit_source_chunk(chunk: SearchChunkRecord, lesson: _OutlineLesson) -> bool:
+    if _chunk_subchapter_title(chunk):
+        return False
+    lesson_key = _title_key(lesson.title)
+    if not lesson_key:
+        return False
+    return any(_title_key(title) == lesson_key for title in _chunk_subchapter_titles(chunk))
 
 
 def _title_supported_chunks(
@@ -1735,15 +1978,16 @@ def _title_supported_chunks(
         return list(chunks)
     supported: list[SearchChunkRecord] = []
     for chunk in chunks:
-        haystack = " ".join(
+        haystack = _fold_for_match(" ".join(
             [
                 " ".join(chunk.heading_path or []),
                 chunk.source_filename,
                 str((chunk.chunk_metadata or {}).get("course_unit_title") or ""),
                 str((chunk.chunk_metadata or {}).get("subchapter_title") or ""),
+                " ".join(_chunk_subchapter_titles(chunk)),
                 chunk.text,
             ]
-        ).casefold()
+        ))
         if any(_matches_support_group(haystack, group) for group in term_groups):
             supported.append(chunk)
     return supported
@@ -1776,7 +2020,7 @@ def _support_terms(values: Any) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for value in values:
-        for raw in re.findall(r"[\w][\w'_-]{2,}", str(value or "").casefold(), flags=re.UNICODE):
+        for raw in re.findall(r"[\w][\w'_-]{2,}", _fold_for_match(str(value or "")), flags=re.UNICODE):
             term = raw.strip("_-'")
             if not term or term in stopwords or term.isdigit() or len(term) < 3:
                 continue
@@ -2116,11 +2360,27 @@ def _metadata_subchapter_titles(metadata: dict[str, Any]) -> list[str]:
     seen: set[str] = set()
     for title in values:
         key = _title_key(title)
-        if not key or key in seen or not _valid_structure_title(title):
+        if not key or key in seen or not _valid_intake_subchapter_title(title):
             continue
         seen.add(key)
         out.append(title)
     return out
+
+
+def _valid_intake_subchapter_title(value: str) -> bool:
+    title = _clean_title(value)
+    lower = _fold_for_match(title).strip(" :-")
+    if not _valid_structure_title(title):
+        return False
+    if "|" in title or "%" in title:
+        return False
+    if lower in {"le probleme", "probleme", "the problem", "problem"}:
+        return False
+    if re.search(r"\b(behavioral finance|bought|jars?|millennial|right table|left table|sales)\b", lower):
+        return False
+    if re.search(r"\b(and|et|or|ou|has|avec)$", lower):
+        return False
+    return True
 
 
 def _safe_int(value: Any, *, default: int) -> int:
@@ -2778,7 +3038,306 @@ def _looks_like_markup(value: str) -> bool:
     return any(token in text for token in ("</", "<td", "<th", "<tr", "\\begin{pmatrix}"))
 
 
+def _teaching_chunks(chunks: list[SearchChunkRecord]) -> list[SearchChunkRecord]:
+    out: list[SearchChunkRecord] = []
+    for chunk in chunks:
+        if _looks_like_structure_only_chunk(chunk):
+            continue
+        out.append(chunk)
+    return out
+
+
+def _lesson_teaching_chunks(
+    chunks: list[SearchChunkRecord],
+    lesson: _OutlineLesson,
+    *,
+    used_chunk_ids: set[str] | None = None,
+    allow_semantic: bool = False,
+) -> list[SearchChunkRecord]:
+    supported = _lesson_supported_chunks(chunks, lesson, used_chunk_ids=used_chunk_ids)
+    if _has_rich_teaching_material(supported) or not allow_semantic:
+        return supported[:MAX_LESSON_EVIDENCE_CHUNKS]
+
+    used = {str(chunk_id) for chunk_id in (used_chunk_ids or set())}
+    semantic = [
+        chunk
+        for chunk in _teaching_chunks(chunks)
+        if not used or str(chunk.id) not in used or _is_reusable_unit_source_chunk(chunk, lesson)
+    ]
+    return _chunk_pool(supported, semantic)[:MAX_LESSON_EVIDENCE_CHUNKS]
+
+
+def _has_rich_teaching_material(chunks: list[SearchChunkRecord]) -> bool:
+    teaching = _teaching_chunks(chunks)
+    if not teaching:
+        return False
+    source_words = sum(min(_word_count(chunk.text), 320) for chunk in teaching[:MAX_LESSON_EVIDENCE_CHUNKS])
+    return source_words >= MIN_TEACHING_SOURCE_WORDS
+
+
+def _fold_for_match(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", str(value or ""))
+    ascii_text = "".join(char for char in normalized if not unicodedata.combining(char))
+    return ascii_text.casefold()
+
+
+def _looks_like_structure_only_chunk(chunk: SearchChunkRecord) -> bool:
+    text = " ".join(str(chunk.text or "").split()).strip()
+    if not text:
+        return True
+    lower = _fold_for_match(text)
+    word_count = _word_count(text)
+    if "source plan item:" in lower:
+        return True
+    if _looks_like_markup(text):
+        return True
+    if word_count <= 4:
+        return True
+
+    heading = _fold_for_match(" ".join(chunk.heading_path or []))
+    structure_terms = (
+        "agenda",
+        "contents",
+        "outline",
+        "plan de la seance",
+        "source plan item",
+        "table des matieres",
+        "table of contents",
+    )
+    if any(term in heading or term in lower[:120] for term in structure_terms) and word_count < 90:
+        return True
+
+    lines = [line.strip(" -\t") for line in str(chunk.text or "").splitlines() if line.strip()]
+    if len(lines) >= 3 and word_count < 120:
+        title_like_lines = 0
+        for line in lines:
+            line_words = line.split()
+            if len(line_words) <= 9 and not re.search(r"[.!?:;]$", line):
+                title_like_lines += 1
+        if title_like_lines / len(lines) >= 0.7:
+            return True
+
+    compact_text = _normalize_titleish_text(text)
+    headings = [_normalize_titleish_text(item) for item in chunk.heading_path or [] if item]
+    if compact_text and compact_text in headings and word_count < MIN_TEACHING_CHUNK_WORDS:
+        return True
+    return False
+
+
+def _expanded_lesson_query(
+    chapter: _OutlineChapter,
+    lesson: _OutlineLesson,
+    base_query: str,
+) -> str:
+    return "\n".join(
+        item
+        for item in [
+            base_query,
+            chapter.title,
+            lesson.title,
+            " ".join(lesson.source_queries),
+            " ".join(lesson.learning_objectives),
+            "definition detailed explanation mechanism method example contrast application",
+            "cours explication detaillee methode exemple comparaison application",
+        ]
+        if item
+    )
+
+
+def _expanded_block_query(
+    chapter: CourseBuilderChapterRecord,
+    lesson: _OutlineLesson,
+    plan: _LessonBlockPlan,
+    base_query: str,
+) -> str:
+    return "\n".join(
+        item
+        for item in [
+            base_query,
+            chapter.title,
+            lesson.title,
+            plan.title,
+            plan.source_query,
+            "rich paragraph explanation mechanism example contrast consequence",
+            "paragraphe riche explication mecanisme exemple comparaison consequence",
+        ]
+        if item
+    )
+
+
+def _rank_teaching_chunks_for_lesson(
+    chunks: list[SearchChunkRecord],
+    chapter: _OutlineChapter,
+    lesson: _OutlineLesson,
+    *,
+    used_chunk_ids: set[str],
+) -> list[SearchChunkRecord]:
+    used = {str(chunk_id) for chunk_id in used_chunk_ids}
+    terms = _support_terms(
+        [
+            lesson.title,
+            *lesson.source_queries,
+            *lesson.learning_objectives,
+            chapter.title,
+            *chapter.source_queries,
+        ]
+    )
+    scored: list[tuple[float, int, SearchChunkRecord]] = []
+    for index, chunk in enumerate(_teaching_chunks(chunks)):
+        if str(chunk.id) in used and not _is_reusable_unit_source_chunk(chunk, lesson):
+            continue
+        score = _lesson_chunk_score(chunk, chapter, lesson, terms)
+        scored.append((score, index, chunk))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [chunk for _, _, chunk in scored[:MAX_LESSON_EVIDENCE_CHUNKS]]
+
+
+def _lesson_chunk_score(
+    chunk: SearchChunkRecord,
+    chapter: _OutlineChapter,
+    lesson: _OutlineLesson,
+    terms: list[str],
+) -> float:
+    haystack = " ".join(
+        [
+            " ".join(chunk.heading_path or []),
+            _chunk_unit_title(chunk),
+            _chunk_subchapter_title(chunk),
+            chunk.text,
+        ]
+    ).casefold()
+    score = 0.0
+    if _title_key(_chunk_unit_title(chunk)) == _title_key(chapter.title):
+        score += 6.0
+    if _title_key(_chunk_subchapter_title(chunk)) == _title_key(lesson.title):
+        score += 8.0
+    score += sum(1.0 for term in terms if term in haystack)
+    score += min(3.0, _word_count(chunk.text) / 90)
+    return score
+
+
+def _is_thin_lesson_content(block_type: str, content: str, title: str) -> bool:
+    text = " ".join(str(content or "").split()).strip()
+    if not text:
+        return True
+    if normalize_block_type(block_type) not in RICH_BLOCK_TYPES:
+        return False
+    if "source plan item:" in text.casefold():
+        return True
+    normalized_text = _normalize_titleish_text(text)
+    normalized_title = _normalize_titleish_text(title)
+    if normalized_title and normalized_text == normalized_title:
+        return True
+    if normalized_title and normalized_text.startswith(normalized_title) and _word_count(text) < MIN_RICH_BLOCK_WORDS + 15:
+        return True
+    if _word_count(text) < MIN_RICH_BLOCK_WORDS:
+        return True
+    if _sentence_count(text) < 3 and _word_count(text) < MIN_RICH_BLOCK_WORDS + 45:
+        return True
+    return False
+
+
+def _fallback_block_for_type(
+    block_type: str,
+    blocks: list[_LessonBlockCandidate],
+) -> _LessonBlockCandidate | None:
+    if not blocks:
+        return None
+    normalized = normalize_block_type(block_type)
+    for block in blocks:
+        if normalize_block_type(block.block_type) == normalized:
+            return block
+    return blocks[0]
+
+
+def _source_paragraphs(
+    chunks: list[SearchChunkRecord],
+    *,
+    sentence_limit: int,
+    max_chars: int = 2200,
+) -> str:
+    sentences: list[str] = []
+    seen: set[str] = set()
+    for chunk in chunks[:5]:
+        for sentence in _source_sentences(chunk.text):
+            key = sentence.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            sentences.append(sentence)
+            if len(sentences) >= sentence_limit:
+                break
+        if len(sentences) >= sentence_limit:
+            break
+
+    if not sentences:
+        return _summarize_text(" ".join(chunk.text for chunk in chunks[:3]))
+
+    paragraphs: list[str] = []
+    for index in range(0, len(sentences), 3):
+        paragraph = " ".join(sentences[index : index + 3]).strip()
+        if paragraph:
+            paragraphs.append(paragraph)
+    return "\n\n".join(paragraphs)[:max_chars].strip()
+
+
+def _source_sentences(text: str) -> list[str]:
+    clean = str(text or "").replace("\r", "\n")
+    clean = re.sub(r"\s*\n\s*", " ", clean)
+    pieces = re.split(r"(?<=[.!?。！？])\s+|\n+|\s+[•*-]\s+", clean)
+    out: list[str] = []
+    for piece in pieces:
+        sentence = re.sub(r"\s+", " ", piece).strip(" -•*\t")
+        if _usable_source_sentence(sentence):
+            out.append(sentence[:500])
+    if out:
+        return out
+    compact = re.sub(r"\s+", " ", clean).strip()
+    return [compact[:900]] if compact else []
+
+
+def _usable_source_sentence(sentence: str) -> bool:
+    if len(sentence) < 25:
+        return False
+    if _word_count(sentence) < 5:
+        return False
+    if _looks_like_markup(sentence):
+        return False
+    if re.fullmatch(r"(?:page|slide)?\s*\d{1,4}", sentence, flags=re.IGNORECASE):
+        return False
+    symbol_count = sum(1 for char in sentence if not char.isalnum() and not char.isspace())
+    return symbol_count <= max(12, len(sentence) // 3)
+
+
+def _example_first_chunks(chunks: list[SearchChunkRecord]) -> list[SearchChunkRecord]:
+    example_terms = ("example", "exemple", "par exemple", "e.g.", "application", "case study", "cas ")
+    scored = sorted(
+        enumerate(chunks),
+        key=lambda item: (
+            0
+            if any(term in str(item[1].text or "").casefold() for term in example_terms)
+            else 1,
+            item[0],
+        ),
+    )
+    return [chunk for _, chunk in scored]
+
+
+def _word_count(text: str) -> int:
+    return len(re.findall(r"\w+", str(text or ""), flags=re.UNICODE))
+
+
+def _sentence_count(text: str) -> int:
+    pieces = [piece for piece in re.split(r"(?<=[.!?。！？])\s+", str(text or "").strip()) if piece.strip()]
+    return len(pieces)
+
+
+def _normalize_titleish_text(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", _fold_for_match(str(text or ""))).strip()
+
+
 def _fallback_lesson_blocks(title: str, chunks: list[SearchChunkRecord]) -> list[_LessonBlockCandidate]:
+    chunks = _teaching_chunks(chunks)
     if not chunks:
         return [
             _LessonBlockCandidate(
@@ -2787,26 +3346,31 @@ def _fallback_lesson_blocks(title: str, chunks: list[SearchChunkRecord]) -> list
                 content=insufficient_source_message(),
             )
         ]
-    first = chunks[0]
-    summary = _summarize_text(first.text)
+    source_ids = [chunk.id for chunk in chunks[:4]]
+    explanation = _source_paragraphs(chunks, sentence_limit=9)
+    example = _source_paragraphs(
+        _example_first_chunks(chunks),
+        sentence_limit=5,
+    )
+    takeaway = _source_paragraphs(chunks, sentence_limit=4)
     return [
         _LessonBlockCandidate(
             block_type="explanation",
             title=title,
-            content=summary,
-            source_chunk_ids=[first.id],
+            content=explanation,
+            source_chunk_ids=source_ids,
         ),
         _LessonBlockCandidate(
             block_type="example",
             title="Source-grounded example",
-            content=_first_sentence(first.text) or summary,
-            source_chunk_ids=[first.id],
+            content=example or explanation,
+            source_chunk_ids=source_ids,
         ),
         _LessonBlockCandidate(
             block_type="summary",
             title="Key takeaway",
-            content=_first_sentence(summary) or summary,
-            source_chunk_ids=[first.id],
+            content=takeaway or explanation,
+            source_chunk_ids=source_ids,
         ),
     ]
 

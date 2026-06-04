@@ -46,6 +46,35 @@ class CourseIntakeNormalizerTests(unittest.TestCase):
             ],
         )
 
+    def test_plan_de_la_seance_stops_before_slide_body_numbered_noise(self) -> None:
+        markdown = """
+Semaine 1 : Fondements des Systemes de Recommandation
+Plan de la seance
+1. Le probleme de la surcharge informationnelle
+2. Definition et objectifs d'un systeme de recommandation
+3. Les donnees au coeur des SR
+Le Probleme
+1 Judson Meinhart | Behavioral Finance, Millennial
+2 PEOPLE WHO BOUGHT
+3 jars and
+4 % sales, right table has
+"""
+
+        intake = CourseIntakeNormalizer().normalize(
+            raw_markdown=markdown,
+            cleaned_markdown=markdown,
+            source_filename="course.pdf",
+        )
+
+        self.assertEqual(
+            [item.title for item in intake.units[0].subchapters],
+            [
+                "Le probleme de la surcharge informationnelle",
+                "Definition et objectifs d'un systeme de recommandation",
+                "Les donnees au coeur des SR",
+            ],
+        )
+
     def test_normalized_metadata_flows_to_sections_and_chunks(self) -> None:
         intake = CourseIntakeNormalizer().normalize(
             raw_markdown=_merged_course_markdown(),

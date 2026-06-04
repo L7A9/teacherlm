@@ -1,5 +1,8 @@
 "use client";
 
+import { useState } from "react";
+
+import { ChevronDown, ChevronRight, FileText } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -17,21 +20,62 @@ import {
 
 import { AssistantMarkdown } from "@/components/chat/MessageBubble";
 import type { CourseBuilderLessonBlock } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 import { CourseBuilderCitationList } from "./CitationList";
 
 interface Props {
   block: CourseBuilderLessonBlock;
+  index?: number;
 }
 
-export function LessonBlockRenderer({ block }: Props) {
+export function LessonBlockRenderer({ block, index }: Props) {
+  const [open, setOpen] = useState(false);
+  const title = block.title?.trim() || blockTypeLabel(block.block_type);
+
   return (
-    <article className="content-selectable rounded-md border border-border bg-surface p-3">
-      {block.title && (
-        <h5 className="mb-2 text-xs font-semibold text-foreground">{block.title}</h5>
+    <article className="content-selectable overflow-hidden rounded-md border border-border bg-surface">
+      <button
+        type="button"
+        className={cn(
+          "flex w-full items-start gap-2 px-3 py-2 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          open ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted/60",
+        )}
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+      >
+        {typeof index === "number" && (
+          <span
+            className={cn(
+              "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold",
+              open ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
+            )}
+          >
+            {index + 1}
+          </span>
+        )}
+        <FileText
+          className={cn(
+            "mt-0.5 h-3.5 w-3.5 shrink-0",
+            open ? "text-primary" : "text-muted-foreground",
+          )}
+        />
+        <span className="min-w-0 flex-1 line-clamp-2 font-semibold leading-4">
+          {title}
+        </span>
+        {open ? (
+          <ChevronDown className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        )}
+      </button>
+
+      {open && (
+        <div className="flex flex-col gap-3 border-t border-border px-3 py-3">
+          <BlockBody block={block} />
+          <CourseBuilderCitationList citations={block.source_citations} />
+        </div>
       )}
-      <BlockBody block={block} />
-      <CourseBuilderCitationList citations={block.source_citations} />
     </article>
   );
 }
@@ -144,3 +188,9 @@ function cellValue(row: unknown, column: string) {
 }
 
 const COLORS = ["#2563eb", "#16a34a", "#f97316", "#9333ea", "#0891b2"];
+
+function blockTypeLabel(type: string) {
+  return type
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}

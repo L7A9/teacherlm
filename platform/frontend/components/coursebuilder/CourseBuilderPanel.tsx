@@ -312,7 +312,7 @@ function ChapterAccordionItem({
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             {chapter.completed && <Badge variant="success">Completed</Badge>}
             {chapter.is_locked && <Badge variant="muted">Locked</Badge>}
-            <Badge variant="muted">{chapter.lessons.length} subchapters</Badge>
+            <Badge variant="muted">{subchapterLabel(chapterSubchapterCount(chapter))}</Badge>
             {chapter.quiz && <Badge variant="primary">Quiz</Badge>}
             {chapter.attempts > 0 && (
               <span className="text-[11px] text-muted-foreground">
@@ -357,7 +357,7 @@ function ChapterAccordionItem({
             )}
             {chapter.lessons.length === 0 && !chapter.quiz && (
               <p className="text-xs leading-5 text-muted-foreground">
-                No subchapters or quiz were generated for this chapter.
+                No content or quiz was generated for this chapter.
               </p>
             )}
           </div>
@@ -399,6 +399,7 @@ function LessonAccordionItem({
         </span>
         <FileText className={cn("h-3.5 w-3.5 shrink-0", open ? "text-primary" : "text-muted-foreground")} />
         <span className="min-w-0 flex-1 truncate font-medium">{lesson.title}</span>
+        <Badge variant="muted">{subchapterLabel(lesson.blocks.length)}</Badge>
         <Badge variant={lesson.support_status === "supported" ? "success" : "warning"}>
           {lesson.support_status === "supported" ? "Supported" : "Needs source"}
         </Badge>
@@ -425,13 +426,13 @@ function LessonDetail({ lesson }: { lesson: CourseBuilderLesson }) {
       )}
       {lesson.blocks.length > 0 ? (
         <div className="flex flex-col gap-2">
-          {lesson.blocks.map((block) => (
-            <LessonBlockRenderer key={block.id} block={block} />
+          {lesson.blocks.map((block, index) => (
+            <LessonBlockRenderer key={block.id} block={block} index={index} />
           ))}
         </div>
       ) : (
         <p className="text-xs leading-5 text-muted-foreground">
-          No lesson blocks were generated for this subchapter.
+          No subchapters were generated under this title.
         </p>
       )}
     </div>
@@ -498,6 +499,14 @@ function lessonContentKey(lessonId: UUID): string {
 
 function quizContentKey(chapterId: UUID): string {
   return `quiz:${chapterId}`;
+}
+
+function chapterSubchapterCount(chapter: CourseBuilderChapter): number {
+  return chapter.lessons.reduce((total, lesson) => total + lesson.blocks.length, 0);
+}
+
+function subchapterLabel(count: number): string {
+  return `${count} subchapter${count === 1 ? "" : "s"}`;
 }
 
 function StateCard({

@@ -130,23 +130,127 @@ def _use_module_pack_fast_path(
     llm_refine: bool,
     force_regenerate: bool,
 ) -> bool:
-    return has_module_packs and not llm_refine and not force_regenerate
+    return has_module_packs and not llm_refine
 
 
 def _apply_fresh_layout_variation(mm: MindMap, generation_id: str) -> MindMap:
-    """Small deterministic fallback variation when LLM regeneration is unavailable."""
+    """Deterministic variation for repeat clicks over the same grounded content."""
+
+    digest = int(hashlib.sha1(generation_id.encode()).hexdigest(), 16)
+    sequence = _generation_sequence_index(generation_id)
+    layout_seed = digest if sequence is None else digest + sequence * 1_315_423_911
+    for index, branch in enumerate(mm.branches):
+        _vary_node_wording(branch, layout_seed + index)
 
     if len(mm.branches) < 2:
         return mm
-    digest = int(hashlib.sha1(generation_id.encode()).hexdigest(), 16)
-    offset = digest % len(mm.branches)
-    if offset == 0:
-        offset = 1
+
+    if sequence is None:
+        offset = digest % len(mm.branches)
+        if offset == 0:
+            offset = 1
+    else:
+        offset = ((sequence - 1) % (len(mm.branches) - 1)) + 1
     mm.branches = [*mm.branches[offset:], *mm.branches[:offset]]
     for index, branch in enumerate(mm.branches):
-        if len(branch.children) > 1 and (digest >> index) & 1:
-            branch.children = list(reversed(branch.children))
+        _vary_child_positions(branch, layout_seed >> (index % 16))
     return mm
+
+
+def _generation_sequence_index(generation_id: str) -> int | None:
+    match = re.match(r"^mindmap:[^:]+:(\d+):", generation_id)
+    if not match:
+        return None
+    return max(1, int(match.group(1)))
+
+
+def _vary_node_wording(node: MindMapNode, seed: int) -> None:
+    node.text = _variant_label(node.text, seed)
+    for index, child in enumerate(node.children):
+        _vary_node_wording(child, seed + (index + 1) * 17)
+
+
+def _vary_child_positions(node: MindMapNode, seed: int) -> None:
+    if len(node.children) > 1:
+        offset = seed % len(node.children)
+        if offset:
+            node.children = [*node.children[offset:], *node.children[:offset]]
+        if len(node.children) > 3 and seed & 1:
+            node.children = [node.children[0], *reversed(node.children[1:])]
+    for index, child in enumerate(node.children):
+        _vary_child_positions(child, seed + index + 3)
+
+
+def _variant_label(label: str, seed: int) -> str:
+    variants = _label_variants(label)
+    if not variants:
+        return label
+    variant = variants[seed % len(variants)]
+    if _norm(variant) == _norm(label):
+        return label
+    return _short_label(variant, max_len=80)
+
+
+def _label_variants(label: str) -> list[str]:
+    text = re.sub(r"\s+", " ", label).strip()
+    variants: list[str] = []
+
+    def add(value: str) -> None:
+        value = re.sub(r"\s+", " ", value).strip(" -:;")
+        if value and _norm(value) != _norm(text):
+            variants.append(value)
+
+    match = re.match(r"(?i)^fondements?\s+(de|du|des|d['’])\s+(.+)$", text)
+    if match:
+        add(f"Bases {match.group(1)} {match.group(2)}")
+
+    match = re.match(r"(?i)^approches?\s+bas[ée]es\s+sur\s+(.+)$", text)
+    if match:
+        add(f"Methodes basees sur {match.group(1)}")
+
+    match = re.match(r"(?i)^l['’]ere\s+du\s+(.+?)\s+dans\s+(.+)$", text)
+    if match:
+        add(f"{match.group(1)} pour {match.group(2)}")
+
+    match = re.match(r"(?i)^qu['’]?est-ce qu['’]?(?:un|une)?\s+(.+?)\??$", text)
+    if match:
+        add(f"Comprendre {match.group(1)}")
+
+    match = re.match(r"(?i)^pourquoi\s+(.+?)\??$", text)
+    if match:
+        add(f"Raisons: {match.group(1)}")
+
+    match = re.match(r"(?i)^comment\s+(.+?)\??$", text)
+    if match:
+        add(f"Mecanisme: {match.group(1)}")
+
+    match = re.match(r"(?i)^introduction\s+(?:au|aux|a la|to)\s+(.+)$", text)
+    if match:
+        add(f"Premiers reperes sur {match.group(1)}")
+
+    match = re.match(r"(?i)^rappel\s*:\s*(.+)$", text)
+    if match:
+        add(f"Revoir {match.group(1)}")
+
+    match = re.match(r"(?i)^(?:le|la|les)\s+principe[s]?\s+(?:du|de la|des|de)\s+(.+)$", text)
+    if match:
+        add(f"Principes: {match.group(1)}")
+
+    match = re.match(r"(?i)^types?\s+(?:de|du|des)\s+(.+)$", text)
+    if match:
+        add(f"Categories: {match.group(1)}")
+
+    if " : " in text:
+        head, tail = [part.strip() for part in text.split(" : ", 1)]
+        if head and tail and len(tail) > 3:
+            add(f"{tail} ({head})")
+
+    comma_parts = [part.strip() for part in re.split(r",|\s+et\s+", text) if part.strip()]
+    if len(comma_parts) >= 3:
+        rotated = [*comma_parts[1:], comma_parts[0]]
+        add(", ".join(rotated[:-1]) + f" et {rotated[-1]}")
+
+    return _dedupe_labels(variants)
 
 
 def _count_nodes(node: MindMapNode) -> int:
@@ -403,11 +507,9 @@ def _best_module_title(module) -> str:
     metadata_title = str(module.metadata.get("document_title") or "").strip()
     text_title = _module_title(module.text)
     title = metadata_title if metadata_title else text_title
-    if _is_generic_title(title):
-        discovered = _discover_course_title(module.text)
-        if discovered:
-            title = discovered
-    if _is_generic_title(title):
+    if _is_generic_title(title) or _is_wrapper_module_title(title):
+        title = _discover_course_title(module.text) or title
+    if _is_generic_title(title) or _is_wrapper_module_title(title):
         title = _distinctive_module_title(module.text) or title
     return title or str(module.source)
 
@@ -416,37 +518,73 @@ def _is_generic_title(title: str) -> bool:
     return _norm(title) in {
         "developpement mobile",
         "plan de la seance",
-        "plan de séance",
-        "outline",
-        "agenda",
-        "introduction",
-    }
-
-
-def _is_generic_title(title: str) -> bool:
-    return _norm(title) in {
         "outline",
         "agenda",
         "introduction",
         "conclusion",
         "course",
         "cours",
+        "module",
+        "lecture",
     }
 
 
+_COURSE_SEQUENCE_PREFIX_RE = re.compile(
+    r"^(?:semaine|week|lecture|lesson|chapter|chapitre|module|unit|cours)"
+    r"\s+\d+\s*[:\-\u2013\u2014]?\s*",
+    flags=re.IGNORECASE,
+)
+_WRAPPER_TITLE_KEYS = {
+    "organized",
+    "v2",
+    "v3",
+    "v2 organized",
+    "v3 organized",
+    "clean",
+    "cleaned",
+    "converted",
+    "slides",
+    "presentation",
+    "source material",
+}
+
+
+def _strip_course_sequence_prefix(title: str) -> str:
+    return _COURSE_SEQUENCE_PREFIX_RE.sub("", title).strip()
+
+
+def _is_wrapper_module_title(title: str) -> bool:
+    raw = _norm(title)
+    compact = _norm(_strip_course_sequence_prefix(title))
+    if not raw:
+        return True
+    if _is_generic_title(title) or compact in _WRAPPER_TITLE_KEYS:
+        return True
+    return bool(
+        re.fullmatch(
+            r"(?:lecture|week|semaine|chapter|chapitre|module|cours)\s*\d+"
+            r"(?:\s+(?:v\d+|organized|clean|cleaned|slides|presentation))*",
+            raw,
+        )
+    )
+
+
 def _discover_course_title(text: str) -> str:
-    patterns = [
-        r"(?m)^-\s*(Semaine|Week|Lecture|Chapter|Chapitre|Module)\s+\d+\s*[:\-–—]\s*(.+)$",
-        r"(?m)^-\s*Plan de la séance:\s*#\s*(.+)$",
-        r"(?m)^-\s*Plan de la seance:\s*#\s*(.+)$",
-        r"(?m)^-\s*(Semaine|Week|Lecture|Chapter|Chapitre|Module)\s+\d+\s*:\s*(.+)$",
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, text, flags=re.IGNORECASE)
-        if not match:
-            continue
-        title = match.group(match.lastindex or 1).strip()
-        return re.sub(r"\s+", " ", title).strip(" -:;#")
+    sequence_pattern = re.compile(
+        r"(?:^|>\s*)"
+        r"(?:Semaine|Week|Lecture|Chapter|Chapitre|Module)\s+\d+"
+        r"\s*[:\-\u2013\u2014]\s*([^>\n]+)",
+        flags=re.IGNORECASE | re.MULTILINE,
+    )
+    plan_pattern = re.compile(
+        r"(?im)^\s*-\s*plan de la s\S*ance\s*:\s*#?\s*([^>\n]+)$"
+    )
+    for pattern in (sequence_pattern, plan_pattern):
+        for match in pattern.finditer(text):
+            title = _clean_label(match.group(1))
+            if not title or _is_noisy_label(title) or _is_wrapper_module_title(title):
+                continue
+            return title
     return ""
 
 
@@ -463,6 +601,8 @@ def _distinctive_module_title(text: str) -> str:
             if not key or key in _GENERIC_BRANCHES or key in _GENERIC_ROOTS:
                 continue
             if _is_generic_title(part):
+                continue
+            if _is_wrapper_module_title(part):
                 continue
             if _is_noisy_label(part):
                 continue
@@ -525,7 +665,10 @@ def _module_study_nodes(text: str, module_title: str, *, max_children: int) -> l
 
 def _clean_heading_labels(headings: list[str], module_title: str) -> list[str]:
     labels: list[str] = []
-    module_key = _norm(_compact_module_title(module_title))
+    module_keys = {
+        _norm(module_title),
+        _norm(_compact_module_title(module_title)),
+    }
     for heading in headings:
         parts = [
             _clean_label(part)
@@ -534,9 +677,9 @@ def _clean_heading_labels(headings: list[str], module_title: str) -> list[str]:
         ]
         for part in parts:
             key = _norm(part)
-            if not key or key == module_key or key in _GENERIC_BRANCHES:
+            if not key or key in module_keys or key in _GENERIC_BRANCHES:
                 continue
-            if _is_noisy_label(part):
+            if _is_noisy_label(part) or _is_wrapper_module_title(part):
                 continue
             labels.append(part)
     return _dedupe_labels(labels)
@@ -545,12 +688,7 @@ def _clean_heading_labels(headings: list[str], module_title: str) -> list[str]:
 def _clean_label(label: str) -> str:
     label = re.sub(r"[*_`#]+", "", label)
     label = re.sub(r"\s+", " ", label)
-    label = re.sub(
-        r"^(?:semaine|week|lecture|lesson|chapter|chapitre|module|unit|cours)\s+\d+\s*[:\-–—]?\s*",
-        "",
-        label,
-        flags=re.IGNORECASE,
-    )
+    label = _strip_course_sequence_prefix(label)
     label = re.sub(r"\s+\d{1,3}$", "", label)
     label = re.sub(r"^(?:\d+\.\s*)+", "", label)
     return label.strip(" -:;")
@@ -568,26 +706,9 @@ def _is_noisy_label(label: str) -> bool:
         "similar users",
         "read by her recommended to him",
         "statistiques avancees non pertinent",
-        "conclusion",
-        "introduction",
-        "plan de la seance",
-    }
-    if key in noisy_exact:
-        return True
-    return bool(
-        re.search(
-            r"\b(slide|logo|layout|attribution|page|copyright|questions?|thank you)\b",
-            key,
-        )
-    )
-
-
-def _is_noisy_label(label: str) -> bool:
-    key = _norm(label)
-    if not key or len(key) < 4:
-        return True
-    noisy_exact = {
-        "layout attribution critical",
+        "source material",
+        "source plan item",
+        "table des matieres",
         "conclusion",
         "introduction",
         "plan de la seance",
@@ -661,18 +782,17 @@ def _best_matching_branch(branches: list[MindMapNode], labels: list[str]) -> Min
 
 
 def _compact_module_title(title: str) -> str:
-    title = re.sub(
-        r"^(?:semaine|week|lecture|lesson|chapter|chapitre|module|unit|cours)\s+\d+\s*[:\-–—]?\s*",
-        "",
-        title,
-        flags=re.IGNORECASE,
-    )
+    title = _strip_course_sequence_prefix(title)
     title = re.sub(r"\s+", " ", title).strip(" -:;")
     return title[:80] or "Module"
 
 
 def _infer_topic_from_module_titles(titles: list[str]) -> str:
-    cleaned = [_compact_module_title(title) for title in titles if title.strip()]
+    cleaned = [
+        _compact_module_title(title)
+        for title in titles
+        if title.strip() and not _is_wrapper_module_title(title)
+    ]
     if not cleaned:
         return "Carte du cours"
     tokens_by_title = [_tokens(title) for title in cleaned]
@@ -694,15 +814,13 @@ def _infer_central_topic_from_modules(modules, titles: list[str]) -> str:
         for module in modules
         if str(module.metadata.get("document_title") or "").strip()
     ]
-    counts = Counter(_compact_module_title(title) for title in metadata_titles)
+    counts = Counter(
+        _compact_module_title(title)
+        for title in metadata_titles
+        if not _is_wrapper_module_title(title)
+    )
     for title, count in counts.most_common():
-        if count >= 2 and _norm(title) not in {
-            "plan de la seance",
-            "plan de séance",
-            "outline",
-            "agenda",
-            "introduction",
-        }:
+        if count >= 2 and not _is_generic_title(title) and not _is_wrapper_module_title(title):
             return _short_label(title, max_len=60)
     return _infer_topic_from_module_titles(titles)
 
@@ -813,8 +931,13 @@ _GENERIC_ROOTS = {
     "science",
     "course",
     "cours",
+    "overview",
+    "outline",
+    "introduction",
+    "conclusion",
+    "module",
+    "lecture",
 }
-
 
 _GENERIC_BRANCHES = {
     "informatique",
@@ -830,26 +953,10 @@ _GENERIC_BRANCHES = {
     "overview",
     "introduction",
     "conclusion",
-}
-
-
-_GENERIC_ROOTS = {
-    "course",
-    "cours",
-    "overview",
-    "outline",
-    "introduction",
-    "conclusion",
-}
-
-_GENERIC_BRANCHES = {
-    "concepts",
-    "applications",
-    "autres",
-    "other",
-    "overview",
-    "introduction",
-    "conclusion",
+    "module",
+    "lecture",
+    "organized",
+    "source material",
 }
 
 
@@ -861,6 +968,166 @@ def _topic_from_sources(chunks) -> str | None:
         if _norm(label) not in _GENERIC_ROOTS:
             return label[:60]
     return None
+
+
+def _branch_needs_enrichment(branch: MindMapNode) -> bool:
+    if any(child.children for child in branch.children):
+        return False
+    return len(branch.children) < 2
+
+
+def _rich_branch_count(mm: MindMap) -> int:
+    return sum(1 for branch in mm.branches if not _branch_needs_enrichment(branch))
+
+
+def _enrichment_maps(chunks, *, max_nodes: int) -> list[MindMap]:
+    maps: list[MindMap] = []
+    for builder in (
+        lambda: _build_from_module_packs(chunks, max_nodes=max_nodes),
+        lambda: course_structure.build_from_chunks(chunks, max_nodes=max_nodes),
+    ):
+        try:
+            candidate = builder()
+        except Exception:
+            continue
+        if candidate is not None and _total_nodes(candidate) > 1 + len(candidate.branches):
+            maps.append(candidate)
+    return maps
+
+
+def _branch_enrichment_score(target: MindMapNode, source: MindMapNode) -> int:
+    if not source.children:
+        return -1
+    if _norm(target.text) == _norm(source.text):
+        return 100 + len(source.children)
+    target_label_tokens = _tokens(target.text)
+    source_label_tokens = _tokens(source.text)
+    target_tokens = _signature(target)
+    source_tokens = _signature(source)
+    return (len(target_label_tokens & source_label_tokens) * 8) + len(
+        target_tokens & source_tokens
+    )
+
+
+def _append_distinct_children(
+    target: MindMapNode,
+    source: MindMapNode,
+    *,
+    limit: int = 7,
+) -> int:
+    existing = {_norm(child.text) for child in target.children}
+    added = 0
+    for child in source.children:
+        key = _norm(child.text)
+        if not key or key in existing:
+            continue
+        target.children.append(child.model_copy(deep=True))
+        existing.add(key)
+        added += 1
+        if len(target.children) >= limit:
+            break
+    return added
+
+
+def _merge_enrichment_map(target: MindMap, source: MindMap) -> int:
+    used_sources: set[int] = set()
+    added = 0
+    for index, branch in enumerate(target.branches):
+        if not _branch_needs_enrichment(branch):
+            continue
+
+        best_index = -1
+        best_score = 0
+        for source_index, source_branch in enumerate(source.branches):
+            if source_index in used_sources:
+                continue
+            score = _branch_enrichment_score(branch, source_branch)
+            if score > best_score:
+                best_index = source_index
+                best_score = score
+
+        if best_index < 0 and index < len(source.branches) and source.branches[index].children:
+            best_index = index
+        if best_index < 0:
+            continue
+
+        source_branch = source.branches[best_index]
+        count = _append_distinct_children(branch, source_branch)
+        if count:
+            used_sources.add(best_index)
+            added += count
+    return added
+
+
+def _source_study_labels(chunks, *, max_labels: int = 80) -> list[str]:
+    labels: list[str] = []
+    for chunk in chunks:
+        headings = _clean_heading_labels(_module_major_headings(chunk.text), "")
+        labels.extend(headings)
+        for raw_line in chunk.text.splitlines():
+            line = raw_line.strip()
+            match = re.match(r"^\s*#{1,4}\s+(.+)$", line)
+            if not match:
+                match = re.match(r"^\s*(?:[-*]|\d+[.)])\s+(.+)$", line)
+            if not match:
+                continue
+            label = _short_label(match.group(1))
+            if label and not _is_noisy_label(label):
+                labels.append(label)
+            if len(labels) >= max_labels * 2:
+                break
+        if len(labels) >= max_labels * 2:
+            break
+
+    cleaned = [
+        label
+        for label in _dedupe_labels(labels)
+        if _norm(label) not in _GENERIC_BRANCHES and not _is_noisy_label(label)
+    ]
+    return cleaned[:max_labels]
+
+
+def _add_source_label_children(mm: MindMap, chunks, *, max_nodes: int) -> int:
+    labels = _source_study_labels(chunks)
+    if not labels:
+        return 0
+
+    branch_keys = {_norm(branch.text) for branch in mm.branches}
+    used: set[str] = set()
+    added = 0
+    for branch in mm.branches:
+        if not _branch_needs_enrichment(branch):
+            continue
+        branch_tokens = _tokens(branch.text)
+        existing = {_norm(child.text) for child in branch.children}
+        matches = [
+            label
+            for label in labels
+            if _norm(label) not in branch_keys
+            and _norm(label) not in existing
+            and _norm(label) not in used
+            and (branch_tokens & _tokens(label))
+        ]
+        for label in matches[: max(0, 3 - len(branch.children))]:
+            branch.children.append(MindMapNode(text=_short_label(label), children=[]))
+            used.add(_norm(label))
+            added += 1
+            if _total_nodes(mm) >= max_nodes:
+                return added
+    return added
+
+
+def _ensure_rich_mindmap(mm: MindMap, chunks, *, max_nodes: int) -> MindMap:
+    if _mindmap_depth(mm) >= 3 and _rich_branch_count(mm) >= max(2, len(mm.branches) // 2):
+        return mm
+
+    for candidate in _enrichment_maps(chunks, max_nodes=max_nodes):
+        _merge_enrichment_map(mm, candidate)
+        if _mindmap_depth(mm) >= 3 and _rich_branch_count(mm) >= max(2, len(mm.branches) // 2):
+            return mm
+
+    _add_source_label_children(mm, chunks, max_nodes=max_nodes)
+    return mm
 
 
 def _refine_mindmap(mm: MindMap, chunks) -> MindMap:
@@ -1238,6 +1505,21 @@ async def run(payload: GeneratorInput) -> AsyncIterator[str]:
     if force_regenerate and not built_via_llm:
         mindmap = _apply_fresh_layout_variation(mindmap, generation_id)
     mindmap = _refine_mindmap(mindmap, payload.context_chunks)
+    pre_enrichment_count = _total_nodes(mindmap)
+    mindmap = _ensure_rich_mindmap(
+        mindmap,
+        payload.context_chunks,
+        max_nodes=max_nodes,
+    )
+    enriched_count = _total_nodes(mindmap)
+    if enriched_count > pre_enrichment_count:
+        yield _sse(
+            "progress",
+            {
+                "stage": "hierarchy_enriched",
+                "node_count": enriched_count,
+            },
+        )
 
     target_language_code = str(options.get("language") or "").strip()
     target_language = language_name(target_language_code)

@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
@@ -76,8 +76,18 @@ async def generate(
     retrieval_query = _retrieval_query(body.output_type, body.topic)
     generation_options = await get_runtime_settings_service().resolve_options(session, body.options)
     if body.output_type == "mindmap":
+        prior_mindmaps = await session.scalar(
+            select(func.count())
+            .select_from(Message)
+            .where(
+                Message.conversation_id == conversation_id,
+                Message.output_type == "mindmap",
+            )
+        )
         generation_options["force_regenerate"] = True
-        generation_options["generation_id"] = uuid.uuid4().hex
+        generation_options["generation_id"] = (
+            f"mindmap:{conversation_id}:{int(prior_mindmaps or 0) + 1}:{uuid.uuid4().hex}"
+        )
 
     chat_history = await _load_history(session, conversation_id, limit=CHAT_HISTORY_LIMIT)
     learner_state = await get_learner_tracker().load_state(session, conversation_id)
