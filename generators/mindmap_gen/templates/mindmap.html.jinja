@@ -62,16 +62,30 @@
     const svg = document.querySelector('#mm');
     const errEl = document.querySelector('#error');
 
+    function openInitialStudyDepth(node, depth = 0, maxOpenDepth = 3) {
+      if (!node?.children?.length) return;
+      node.payload = { ...(node.payload ?? {}) };
+      if (depth >= maxOpenDepth) {
+        node.payload.fold = 1;
+      } else {
+        delete node.payload.fold;
+      }
+      for (const child of node.children) {
+        openInitialStudyDepth(child, depth + 1, maxOpenDepth);
+      }
+    }
+
     try {
       const transformer = new Transformer();
       const { root } = transformer.transform(markdown);
+      openInitialStudyDepth(root);
 
-      Markmap.create(svg, {
+      const mm = Markmap.create(svg, {
         duration: 400,
-        maxWidth: 260,
-        spacingHorizontal: 80,
-        spacingVertical: 6,
-        paddingX: 12,
+        maxWidth: 300,
+        spacingHorizontal: 110,
+        spacingVertical: 12,
+        paddingX: 16,
         autoFit: true,
         style: () => `.markmap {
           --markmap-text-color: #f1f5f9;
@@ -84,6 +98,7 @@
           return BRANCH_COLORS[Math.abs(branchIdx) % BRANCH_COLORS.length];
         },
       }, root);
+      window.setTimeout(() => mm.fit?.(), 80);
     } catch (err) {
       svg.style.display = 'none';
       errEl.style.display = 'block';

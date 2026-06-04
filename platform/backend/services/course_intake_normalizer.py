@@ -235,17 +235,24 @@ def _plan_titles(lines: list[str]) -> list[str]:
         line = _compact(raw_line)
         if not _PLAN_RE.search(_strip_accents(line)):
             continue
-        plan_text = line
-        for extra in lines[index + 1 : index + 25]:
+
+        titles.extend(_numbered_titles(line))
+        for extra in lines[index + 1 : index + 40]:
             extra_line = _compact(extra)
             if not extra_line:
-                break
+                if titles:
+                    break
+                continue
             if _primary_unit_from_line(extra_line, index) is not None:
                 break
-            plan_text += " " + extra_line
-            if len(plan_text) > 3500:
+            line_titles = _numbered_titles(extra_line)
+            if not line_titles:
+                if titles:
+                    break
+                continue
+            titles.extend(line_titles)
+            if len(titles) >= 12:
                 break
-        titles.extend(_numbered_titles(plan_text))
         if titles:
             return titles
     return titles
@@ -264,7 +271,7 @@ def _heading_like_titles(lines: list[str]) -> list[str]:
             titles.extend(numbered)
             continue
         words = line.split()
-        if 2 <= len(words) <= 12 and _valid_title(line):
+        if 2 <= len(words) <= 12 and _valid_plan_title(line):
             letters = [ch for ch in line if ch.isalpha()]
             upper_ratio = sum(1 for ch in letters if ch.isupper()) / max(1, len(letters))
             title_like = sum(1 for word in words if word[:1].isupper()) >= max(2, len(words) // 2)
@@ -280,7 +287,7 @@ def _numbered_titles(text: str) -> list[str]:
     titles: list[str] = []
     for match in _NUMBERED_ITEM_RE.finditer(normalized):
         title = _clean_subchapter_title(match.group("title"))
-        if _valid_title(title):
+        if _valid_plan_title(title):
             titles.append(title)
     return titles
 
@@ -362,6 +369,22 @@ def _valid_title(value: str) -> bool:
         return False
     useful = sum(1 for ch in text if ch.isalpha())
     return useful >= 3
+
+
+def _valid_plan_title(value: str) -> bool:
+    text = _clean_title(value)
+    lower = _strip_accents(text).lower().strip(" :-")
+    if not _valid_title(text):
+        return False
+    if "|" in text or "%" in text:
+        return False
+    if lower in {"le probleme", "probleme", "the problem", "problem"}:
+        return False
+    if re.search(r"\b(behavioral finance|bought|jars?|millennial|right table|left table|sales)\b", lower):
+        return False
+    if re.search(r"\b(and|et|or|ou|has|avec)$", lower):
+        return False
+    return True
 
 
 def _title_needs_continuation(title: str) -> bool:

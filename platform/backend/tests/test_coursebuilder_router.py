@@ -24,6 +24,7 @@ class _Service:
     def __init__(self, events: list[str]) -> None:
         self.events = events
         self.failed: list[str] = []
+        self.queued_options: dict | None = None
 
     async def file_counts(self, session: object, conversation_id: uuid.UUID) -> tuple[int, int]:
         return 1, 0
@@ -37,6 +38,7 @@ class _Service:
         restart_queued: bool = False,
     ) -> object:
         self.events.append("queue")
+        self.queued_options = llm_options
         return SimpleNamespace(id=uuid.uuid4(), generation_metadata={"generation_id": "generation-1"})
 
     async def get_course(self, session: object, conversation_id: uuid.UUID) -> CourseBuilderRead:
@@ -71,6 +73,56 @@ class CourseBuilderRouterTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(events, ["queue", "commit", "enqueue", "get"])
+        arq.enqueue_job.assert_awaited_once_with(
+            "build_coursebuilder_course",
+            str(conversation_id),
+            {"language": "fr"},
+            "generation-1",
+            _job_id=f"coursebuilder:{conversation_id}:generation-1",
+        )
+
+    async def test_generate_uses_backend_resolved_llm_but_queues_sanitized_options(self) -> None:
+        events: list[str] = []
+        conversation_id = uuid.uuid4()
+        arq = SimpleNamespace(enqueue_job=AsyncMock(side_effect=lambda *args, **kwargs: events.append("enqueue")))
+        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(arq_pool=arq)))
+        service = _Service(events)
+
+        class RuntimeSettings:
+            def sanitize_client_options(self, options: dict | None) -> dict:
+                clean = dict(options or {})
+                clean.pop("llm", None)
+                return clean
+
+            async def resolve_options(self, session: object, options: dict | None) -> dict:
+                return {
+                    **dict(options or {}),
+                    "llm": {
+                        "enabled": True,
+                        "provider": "openai_compatible",
+                        "model": "db-model",
+                        "base_url": "https://db.example/v1",
+                        "api_key": "db-secret",
+                    },
+                }
+
+        with (
+            patch("routers.coursebuilder.get_coursebuilder_service", return_value=service),
+            patch("routers.coursebuilder.get_runtime_settings_service", return_value=RuntimeSettings()),
+        ):
+            await generate_coursebuilder(
+                conversation_id,
+                CourseBuilderGenerateRequest(
+                    options={
+                        "language": "fr",
+                        "llm": {"enabled": True, "provider": "openai", "api_key": "client-secret"},
+                    }
+                ),
+                request,  # type: ignore[arg-type]
+                _Session(events),  # type: ignore[arg-type]
+            )
+
+        self.assertEqual(service.queued_options["llm"]["api_key"], "db-secret")  # type: ignore[index]
         arq.enqueue_job.assert_awaited_once_with(
             "build_coursebuilder_course",
             str(conversation_id),

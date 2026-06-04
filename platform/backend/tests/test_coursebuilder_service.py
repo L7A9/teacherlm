@@ -23,13 +23,18 @@ from services.coursebuilder_service import (
     _QuizQuestionCandidate,
     _coursebuilder_chapter_locked,
     _fallback_outline,
+    _fallback_lesson_blocks,
     _fallback_questions,
     _format_context_pack,
     _chapter_query,
+    _has_rich_teaching_material,
+    _is_thin_lesson_content,
     _intake_chapter_pool,
     _intake_lesson_pool,
+    _looks_like_structure_only_chunk,
     _lesson_supported_chunks,
     _lesson_query,
+    _reserved_lesson_chunk_ids,
     _selected_index,
     _stable_id,
     _title_supported_chunks,
@@ -146,6 +151,40 @@ class CourseBuilderServiceTests(unittest.TestCase):
             ["User-based CF", "Matrix factorization"],
         )
 
+    def test_extract_source_structure_filters_noisy_intake_plan_titles(self) -> None:
+        chunks = [
+            _chunk(
+                "plan",
+                ["Lecture", "Semaine 1", "Plan de la seance"],
+                "Source plan item: Le probleme de la surcharge informationnelle",
+                metadata={
+                    "course_unit_index": 1,
+                    "course_unit_title": "Semaine 1 : Fondements",
+                    "course_unit_role": "primary",
+                    "subchapter_titles": [
+                        "Le probleme de la surcharge informationnelle",
+                        "Definition et objectifs d'un systeme de recommandation",
+                        "Le Problème",
+                        "Judson Meinhart | Behavioral Finance, Millennial",
+                        "PEOPLE WHO BOUGHT",
+                        "jars and",
+                        "% sales, right table has",
+                    ],
+                },
+            )
+        ]
+
+        chapters = extract_source_structure(chunks)
+
+        self.assertEqual([chapter.title for chapter in chapters], ["Semaine 1 : Fondements"])
+        self.assertEqual(
+            [lesson.title for lesson in chapters[0].lessons],
+            [
+                "Le probleme de la surcharge informationnelle",
+                "Definition et objectifs d'un systeme de recommandation",
+            ],
+        )
+
     def test_lesson_retrieval_pool_prefers_normalized_subchapter_scope(self) -> None:
         chapter = _OutlineChapter(title="Semaine 2 : Collaborative Filtering")
         lesson = _OutlineLesson(title="Matrix factorization")
@@ -183,7 +222,217 @@ class CourseBuilderServiceTests(unittest.TestCase):
         lesson_pool = _intake_lesson_pool(chapter_pool, lesson)
 
         self.assertEqual({chunk.id for chunk in chapter_pool}, {"matrix", "neighbor"})
-        self.assertEqual([chunk.id for chunk in lesson_pool], ["matrix"])
+        self.assertEqual([chunk.id for chunk in lesson_pool], ["matrix", "neighbor"])
+
+    def test_lesson_pool_keeps_unit_source_material_after_plan_marker_match(self) -> None:
+        lesson = _OutlineLesson(title="Les Deux Grandes Familles du CF")
+        plan = _chunk(
+            "plan",
+            ["rs course", "Semaine 2 : Collaborative Filtering", "Les Deux Grandes Familles du CF"],
+            "Source plan item: Les Deux Grandes Familles du CF",
+            metadata={
+                "course_unit_title": "Semaine 2 : Collaborative Filtering",
+                "course_unit_role": "primary",
+                "subchapter_title": "Les Deux Grandes Familles du CF",
+            },
+        )
+        source = _chunk(
+            "source",
+            ["rs course", "Semaine 2 : Collaborative Filtering", "Source material"],
+            (
+                "Memory-based collaborative filtering uses observed user-item interactions directly to make "
+                "recommendations. It compares users or items with similarity measures, then transfers preferences "
+                "from the nearest neighbours to predict what a target user may like. Model-based collaborative "
+                "filtering follows a different strategy because it learns a compact model from the rating matrix. "
+                "The model can be a factorization, a clustering method, or another learned representation that "
+                "captures latent preference patterns and generalizes beyond the exact examples already observed."
+            ),
+            metadata={
+                "course_unit_title": "Semaine 2 : Collaborative Filtering",
+                "course_unit_role": "primary",
+                "subchapter_titles": ["Les Deux Grandes Familles du CF"],
+            },
+        )
+
+        lesson_pool = _intake_lesson_pool([plan, source], lesson)
+
+        self.assertEqual([chunk.id for chunk in lesson_pool], ["plan", "source"])
+        self.assertTrue(_looks_like_structure_only_chunk(plan))
+        self.assertFalse(_looks_like_structure_only_chunk(source))
+
+    def test_chapter_pool_keeps_untagged_source_sections_inside_normalized_unit(self) -> None:
+        doc_id = uuid.uuid4()
+        chapter = _OutlineChapter(title="Semaine 1 : Fondements")
+        plan = _chunk(
+            "plan",
+            ["course", "Semaine 1 : Fondements", "Intro"],
+            "Source plan item: Intro",
+            document_id=doc_id,
+            index=0,
+            metadata={
+                "course_unit_index": 1,
+                "course_unit_title": "Semaine 1 : Fondements",
+                "course_unit_role": "primary",
+                "subchapter_title": "Intro",
+            },
+        )
+        source_marker = _chunk(
+            "source-marker",
+            ["course", "Semaine 1 : Fondements", "Source material"],
+            "Semaine 1 source material.",
+            document_id=doc_id,
+            index=1,
+            metadata={
+                "course_unit_index": 1,
+                "course_unit_title": "Semaine 1 : Fondements",
+                "course_unit_role": "primary",
+                "subchapter_titles": ["Intro"],
+            },
+        )
+        body = _chunk(
+            "body",
+            ["Real Body Heading"],
+            "Surcharge informationnelle source explanation with enough teaching material.",
+            document_id=doc_id,
+            index=2,
+            metadata={},
+        )
+        next_unit = _chunk(
+            "next",
+            ["course", "Semaine 2 : Filtering"],
+            "Source plan item: Filtering",
+            document_id=doc_id,
+            index=3,
+            metadata={
+                "course_unit_index": 2,
+                "course_unit_title": "Semaine 2 : Filtering",
+                "course_unit_role": "primary",
+                "subchapter_title": "Filtering",
+            },
+        )
+
+        chapter_pool = _intake_chapter_pool([plan, source_marker, body, next_unit], chapter)
+
+        self.assertEqual([chunk.id for chunk in chapter_pool], ["plan", "source-marker", "body"])
+
+    def test_rich_lesson_retrieval_expands_plan_marker_to_source_material(self) -> None:
+        class _Rag:
+            def __init__(self, expanded: list[SearchChunkRecord]) -> None:
+                self.calls = 0
+                self.expanded = expanded
+
+            async def retrieve_lesson_chunks(self, *args, **kwargs):  # noqa: ANN002, ANN003, ANN201
+                self.calls += 1
+                return self.expanded
+
+        chapter = _OutlineChapter(title="Semaine 2 : Collaborative Filtering")
+        lesson = _OutlineLesson(title="Les Deux Grandes Familles du CF")
+        plan = _chunk(
+            "plan",
+            ["rs course", "Semaine 2 : Collaborative Filtering", "Les Deux Grandes Familles du CF"],
+            "Source plan item: Les Deux Grandes Familles du CF",
+            metadata={
+                "course_unit_title": "Semaine 2 : Collaborative Filtering",
+                "course_unit_role": "primary",
+                "subchapter_title": "Les Deux Grandes Familles du CF",
+            },
+        )
+        memory = _chunk(
+            "memory",
+            ["rs course", "Semaine 2 : Collaborative Filtering", "Source material"],
+            (
+                "Memory-based collaborative filtering is built around direct comparisons in the observed ratings "
+                "or interaction matrix. A user-based method searches for users with similar historical behaviour, "
+                "then recommends items that those neighbours appreciated. An item-based method compares items "
+                "instead, so the recommendation can be derived from objects that receive similar patterns of "
+                "ratings. These methods remain close to the data and are often intuitive because the explanation "
+                "can point back to neighbours or similar items."
+            ),
+            metadata={"course_unit_title": "Semaine 2 : Collaborative Filtering", "course_unit_role": "primary"},
+        )
+        model = _chunk(
+            "model",
+            ["rs course", "Semaine 2 : Collaborative Filtering", "Source material"],
+            (
+                "Model-based collaborative filtering learns a representation from the rating data before making "
+                "predictions. Matrix factorization is a common example because it represents users and items with "
+                "latent factors, then combines those factors to estimate missing ratings. This learned model can "
+                "generalize from sparse observations, reduce noise, and capture hidden preference dimensions that "
+                "are not visible from a single neighbour comparison. The two families therefore differ in how they "
+                "turn past interactions into future recommendations."
+            ),
+            metadata={"course_unit_title": "Semaine 2 : Collaborative Filtering", "course_unit_role": "primary"},
+        )
+        rag = _Rag([memory, model])
+        service = CourseBuilderService()
+        service._rag = rag  # type: ignore[assignment]
+
+        selected, retrieval_count = asyncio.run(
+            service._ensure_rich_lesson_chunks(
+                None,  # type: ignore[arg-type]
+                CONV_ID,
+                chapter,
+                lesson,
+                "Les Deux Grandes Familles du CF",
+                current_chunks=[],
+                retrieved_chunks=[plan],
+                fallback_chunks=[plan, memory, model],
+                used_chunk_ids=set(),
+            )
+        )
+
+        self.assertEqual(retrieval_count, 1)
+        self.assertEqual([chunk.id for chunk in selected], ["memory", "model"])
+        self.assertTrue(_has_rich_teaching_material(selected))
+
+    def test_rich_lesson_retrieval_reuses_unit_source_material_for_later_subchapter(self) -> None:
+        chapter = _OutlineChapter(title="Semaine 2 : Collaborative Filtering")
+        lesson = _OutlineLesson(title="Les Deux Grandes Familles du CF")
+        source = _chunk(
+            "unit-source",
+            ["rs course", "Semaine 2 : Collaborative Filtering", "Source material"],
+            (
+                "Memory-based collaborative filtering uses observed user-item interactions directly to make "
+                "recommendations. It compares users or items with similarity measures, then transfers preferences "
+                "from the nearest neighbours to predict what a target user may like. Model-based collaborative "
+                "filtering follows a different strategy because it learns a compact model from the rating matrix. "
+                "The model can be a factorization, a clustering method, or another learned representation that "
+                "captures latent preference patterns and generalizes beyond the exact examples already observed. "
+                "The important teaching contrast is that memory-based methods stay close to the original examples, "
+                "while model-based methods compress those examples into parameters that can fill missing ratings. "
+                "This contrast helps explain why recommender systems can behave differently when data is sparse, "
+                "when users are new, or when the catalog has many items with few direct interactions. A student "
+                "should also notice that the two families answer different questions: memory-based approaches ask "
+                "which existing users or items are similar enough to borrow evidence from, while model-based "
+                "approaches ask which learned representation can summarize the evidence and support prediction. "
+                "Keeping both views together gives the lesson enough context to compare intuition, scalability, "
+                "and generalization without leaving the uploaded source material."
+            ),
+            metadata={
+                "course_unit_title": "Semaine 2 : Collaborative Filtering",
+                "course_unit_role": "primary",
+                "subchapter_titles": ["Les Deux Grandes Familles du CF", "Matrix factorization"],
+            },
+        )
+        service = CourseBuilderService()
+
+        selected, retrieval_count = asyncio.run(
+            service._ensure_rich_lesson_chunks(
+                None,  # type: ignore[arg-type]
+                CONV_ID,
+                chapter,
+                lesson,
+                "Les Deux Grandes Familles du CF",
+                current_chunks=[],
+                retrieved_chunks=[source],
+                fallback_chunks=[source],
+                used_chunk_ids={"unit-source"},
+            )
+        )
+
+        self.assertEqual(retrieval_count, 0)
+        self.assertEqual([chunk.id for chunk in selected], ["unit-source"])
+        self.assertTrue(_has_rich_teaching_material(selected))
 
     def test_lesson_supported_chunks_rejects_chapter_only_support(self) -> None:
         lesson = _OutlineLesson(
@@ -225,6 +474,43 @@ class CourseBuilderServiceTests(unittest.TestCase):
         )
 
         self.assertEqual([chunk.id for chunk in selected], ["fresh"])
+
+    def test_lesson_supported_chunks_reuses_unit_source_metadata(self) -> None:
+        lesson = _OutlineLesson(title="Les Deux Grandes Familles du CF")
+        source = _chunk(
+            "source",
+            ["rs course", "Semaine 2 : Collaborative Filtering", "Source material"],
+            "Memory-based methods compare neighbours, while model-based methods learn compact latent patterns.",
+            metadata={
+                "course_unit_title": "Semaine 2 : Collaborative Filtering",
+                "course_unit_role": "primary",
+                "subchapter_titles": ["Les Deux Grandes Familles du CF"],
+            },
+        )
+
+        selected = _lesson_supported_chunks(
+            [source],
+            lesson,
+            used_chunk_ids={"source"},
+        )
+
+        self.assertEqual([chunk.id for chunk in selected], ["source"])
+
+    def test_only_exact_subchapter_chunks_are_reserved_between_lessons(self) -> None:
+        exact = _chunk(
+            "exact",
+            ["course", "Semaine 1", "Intro"],
+            "Exact lesson source.",
+            metadata={"subchapter_title": "Intro"},
+        )
+        broad = _chunk(
+            "broad",
+            ["course", "Body"],
+            "Broad unit source material.",
+            metadata={},
+        )
+
+        self.assertEqual(_reserved_lesson_chunk_ids([exact, broad]), {"exact"})
 
     def test_lesson_supported_chunks_rejects_only_reused_lesson_evidence(self) -> None:
         lesson = _OutlineLesson(title="Matrix factorization", source_queries=["SVD"])
@@ -631,6 +917,89 @@ class CourseBuilderServiceTests(unittest.TestCase):
         self.assertEqual(content.support_status, "insufficient_source_material")
         self.assertEqual(content.blocks[0].block_type, "warning")
         self.assertEqual(content.blocks[0].content, insufficient_source_message())
+
+    def test_title_only_lesson_block_content_is_too_thin(self) -> None:
+        self.assertTrue(_is_thin_lesson_content("explanation", "SVD", "SVD"))
+        self.assertTrue(
+            _is_thin_lesson_content(
+                "explanation",
+                "Source plan item: Les Deux Grandes Familles du CF",
+                "Les Deux Grandes Familles du CF",
+            )
+        )
+        self.assertTrue(
+            _is_thin_lesson_content(
+                "explanation",
+                "SVD explains latent factors.",
+                "SVD",
+            )
+        )
+        self.assertFalse(
+            _is_thin_lesson_content(
+                "explanation",
+                (
+                    "SVD explains a ratings matrix by representing users and items through latent factors. "
+                    "The source connects this representation to recommendation because missing preferences can "
+                    "be estimated from patterns shared across similar users and similar items. "
+                    "This matters in the lesson because it turns sparse observed ratings into a structured model "
+                    "that can support prediction while remaining grounded in the matrix factorization view. "
+                    "The learner should understand this representation before moving to evaluation or tuning. "
+                    "A rich lesson block should connect the algebraic operation to the teaching goal: the matrix "
+                    "is not decomposed for its own sake, but to expose preference dimensions that can be reused "
+                    "when the platform has to recommend items with incomplete ratings. That connection gives the "
+                    "student enough context to distinguish model-based collaborative filtering from simpler "
+                    "neighbour comparisons."
+                ),
+                "SVD",
+            )
+        )
+
+    def test_fallback_lesson_blocks_do_not_use_plan_marker_as_content(self) -> None:
+        blocks = _fallback_lesson_blocks(
+            "Les Deux Grandes Familles du CF",
+            [
+                _chunk(
+                    "plan",
+                    ["rs course", "Plan de la seance"],
+                    "Source plan item: Les Deux Grandes Familles du CF",
+                )
+            ],
+        )
+
+        self.assertEqual(blocks[0].block_type, "warning")
+        self.assertEqual(blocks[0].content, insufficient_source_message())
+
+    def test_fallback_lesson_blocks_use_rich_source_paragraphs(self) -> None:
+        chunks = [
+            _chunk(
+                "chunk-1",
+                ["Latent Factors", "SVD"],
+                (
+                    "SVD decomposes the user-item ratings matrix into lower-dimensional user and item factors. "
+                    "Those factors summarize hidden preference patterns that are not written directly in the "
+                    "original table. In a recommendation setting, the model compares these factors to estimate "
+                    "ratings that a user has not provided yet. The decomposition is useful because the source "
+                    "matrix is usually sparse and direct comparison between users can miss indirect structure."
+                ),
+            ),
+            _chunk(
+                "chunk-2",
+                ["Latent Factors", "Prediction"],
+                (
+                    "For example, two users can receive similar recommendations when their latent vectors point "
+                    "toward the same item factors. The predicted score comes from combining the user factors and "
+                    "item factors, so the method links observed ratings to unseen preferences. This also explains "
+                    "why dimensionality reduction can reduce noise while preserving the main preference signals."
+                ),
+            ),
+        ]
+
+        blocks = _fallback_lesson_blocks("SVD", chunks)
+
+        self.assertGreaterEqual(len(blocks[0].content.split()), 55)
+        self.assertIn("\n\n", blocks[0].content)
+        self.assertNotEqual(blocks[0].content.strip(), "SVD")
+        self.assertEqual(blocks[0].source_chunk_ids, ["chunk-1", "chunk-2"])
 
     def test_valid_quiz_rows_require_valid_source_citations(self) -> None:
         chunk = _chunk("valid-1", ["Foundations"], "A supported statement from the source.")
