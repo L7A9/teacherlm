@@ -27,11 +27,25 @@ const BRANCH_COLORS = [
   "#facc15", // yellow-400
   "#e879f9", // fuchsia-400
   "#2dd4bf", // teal-400
+  "#f87171", // red-400
+  "#c084fc", // purple-400
 ];
+const ROOT_COLOR = "#cbd5e1";
 
 // Safety-net: ensure markmap link paths are never filled.
 // markmap injects its own <style> into the SVG, but inject this in <head> too.
-const SAFETY_CSS = `.markmap-link{fill:none}`;
+const SAFETY_CSS = `
+  .markmap-link{fill:none!important}
+  .markmap-node{color:var(--branch-color,#cbd5e1)!important}
+  .markmap-node>line,
+  .markmap-node>circle{stroke:currentColor!important}
+  .markmap-foreign,
+  .markmap-foreign *{
+    color:inherit!important;
+    border-color:currentColor!important;
+    text-decoration-color:currentColor!important;
+  }
+`;
 let safetyInjected = false;
 function injectSafetyCss() {
   if (safetyInjected || typeof document === "undefined") return;
@@ -46,22 +60,16 @@ type MMNode = {
   children?: MMNode[];
 };
 
-// Show the study structure immediately. Deeper detail still stays expandable
-// when a generated map has more than the usual branch/topic/detail levels.
-function openInitialStudyDepth(
-  node: MMNode | undefined,
-  depth = 0,
-  maxOpenDepth = 3,
-): void {
+function collapseInitialTree(node: MMNode | undefined, depth = 0): void {
   if (!node?.children?.length) return;
   node.payload = { ...(node.payload ?? {}) };
-  if (depth >= maxOpenDepth) {
-    node.payload.fold = 1;
-  } else {
+  if (depth === 0) {
     delete node.payload.fold;
+  } else {
+    node.payload.fold = 1;
   }
   for (const child of node.children) {
-    openInitialStudyDepth(child, depth + 1, maxOpenDepth);
+    collapseInitialTree(child, depth + 1);
   }
 }
 
@@ -102,6 +110,115 @@ interface MarkmapInstance {
   fit?: () => Promise<unknown> | void;
 }
 
+function fitMindmap(mm: MarkmapInstance | null): void {
+  try {
+    void mm?.fit?.();
+  } catch {
+    // ignore
+  }
+}
+
+function applyVisibleBranchColors(svg: SVGSVGElement): void {
+  const branchNodes = Array.from(
+    svg.querySelectorAll<SVGGElement>('g.markmap-node[data-depth="2"]'),
+  );
+  const colorByBranchPath = new Map<string, string>();
+  branchNodes.forEach((node, index) => {
+    const path = node.getAttribute("data-path");
+    if (path) {
+      colorByBranchPath.set(path, BRANCH_COLORS[index % BRANCH_COLORS.length]!);
+    }
+  });
+
+  const resolveColor = (path: string | null, depth: string | null): string => {
+    if (!path || depth === "1") return ROOT_COLOR;
+    const branchPath = path.split(".").slice(0, 2).join(".");
+    return (
+      colorByBranchPath.get(branchPath) ??
+      BRANCH_COLORS[fallbackColorIndex(branchPath) % BRANCH_COLORS.length]!
+    );
+  };
+
+  for (const node of Array.from(svg.querySelectorAll<SVGGElement>("g.markmap-node"))) {
+    const color = resolveColor(
+      node.getAttribute("data-path"),
+      node.getAttribute("data-depth"),
+    );
+    node.style.setProperty("--branch-color", color);
+    node.style.setProperty("color", color, "important");
+    for (const labelPart of Array.from(
+      node.querySelectorAll<HTMLElement>("foreignObject, foreignObject *"),
+    )) {
+      labelPart.style.setProperty("color", color, "important");
+      labelPart.style.setProperty("border-color", color, "important");
+      labelPart.style.setProperty("text-decoration-color", color, "important");
+    }
+    node.querySelector<SVGTextElement>("text")?.style.setProperty(
+      "fill",
+      color,
+      "important",
+    );
+    for (const svgPart of Array.from(
+      node.querySelectorAll<SVGElement>("circle,path,line,polyline"),
+    )) {
+      svgPart.setAttribute("stroke", color);
+      svgPart.style.setProperty("stroke", color, "important");
+      if (svgPart.tagName.toLowerCase() === "circle") {
+        svgPart.setAttribute("fill", color);
+        svgPart.style.setProperty("fill", color, "important");
+      }
+    }
+  }
+
+  for (const link of Array.from(svg.querySelectorAll<SVGPathElement>("path.markmap-link"))) {
+    const color = resolveColor(
+      link.getAttribute("data-path"),
+      link.getAttribute("data-depth"),
+    );
+    link.setAttribute("stroke", color);
+    link.setAttribute("fill", "none");
+    link.style.setProperty("stroke", color, "important");
+    link.style.setProperty("fill", "none", "important");
+  }
+}
+
+function refreshMindmapView(
+  mm: MarkmapInstance | null,
+  svg: SVGSVGElement | null,
+  delay = 80,
+): void {
+  if (!svg) return;
+  window.setTimeout(() => {
+    fitMindmap(mm);
+    applyVisibleBranchColors(svg);
+    window.setTimeout(() => applyVisibleBranchColors(svg), 420);
+  }, delay);
+}
+
+function fallbackColorIndex(value: string): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash;
+}
+
+function branchColor(node: any): string {
+  let branch = node;
+  while (branch?.parent?.parent) {
+    branch = branch.parent;
+  }
+  if (!branch?.parent) return ROOT_COLOR;
+
+  const siblings = Array.isArray(branch.parent.children) ? branch.parent.children : [];
+  const siblingIndex = siblings.indexOf(branch);
+  const colorIndex =
+    siblingIndex >= 0
+      ? siblingIndex
+      : fallbackColorIndex(String(branch?.state?.path ?? branch?.content ?? ""));
+  return BRANCH_COLORS[colorIndex % BRANCH_COLORS.length] ?? BRANCH_COLORS[0]!;
+}
+
 export function MindmapRenderer({ payload, conversationId, className }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const mmRef = useRef<MarkmapInstance | null>(null);
@@ -131,7 +248,7 @@ export function MindmapRenderer({ payload, conversationId, className }: Props) {
 
         const transformer = new Transformer();
         const { root } = transformer.transform(payload.markdown);
-        openInitialStudyDepth(root as unknown as MMNode);
+        collapseInitialTree(root as unknown as MMNode);
 
         try {
           mmRef.current?.destroy?.();
@@ -158,24 +275,11 @@ export function MindmapRenderer({ payload, conversationId, className }: Props) {
               }`,
             // Color each branch (and all its descendants) consistently.
             // node.state.path is "rootId.branchId.subtopicId..." — use segment [1].
-            color: (node: any) => {
-              const parts = String(node?.state?.path ?? "").split(".");
-              const branchIdx = parseInt(parts[1] ?? "") || 0;
-              return (
-                BRANCH_COLORS[Math.abs(branchIdx) % BRANCH_COLORS.length] ??
-                BRANCH_COLORS[0]!
-              );
-            },
+            color: branchColor,
           },
           root,
         ) as MarkmapInstance;
-        window.setTimeout(() => {
-          try {
-            void mmRef.current?.fit?.();
-          } catch {
-            // ignore
-          }
-        }, 80);
+        refreshMindmapView(mmRef.current, svg);
       } catch (err) {
         if (!cancelled) setError((err as Error).message);
       }
@@ -195,11 +299,7 @@ export function MindmapRenderer({ payload, conversationId, className }: Props) {
   // Refit after expand/collapse.
   useEffect(() => {
     const id = window.setTimeout(() => {
-      try {
-        void mmRef.current?.fit?.();
-      } catch {
-        // ignore
-      }
+      refreshMindmapView(mmRef.current, svgRef.current, 0);
     }, 80);
     return () => window.clearTimeout(id);
   }, [expanded]);
@@ -212,10 +312,13 @@ export function MindmapRenderer({ payload, conversationId, className }: Props) {
     const onClick = (e: MouseEvent) => {
       const target = e.target as Element | null;
 
-      // Markmap renders a small circle on every node with children; clicking
-      // it toggles fold. Don't intercept those — let markmap handle expand
-      // / collapse. Only label / foreignObject clicks ask the teacher.
-      if (target?.closest("circle")) return;
+      // Markmap renders a small circle on every node with children. Clicking
+      // the circle keeps native expand/collapse; clicking a node label with
+      // children forwards to that same toggle.
+      if (target?.closest("circle")) {
+        refreshMindmapView(mmRef.current, svg, 450);
+        return;
+      }
 
       const node = target?.closest("g.markmap-node");
       if (!node) return;
@@ -226,6 +329,21 @@ export function MindmapRenderer({ payload, conversationId, className }: Props) {
         ""
       ).trim();
       if (!text) return;
+
+      const toggle = node.querySelector("circle");
+      if (toggle) {
+        e.preventDefault();
+        e.stopPropagation();
+        toggle.dispatchEvent(
+          new MouseEvent("click", {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+          }),
+        );
+        refreshMindmapView(mmRef.current, svg, 450);
+        return;
+      }
 
       e.preventDefault();
       e.stopPropagation();
@@ -253,10 +371,8 @@ export function MindmapRenderer({ payload, conversationId, className }: Props) {
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] text-muted-foreground">
-          {payload.central_topic ? `${payload.central_topic} - ` : ""}
-          Click a node's circle to expand or collapse. Click a label to
-          ask your teacher to explain it.
+        <span className="truncate text-xs font-medium text-muted-foreground">
+          {payload.central_topic || "Mind map"}
         </span>
         <Button
           variant="secondary"

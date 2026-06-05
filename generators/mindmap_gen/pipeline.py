@@ -33,8 +33,8 @@ T = TypeVar("T")
 
 _SIZE_CONFIGS = {
     "concise": {"n_branches": 4, "max_nodes_default": 30},
-    "standard": {"n_branches": 6, "max_nodes_default": 60},
-    "comprehensive": {"n_branches": 9, "max_nodes_default": 100},
+    "standard": {"n_branches": 6, "max_nodes_default": 110},
+    "comprehensive": {"n_branches": 9, "max_nodes_default": 150},
 }
 _FRESH_LAYOUT_STYLES = [
     "group the course by learning path from foundations to applications",
@@ -130,7 +130,7 @@ def _use_module_pack_fast_path(
     llm_refine: bool,
     force_regenerate: bool,
 ) -> bool:
-    return has_module_packs and not llm_refine
+    return has_module_packs and not llm_refine and not force_regenerate
 
 
 def _apply_fresh_layout_variation(mm: MindMap, generation_id: str) -> MindMap:
@@ -634,8 +634,14 @@ def _module_major_headings(text: str) -> list[str]:
 
 
 def _module_study_nodes(text: str, module_title: str, *, max_children: int) -> list[MindMapNode]:
-    labels = _clean_heading_labels(_module_major_headings(text), module_title)
+    paths = _module_heading_paths(text, module_title)
     details = _module_key_details(text)
+    children = _nodes_from_heading_paths(paths, max_children=max_children)
+    if children:
+        _attach_details_to_tree(children, details)
+        return children[:max_children]
+
+    labels = _clean_heading_labels(_module_major_headings(text), module_title)
     children: list[MindMapNode] = []
     used_details: set[str] = set()
 
@@ -661,6 +667,105 @@ def _module_study_nodes(text: str, module_title: str, *, max_children: int) -> l
                 break
 
     return children
+
+
+def _module_heading_paths(text: str, module_title: str) -> list[list[str]]:
+    module_keys = {
+        _norm(module_title),
+        _norm(_compact_module_title(module_title)),
+    }
+    paths: list[list[str]] = []
+    for heading in _module_major_headings(text):
+        parts: list[str] = []
+        for raw_part in re.split(r"\s*>\s*", heading):
+            label = _clean_label(raw_part)
+            key = _norm(label)
+            if not label or key in module_keys or key in _GENERIC_BRANCHES:
+                continue
+            if _is_noisy_label(label) or _is_wrapper_module_title(label):
+                continue
+            parts.append(label)
+        if parts:
+            paths.append(parts[:4])
+    return _dedupe_paths(paths)
+
+
+def _dedupe_paths(paths: list[list[str]]) -> list[list[str]]:
+    seen: set[tuple[str, ...]] = set()
+    out: list[list[str]] = []
+    for path in paths:
+        key = tuple(_norm(part) for part in path if _norm(part))
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(path)
+    return out
+
+
+def _nodes_from_heading_paths(paths: list[list[str]], *, max_children: int) -> list[MindMapNode]:
+    roots: list[MindMapNode] = []
+
+    def add_child(children: list[MindMapNode], label: str, *, limit: int) -> MindMapNode | None:
+        key = _norm(label)
+        for child in children:
+            if _norm(child.text) == key:
+                return child
+        if len(children) >= limit:
+            return None
+        node = MindMapNode(text=_short_label(label), children=[])
+        children.append(node)
+        return node
+
+    for path in paths:
+        siblings = roots
+        for depth, label in enumerate(path):
+            node = add_child(
+                siblings,
+                label,
+                limit=max_children if depth == 0 else 7,
+            )
+            if node is None:
+                break
+            siblings = node.children
+    return roots
+
+
+def _iter_tree_nodes(nodes: list[MindMapNode]) -> list[MindMapNode]:
+    out: list[MindMapNode] = []
+
+    def walk(node: MindMapNode) -> None:
+        out.append(node)
+        for child in node.children:
+            walk(child)
+
+    for node in nodes:
+        walk(node)
+    return out
+
+
+def _attach_details_to_tree(nodes: list[MindMapNode], details: list[str]) -> None:
+    if not details:
+        return
+    tree_nodes = _iter_tree_nodes(nodes)
+    used: set[str] = set()
+    for detail in details:
+        key = _norm(detail)
+        if not key or key in used or _is_noisy_label(detail):
+            continue
+        detail_tokens = _tokens(detail)
+        best_node: MindMapNode | None = None
+        best_score = 0
+        for node in tree_nodes:
+            if len(node.children) >= 7 or _norm(node.text) == key:
+                continue
+            score = len(_tokens(node.text) & detail_tokens)
+            if score > best_score:
+                best_node = node
+                best_score = score
+        if best_node is None or best_score <= 0:
+            continue
+        best_node.children.append(MindMapNode(text=_short_label(detail), children=[]))
+        used.add(key)
 
 
 def _clean_heading_labels(headings: list[str], module_title: str) -> list[str]:
@@ -1164,6 +1269,37 @@ def _refine_mindmap(mm: MindMap, chunks) -> MindMap:
 
 def _mindmap_response_text(mm: MindMap, node_count: int, language_code: str | None) -> str:
     code = str(language_code or "").strip().casefold()
+    simple_templates = {
+        "fr-fr": (
+            "J'ai construit une carte mentale de '{topic}' a partir de tes supports. "
+            "Elle organise les idees importantes en une structure de revision riche."
+        ),
+        "es": (
+            "He creado un mapa mental de '{topic}' a partir de tus materiales. "
+            "Organiza las ideas importantes en una estructura de estudio rica."
+        ),
+        "it": (
+            "Ho creato una mappa mentale di '{topic}' dai tuoi materiali. "
+            "Organizza le idee importanti in una struttura di studio ricca."
+        ),
+        "pt-br": (
+            "Criei um mapa mental de '{topic}' a partir dos seus materiais. "
+            "Ele organiza as ideias importantes em uma estrutura de estudo rica."
+        ),
+        "de": (
+            "Ich habe aus deinen Materialien eine Mindmap zu '{topic}' erstellt. "
+            "Sie ordnet die wichtigen Ideen in eine reichhaltige Lernstruktur."
+        ),
+    }
+    simple_template = simple_templates.get(
+        code,
+        (
+            "I've built a mind map of '{topic}' from your materials. "
+            "It organizes the important ideas into a rich study structure."
+        ),
+    )
+    return simple_template.format(topic=mm.central_topic)
+
     templates = {
         "fr-fr": (
             "J'ai construit une carte mentale de '{topic}' a partir de tes supports. "

@@ -157,8 +157,8 @@ class MindmapModuleBatchTests(unittest.TestCase):
         self.assertNotIn("Source material", labels)
         self.assertNotIn("Layout Attribution (Critical)", labels)
 
-    def test_force_regenerate_keeps_module_pack_fast_path(self) -> None:
-        self.assertTrue(
+    def test_force_regenerate_skips_module_pack_fast_path(self) -> None:
+        self.assertFalse(
             _use_module_pack_fast_path(
                 has_module_packs=True,
                 llm_refine=False,
@@ -172,6 +172,49 @@ class MindmapModuleBatchTests(unittest.TestCase):
                 force_regenerate=False,
             )
         )
+
+    def test_module_pack_preserves_nested_heading_paths(self) -> None:
+        chunks = [
+            _module(
+                "\n".join(
+                    [
+                        "Module 1: Approches Classiques",
+                        "Major headings:",
+                        "- Approches Classiques > Filtrage Base sur le Contenu (CBF) > Vecteurs TF-IDF",
+                        "- Approches Classiques > Filtrage Base sur le Contenu (CBF) > Similarite cosinus",
+                        "- Approches Classiques > Filtrage Collaboratif (CF) > Memory-Based",
+                        "- Approches Classiques > Filtrage Collaboratif (CF) > Model-Based",
+                        "- Approches Classiques > Systemes Hybrides > Ponderes",
+                        "Study outline details:",
+                        "- Filtrage Collaboratif (CF): Key details: utilise les interactions utilisateur-item.",
+                    ]
+                ),
+                "classic.pdf",
+                0,
+            ),
+            _module(
+                "Module 2: Evaluation et Metriques\nMajor headings:\n- Metrique Reine: nDCG\n- DCG\nStudy outline details:",
+                "eval.pdf",
+                1,
+            ),
+            _module(
+                "Module 3: Enjeux et Deploiement\nMajor headings:\n- Ethique\n- A/B Testing\nStudy outline details:",
+                "deploy.pdf",
+                2,
+            ),
+        ]
+
+        mindmap = _build_from_module_packs(chunks, max_nodes=80)
+
+        self.assertIsNotNone(mindmap)
+        assert mindmap is not None
+        classic = mindmap.branches[0]
+        cbf = next(child for child in classic.children if "Contenu" in child.text)
+        cf = next(child for child in classic.children if "Collaboratif" in child.text)
+        self.assertIn("Vecteurs TF-IDF", [child.text for child in cbf.children])
+        self.assertIn("Similarite cosinus", [child.text for child in cbf.children])
+        self.assertIn("Memory-Based", [child.text for child in cf.children])
+        self.assertIn("Model-Based", [child.text for child in cf.children])
 
     def test_generation_hint_changes_with_generation_id(self) -> None:
         first = _fresh_generation_hint({"generation_id": "run-a"})
