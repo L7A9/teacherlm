@@ -56,6 +56,7 @@ class ChatRequest(BaseModel):
     """Body for POST /api/conversations/{id}/chat (SSE)."""
     user_message: str = Field(min_length=1)
     options: dict[str, Any] = Field(default_factory=dict)
+    source_file_ids: list[str] | None = None
 
 
 class GenerateRequest(BaseModel):
@@ -63,3 +64,4 @@ class GenerateRequest(BaseModel):
     output_type: OutputType
     options: dict[str, Any] = Field(default_factory=dict)
     topic: str | None = None
+    source_file_ids: list[str] | None = None

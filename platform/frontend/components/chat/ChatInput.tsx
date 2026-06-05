@@ -21,6 +21,7 @@ import {
   forcedLanguageToOptions,
   useSettingsStore,
 } from "@/stores/settingsStore";
+import { useUiStore } from "@/stores/uiStore";
 
 export interface ChatInputHandle {
   focus: () => void;
@@ -36,6 +37,7 @@ interface Props {
 
 const MAX_HEIGHT_PX = 220;
 const MIN_HEIGHT_PX = 44;
+const EMPTY_SOURCE_FILE_IDS: string[] = [];
 
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
   {
@@ -56,6 +58,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
   );
   const abortStream = useConversationStore((s) => s.abortStream);
   const forcedLanguage = useSettingsStore((s) => s.forcedLanguage);
+  const sourceFileIds = useUiStore(
+    (s) => s.sourceFileSelectionByConversation[conversationId] ?? EMPTY_SOURCE_FILE_IDS,
+  );
 
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
@@ -75,7 +80,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
     setValue("");
     const options = forcedLanguageToOptions(forcedLanguage);
     try {
-      await runChat(conversationId, { user_message: trimmed, options });
+      await runChat(conversationId, {
+        user_message: trimmed,
+        options,
+        source_file_ids: sourceFileIds,
+      });
     } catch (err) {
       toast.error(`Chat failed: ${(err as Error).message}`);
     }

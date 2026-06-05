@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     analysis_temperature: float = 0.1
     extraction_temperature: float = 0.1
 
-    max_context_chunks: int = 8
+    max_context_chunks: int = 16
 
     confusion_guide_threshold: float = 0.7
     stuck_turns_threshold: int = 4

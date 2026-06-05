@@ -15,12 +15,17 @@ from teacherlm_core.schemas.chunk import Chunk  # noqa: E402
 
 try:
     from config import Settings  # noqa: E402
-    from services.course_context_service import _searchable_chunks  # noqa: E402
+    from services.course_context_service import _filter_allowed_chunks, _searchable_chunks  # noqa: E402
     from services.retrieval_orchestrator import RetrievalOrchestrator  # noqa: E402
 except ModuleNotFoundError:
     Settings = None  # type: ignore[assignment]
+    _filter_allowed_chunks = None  # type: ignore[assignment]
     _searchable_chunks = None  # type: ignore[assignment]
     RetrievalOrchestrator = None  # type: ignore[assignment]
+
+
+def _source_file_label(source_file_ids: list[str] | None) -> str | None:
+    return ",".join(source_file_ids) if source_file_ids else None
 
 
 class FakeContext:
@@ -37,11 +42,13 @@ class FakeContext:
         self.relevant_empty = relevant_empty
 
     async def get_generator_context(self, **kwargs):
-        self.calls.append(("generator", kwargs["output_type"]))
+        label = _source_file_label(kwargs.get("source_file_ids"))
+        call_value = kwargs["output_type"] if label is None else f"{kwargs['output_type']}:{label}"
+        self.calls.append(("generator", call_value))
         return [Chunk(text="outline", source="course", score=1, chunk_id="outline", metadata={})]
 
-    async def get_full_course_outline(self, conversation_id):
-        self.calls.append(("outline", None))
+    async def get_full_course_outline(self, conversation_id, source_file_ids=None):
+        self.calls.append(("outline", _source_file_label(source_file_ids)))
         if self.overview_empty:
             return []
         return [
@@ -54,8 +61,8 @@ class FakeContext:
             )
         ]
 
-    async def get_mindmap_course_context(self, conversation_id):
-        self.calls.append(("mindmap", None))
+    async def get_mindmap_course_context(self, conversation_id, source_file_ids=None):
+        self.calls.append(("mindmap", _source_file_label(source_file_ids)))
         if self.overview_empty:
             return []
         return [
@@ -68,8 +75,8 @@ class FakeContext:
             )
         ]
 
-    async def get_representative_course_context(self, conversation_id):
-        self.calls.append(("representative", None))
+    async def get_representative_course_context(self, conversation_id, source_file_ids=None):
+        self.calls.append(("representative", _source_file_label(source_file_ids)))
         if self.overview_empty:
             return []
         return [
@@ -82,8 +89,9 @@ class FakeContext:
             )
         ]
 
-    async def get_relevant_chunks(self, conversation_id, query, mode):
-        self.calls.append(("relevant", mode))
+    async def get_relevant_chunks(self, conversation_id, query, mode, source_file_ids=None):
+        label = _source_file_label(source_file_ids)
+        self.calls.append(("relevant", mode if label is None else f"{mode}:{label}"))
         if self.relevant_empty:
             return []
         return [
@@ -96,10 +104,10 @@ class FakeContext:
             )
         ]
 
-    async def get_graph_relevant_chunks(self, conversation_id, query, *, limit):
+    async def get_graph_relevant_chunks(self, conversation_id, query, *, limit, source_file_ids=None):
         return self.graph_chunks[:limit]
 
-    async def get_course_sections(self, conversation_id):
+    async def get_course_sections(self, conversation_id, source_file_ids=None):
         return [
             Chunk(
                 text="section",
@@ -110,12 +118,12 @@ class FakeContext:
             )
         ]
 
-    async def get_equations(self, conversation_id):
-        self.calls.append(("equations", None))
+    async def get_equations(self, conversation_id, source_file_ids=None):
+        self.calls.append(("equations", _source_file_label(source_file_ids)))
         return []
 
-    async def get_tables(self, conversation_id):
-        self.calls.append(("tables", None))
+    async def get_tables(self, conversation_id, source_file_ids=None):
+        self.calls.append(("tables", _source_file_label(source_file_ids)))
         return []
 
 
@@ -136,6 +144,19 @@ class CourseContextPolicyTests(unittest.IsolatedAsyncioTestCase):
         ]
 
         self.assertEqual([chunk.chunk_id for chunk in _searchable_chunks(chunks)], ["intent"])
+
+    def test_allowed_chunk_filter_removes_hits_outside_selected_files(self) -> None:
+        if _filter_allowed_chunks is None:
+            self.skipTest("backend runtime dependencies are not installed")
+        chunks = [
+            Chunk(text="selected", source="a.pdf", score=1, chunk_id="selected", metadata={}),
+            Chunk(text="other", source="b.pdf", score=1, chunk_id="other", metadata={}),
+        ]
+
+        self.assertEqual(
+            [chunk.chunk_id for chunk in _filter_allowed_chunks(chunks, {"selected"})],
+            ["selected"],
+        )
 
     async def test_quiz_without_topic_uses_broad_generator_context(self) -> None:
         if Settings is None or RetrievalOrchestrator is None:
@@ -161,6 +182,29 @@ class CourseContextPolicyTests(unittest.IsolatedAsyncioTestCase):
             context.calls,
             [("generator", "quiz")],
         )
+
+    async def test_broad_generator_context_receives_selected_source_files(self) -> None:
+        if Settings is None or RetrievalOrchestrator is None:
+            self.skipTest("backend runtime dependencies are not installed")
+        context = FakeContext()
+        orchestrator = RetrievalOrchestrator(
+            settings=Settings(
+                retrieval_rerank_enabled=False,
+                retrieval_context_expansion_enabled=False,
+            ),
+            context_service=context,  # type: ignore[arg-type]
+        )
+
+        chunks = await orchestrator.retrieve_for(
+            output_type="quiz",
+            query="",
+            conversation_id="00000000-0000-0000-0000-000000000000",
+            topic=None,
+            source_file_ids=["uploads/a.pdf", "uploads/b.pdf"],
+        )
+
+        self.assertEqual(chunks[0].chunk_id, "outline")
+        self.assertEqual(context.calls, [("generator", "quiz:uploads/a.pdf,uploads/b.pdf")])
 
     async def test_podcast_without_topic_uses_broad_generator_context(self) -> None:
         if Settings is None or RetrievalOrchestrator is None:
@@ -291,6 +335,28 @@ class CourseContextPolicyTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(chunks[0].chunk_id, "c1")
         self.assertEqual(context.calls, [("relevant", "semantic_topk")])
+
+    async def test_specific_retrieval_receives_selected_source_files(self) -> None:
+        if Settings is None or RetrievalOrchestrator is None:
+            self.skipTest("backend runtime dependencies are not installed")
+        context = FakeContext()
+        orchestrator = RetrievalOrchestrator(
+            settings=Settings(
+                retrieval_rerank_enabled=False,
+                retrieval_context_expansion_enabled=False,
+            ),
+            context_service=context,  # type: ignore[arg-type]
+        )
+
+        chunks = await orchestrator.retrieve_for(
+            output_type="text",
+            query="what is the difference between SVD and NCF?",
+            conversation_id="00000000-0000-0000-0000-000000000000",
+            source_file_ids=["uploads/lecture.pdf"],
+        )
+
+        self.assertEqual(chunks[0].chunk_id, "c1")
+        self.assertEqual(context.calls, [("relevant", "semantic_topk:uploads/lecture.pdf")])
 
     async def test_graph_candidates_are_merged_before_reranking(self) -> None:
         if Settings is None or RetrievalOrchestrator is None:

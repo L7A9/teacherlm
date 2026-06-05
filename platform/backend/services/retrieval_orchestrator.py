@@ -80,6 +80,7 @@ class RetrievalOrchestrator:
         query: str,
         conversation_id: uuid.UUID | str,
         topic: str | None = None,
+        source_file_ids: list[str] | None = None,
     ) -> list[Chunk]:
         if output_type in _BROAD_NO_TOPIC_OUTPUTS and not topic:
             return await self._context.get_generator_context(
@@ -87,14 +88,30 @@ class RetrievalOrchestrator:
                 output_type=output_type,
                 query=query,
                 topic=topic,
+                source_file_ids=source_file_ids,
             )
 
         if output_type in {"text", "chat"} and _is_course_overview_query(query):
             overview = _dedupe_chunks(
                 [
-                    *(await self._context.get_mindmap_course_context(conversation_id)),
-                    *(await self._context.get_full_course_outline(conversation_id)),
-                    *(await self._context.get_representative_course_context(conversation_id)),
+                    *(
+                        await self._context.get_mindmap_course_context(
+                            conversation_id,
+                            source_file_ids=source_file_ids,
+                        )
+                    ),
+                    *(
+                        await self._context.get_full_course_outline(
+                            conversation_id,
+                            source_file_ids=source_file_ids,
+                        )
+                    ),
+                    *(
+                        await self._context.get_representative_course_context(
+                            conversation_id,
+                            source_file_ids=source_file_ids,
+                        )
+                    ),
                 ]
             )
             if overview:
@@ -103,6 +120,7 @@ class RetrievalOrchestrator:
                 mode="coverage_broad",
                 query="",
                 conversation_id=conversation_id,
+                source_file_ids=source_file_ids,
             )
 
         mode = self.mode_for(output_type)
@@ -110,13 +128,28 @@ class RetrievalOrchestrator:
             mode=mode,
             query=topic or query,
             conversation_id=conversation_id,
+            source_file_ids=source_file_ids,
         )
 
         if output_type in _TOPIC_OUTPUTS_WITH_SECTION_CONTEXT and (topic or query):
-            sections = await self._section_summaries_for_hits(conversation_id, chunks)
+            sections = await self._section_summaries_for_hits(
+                conversation_id,
+                chunks,
+                source_file_ids=source_file_ids,
+            )
             if output_type == "presentation":
-                sections.extend(await self._context.get_equations(conversation_id))
-                sections.extend(await self._context.get_tables(conversation_id))
+                sections.extend(
+                    await self._context.get_equations(
+                        conversation_id,
+                        source_file_ids=source_file_ids,
+                    )
+                )
+                sections.extend(
+                    await self._context.get_tables(
+                        conversation_id,
+                        source_file_ids=source_file_ids,
+                    )
+                )
             focused = _dedupe_chunks([*sections, *chunks])
             if focused:
                 return focused
@@ -125,6 +158,7 @@ class RetrievalOrchestrator:
                 output_type=output_type,
                 query="",
                 topic=None,
+                source_file_ids=source_file_ids,
             )
 
         return chunks
@@ -136,26 +170,42 @@ class RetrievalOrchestrator:
         query: str,
         conversation_id: uuid.UUID | str,
         full_corpus: bool = False,
+        source_file_ids: list[str] | None = None,
     ) -> list[Chunk]:
         if full_corpus:
-            return await self._context.get_course_sections(conversation_id)
+            return await self._context.get_course_sections(
+                conversation_id,
+                source_file_ids=source_file_ids,
+            )
 
-        chunks = await self._context.get_relevant_chunks(conversation_id, query, mode)
+        chunks = await self._context.get_relevant_chunks(
+            conversation_id,
+            query,
+            mode,
+            source_file_ids=source_file_ids,
+        )
         if query.strip():
             graph_chunks = await self._context.get_graph_relevant_chunks(
                 conversation_id,
                 query,
                 limit=max(self._settings.retrieval_top_k, self._settings.retrieval_rerank_top_k),
+                source_file_ids=source_file_ids,
             )
             if graph_chunks:
                 chunks = _dedupe_chunks([*graph_chunks, *chunks])
         chunks = await self._maybe_rerank(mode, query, chunks)
-        return await self._maybe_expand_context(mode, conversation_id, chunks)
+        return await self._maybe_expand_context(
+            mode,
+            conversation_id,
+            chunks,
+            source_file_ids=source_file_ids,
+        )
 
     async def _section_summaries_for_hits(
         self,
         conversation_id: uuid.UUID | str,
         hits: list[Chunk],
+        source_file_ids: list[str] | None = None,
     ) -> list[Chunk]:
         section_ids = [
             str(chunk.metadata.get("section_id", "")).strip()
@@ -164,7 +214,10 @@ class RetrievalOrchestrator:
         ]
         if not section_ids:
             return []
-        all_sections = await self._context.get_course_sections(conversation_id)
+        all_sections = await self._context.get_course_sections(
+            conversation_id,
+            source_file_ids=source_file_ids,
+        )
         wanted = set(section_ids)
         return [
             Chunk(
@@ -264,6 +317,7 @@ class RetrievalOrchestrator:
         mode: RetrievalMode,
         conversation_id: uuid.UUID | str,
         chunks: list[Chunk],
+        source_file_ids: list[str] | None = None,
     ) -> list[Chunk]:
         if not self._settings.retrieval_context_expansion_enabled or not chunks:
             return chunks[: self._settings.retrieval_top_k]
@@ -273,7 +327,12 @@ class RetrievalOrchestrator:
         expanded: list[Chunk] = []
         for chunk in chunks[: self._settings.retrieval_top_k]:
             neighbors = await self._neighbors(chunk)
-            graph_neighbors = await self._graph_neighbors(conversation_id, chunk, chunks)
+            graph_neighbors = await self._graph_neighbors(
+                conversation_id,
+                chunk,
+                chunks,
+                source_file_ids=source_file_ids,
+            )
             parts = self._context_parts(chunk, [*neighbors, *graph_neighbors])
             metadata = dict(chunk.metadata)
             metadata.update({"retrieval_expanded": True, "retrieval_mode": mode})
@@ -304,6 +363,7 @@ class RetrievalOrchestrator:
         conversation_id: uuid.UUID | str,
         chunk: Chunk,
         current_chunks: list[Chunk],
+        source_file_ids: list[str] | None = None,
     ) -> list[Chunk]:
         if not chunk.chunk_id:
             return []
@@ -322,13 +382,13 @@ class RetrievalOrchestrator:
                 )
                 if not related_ids:
                     return []
-                result = await session.execute(
-                    select(SearchChunkRecord).where(
-                        SearchChunkRecord.conversation_id == uuid.UUID(str(conversation_id)),
-                        SearchChunkRecord.id.in_(related_ids),
-                    )
+                stmt = select(SearchChunkRecord).where(
+                    SearchChunkRecord.conversation_id == uuid.UUID(str(conversation_id)),
+                    SearchChunkRecord.id.in_(related_ids),
                 )
-                records = list(result.scalars().all())
+                if source_file_ids:
+                    stmt = stmt.where(SearchChunkRecord.source_file_id.in_(source_file_ids))
+                records = list((await session.execute(stmt)).scalars().all())
             return [
                 Chunk(
                     text=record.text[: self._settings.retrieval_expansion_max_chars],
@@ -338,6 +398,7 @@ class RetrievalOrchestrator:
                     metadata={
                         "context_type": "knowledge_graph_neighbor",
                         "section_id": str(record.section_id),
+                        "source_file_id": record.source_file_id,
                         "heading_path": " > ".join(record.heading_path or []),
                     },
                 )

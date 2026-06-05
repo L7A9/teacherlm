@@ -31,6 +31,8 @@ class RetrievalOrchestratorConfigTests(unittest.TestCase):
     def test_backend_reranker_is_enabled_for_all_generators_by_default(self) -> None:
         settings = Settings()
 
+        self.assertEqual(settings.retrieval_top_k, 16)
+        self.assertEqual(settings.retrieval_rerank_top_k, 16)
         self.assertTrue(settings.retrieval_rerank_enabled)
         self.assertTrue(settings.retrieval_rerank_warmup_enabled)
         self.assertEqual(settings.retrieval_reranker_model, "BAAI/bge-reranker-base")

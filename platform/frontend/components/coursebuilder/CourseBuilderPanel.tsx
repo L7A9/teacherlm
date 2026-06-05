@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import {
@@ -10,7 +10,6 @@ import {
   ChevronDown,
   ChevronRight,
   ClipboardCheck,
-  FileText,
   Lock,
   PlayCircle,
   RefreshCw,
@@ -29,7 +28,6 @@ import {
 } from "@/hooks/useCourseBuilder";
 import type {
   CourseBuilderChapter,
-  CourseBuilderLesson,
   CourseBuilderQuiz as CourseBuilderQuizType,
   CourseBuilderStatus,
   UUID,
@@ -71,19 +69,21 @@ export function CourseBuilderPanel({ conversationId }: Props) {
   const chapters = useMemo(() => data?.chapters ?? [], [data?.chapters]);
   const [activeChapterId, setActiveChapterId] = useState<UUID | null>(null);
   const [activeContentKey, setActiveContentKey] = useState<string | null>(null);
+  const [autoOpenedCourseId, setAutoOpenedCourseId] = useState<UUID | null>(null);
+  const previousCourseIdRef = useRef<UUID | null>(null);
   const activeChapter = useMemo(
     () =>
-      chapters.find((chapter) => chapter.id === activeChapterId && !chapter.is_locked) ??
-      chapters.find((chapter) => !chapter.is_locked) ??
-      chapters[0] ??
-      null,
+      chapters.find((chapter) => chapter.id === activeChapterId && !chapter.is_locked) ?? null,
     [activeChapterId, chapters],
   );
 
   const selectChapter = (chapterId: UUID) => {
-    if (chapterId !== activeChapterId) {
+    if (chapterId === activeChapterId) {
       setActiveContentKey(null);
+      setActiveChapterId(null);
+      return;
     }
+    setActiveContentKey(null);
     setActiveChapterId(chapterId);
   };
 
@@ -92,14 +92,50 @@ export function CourseBuilderPanel({ conversationId }: Props) {
   };
 
   useEffect(() => {
-    if (activeChapter && activeChapter.id !== activeChapterId) {
-      setActiveChapterId(activeChapter.id);
+    const courseId = data?.id ?? null;
+    if (previousCourseIdRef.current === courseId) {
+      return;
     }
-  }, [activeChapter, activeChapterId]);
+    previousCourseIdRef.current = courseId;
+    setActiveChapterId(null);
+    setActiveContentKey(null);
+    setAutoOpenedCourseId(null);
+  }, [data?.id]);
+
+  useEffect(() => {
+    const courseId = data?.id ?? null;
+    if (
+      !courseId ||
+      autoOpenedCourseId === courseId ||
+      activeChapterId ||
+      chapters.length === 0
+    ) {
+      return;
+    }
+    const firstOpenableChapter = chapters.find((chapter) => !chapter.is_locked) ?? chapters[0];
+    if (!firstOpenableChapter) return;
+    setActiveChapterId(firstOpenableChapter.id);
+    setAutoOpenedCourseId(courseId);
+  }, [activeChapterId, autoOpenedCourseId, chapters, data?.id]);
+
+  useEffect(() => {
+    if (!activeChapterId) return;
+    const activeStillExists = chapters.some(
+      (chapter) => chapter.id === activeChapterId && !chapter.is_locked,
+    );
+    if (!activeStillExists) {
+      setActiveChapterId(null);
+      setActiveContentKey(null);
+    }
+  }, [activeChapterId, chapters]);
 
   useEffect(() => {
     if (!activeChapter || !activeContentKey) return;
-    const validKeys = new Set(activeChapter.lessons.map((lesson) => lessonContentKey(lesson.id)));
+    const validKeys = new Set(
+      activeChapter.lessons.flatMap((lesson) =>
+        lesson.blocks.map((block) => subchapterContentKey(block.id)),
+      ),
+    );
     if (activeChapter.quiz) {
       validKeys.add(quizContentKey(activeChapter.id));
     }
@@ -234,7 +270,7 @@ export function CourseBuilderPanel({ conversationId }: Props) {
       <CourseBuilderAccordion
         conversationId={conversationId}
         chapters={chapters}
-        activeChapterId={activeChapter?.id ?? null}
+        activeChapterId={activeChapterId}
         activeContentKey={activeContentKey}
         onSelectChapter={selectChapter}
         onToggleContent={toggleContent}
@@ -337,15 +373,11 @@ function ChapterAccordionItem({
           )}
 
           <div className="flex flex-col gap-1.5">
-            {chapter.lessons.map((lesson, index) => (
-              <LessonAccordionItem
-                key={lesson.id}
-                lesson={lesson}
-                index={index}
-                open={activeContentKey === lessonContentKey(lesson.id)}
-                onToggle={() => onToggleContent(lessonContentKey(lesson.id))}
-              />
-            ))}
+            <ChapterSubchapterBlocks
+              chapter={chapter}
+              activeContentKey={activeContentKey}
+              onToggleContent={onToggleContent}
+            />
             {chapter.quiz && (
               <QuizAccordionItem
                 conversationId={conversationId}
@@ -355,7 +387,7 @@ function ChapterAccordionItem({
                 onToggle={() => onToggleContent(quizContentKey(chapter.id))}
               />
             )}
-            {chapter.lessons.length === 0 && !chapter.quiz && (
+            {chapterSubchapterCount(chapter) === 0 && !chapter.quiz && (
               <p className="text-xs leading-5 text-muted-foreground">
                 No content or quiz was generated for this chapter.
               </p>
@@ -367,74 +399,34 @@ function ChapterAccordionItem({
   );
 }
 
-function LessonAccordionItem({
-  lesson,
-  index,
-  open,
-  onToggle,
+function ChapterSubchapterBlocks({
+  chapter,
+  activeContentKey,
+  onToggleContent,
 }: {
-  lesson: CourseBuilderLesson;
-  index: number;
-  open: boolean;
-  onToggle: () => void;
+  chapter: CourseBuilderChapter;
+  activeContentKey: string | null;
+  onToggleContent: (contentKey: string) => void;
 }) {
-  return (
-    <section className="flex flex-col">
-      <button
-        type="button"
-        className={cn(
-          "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          open ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted/70",
-        )}
-        onClick={onToggle}
-        aria-expanded={open}
-      >
-        <span
-          className={cn(
-            "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold",
-            open ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
-          )}
-        >
-          {index + 1}
-        </span>
-        <FileText className={cn("h-3.5 w-3.5 shrink-0", open ? "text-primary" : "text-muted-foreground")} />
-        <span className="min-w-0 flex-1 truncate font-medium">{lesson.title}</span>
-        <Badge variant="muted">{subchapterLabel(lesson.blocks.length)}</Badge>
-        <Badge variant={lesson.support_status === "supported" ? "success" : "warning"}>
-          {lesson.support_status === "supported" ? "Supported" : "Needs source"}
-        </Badge>
-        {open ? (
-          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        ) : (
-          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        )}
-      </button>
-      {open && <LessonDetail lesson={lesson} />}
-    </section>
-  );
-}
+  const blocks = chapter.lessons.flatMap((lesson) => lesson.blocks);
+  if (blocks.length === 0) {
+    return null;
+  }
 
-function LessonDetail({ lesson }: { lesson: CourseBuilderLesson }) {
   return (
-    <div className="flex flex-col gap-3 border-l border-border py-2 pl-4">
-      {lesson.learning_objectives.length > 0 && (
-        <ul className="list-disc space-y-1 pl-4 text-[11px] leading-4 text-muted-foreground">
-          {lesson.learning_objectives.map((objective) => (
-            <li key={objective}>{objective}</li>
-          ))}
-        </ul>
-      )}
-      {lesson.blocks.length > 0 ? (
-        <div className="flex flex-col gap-2">
-          {lesson.blocks.map((block, index) => (
-            <LessonBlockRenderer key={block.id} block={block} index={index} />
-          ))}
-        </div>
-      ) : (
-        <p className="text-xs leading-5 text-muted-foreground">
-          No subchapters were generated under this title.
-        </p>
-      )}
+    <div className="flex flex-col gap-2">
+      {blocks.map((block, index) => {
+        const contentKey = subchapterContentKey(block.id);
+        return (
+          <LessonBlockRenderer
+            key={block.id}
+            block={block}
+            index={index}
+            open={activeContentKey === contentKey}
+            onToggle={() => onToggleContent(contentKey)}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -493,12 +485,12 @@ function ChapterStatusIcon({ chapter }: { chapter: CourseBuilderChapter }) {
   return <PlayCircle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />;
 }
 
-function lessonContentKey(lessonId: UUID): string {
-  return `lesson:${lessonId}`;
-}
-
 function quizContentKey(chapterId: UUID): string {
   return `quiz:${chapterId}`;
+}
+
+function subchapterContentKey(blockId: UUID): string {
+  return `subchapter:${blockId}`;
 }
 
 function chapterSubchapterCount(chapter: CourseBuilderChapter): number {

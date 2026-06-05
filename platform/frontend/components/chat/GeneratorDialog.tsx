@@ -48,11 +48,18 @@ const DESCRIPTIONS: Record<OutputType, string> = {
   mindmap: "A bird's-eye view of every theme in your uploaded materials.",
 };
 
+const EMPTY_SOURCE_FILE_IDS: string[] = [];
+
 export function GeneratorDialog() {
   const { open, outputType } = useUiStore((s) => s.generatorDialog);
   const closeDialog = useUiStore((s) => s.closeGeneratorDialog);
   const activeConversationId = useConversationStore((s) => s.activeConversationId);
   const forcedLanguage = useSettingsStore((s) => s.forcedLanguage);
+  const sourceFileIds = useUiStore((s) =>
+    activeConversationId
+      ? s.sourceFileSelectionByConversation[activeConversationId] ?? EMPTY_SOURCE_FILE_IDS
+      : EMPTY_SOURCE_FILE_IDS,
+  );
   const runGenerate = useGenerateStream();
 
   if (!outputType) {
@@ -77,6 +84,7 @@ export function GeneratorDialog() {
         output_type: outputType,
         options: mergedOptions,
         topic: topic.trim() || null,
+        source_file_ids: sourceFileIds,
       });
     } catch (err) {
       toast.error(`Generation failed: ${(err as Error).message}`);

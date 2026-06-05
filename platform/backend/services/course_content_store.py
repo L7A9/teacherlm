@@ -68,12 +68,23 @@ class CourseContentStore:
         )
         await session.flush()
 
-    async def get_documents(self, session: AsyncSession, conversation_id: uuid.UUID) -> list[CourseDocumentRecord]:
-        result = await session.execute(
+    async def get_documents(
+        self,
+        session: AsyncSession,
+        conversation_id: uuid.UUID,
+        *,
+        source_file_ids: list[str] | None = None,
+    ) -> list[CourseDocumentRecord]:
+        if source_file_ids == []:
+            return []
+        stmt = (
             select(CourseDocumentRecord)
             .where(CourseDocumentRecord.conversation_id == conversation_id)
             .order_by(CourseDocumentRecord.created_at, CourseDocumentRecord.title)
         )
+        if source_file_ids:
+            stmt = stmt.where(CourseDocumentRecord.source_file_id.in_(source_file_ids))
+        result = await session.execute(stmt)
         return list(result.scalars().all())
 
     async def get_sections(
@@ -82,7 +93,10 @@ class CourseContentStore:
         conversation_id: uuid.UUID,
         *,
         section_ids: list[str] | None = None,
+        source_file_ids: list[str] | None = None,
     ) -> list[CourseSectionRecord]:
+        if source_file_ids == []:
+            return []
         stmt = (
             select(CourseSectionRecord)
             .where(CourseSectionRecord.conversation_id == conversation_id)
@@ -90,6 +104,12 @@ class CourseContentStore:
         )
         if section_ids:
             stmt = stmt.where(CourseSectionRecord.id.in_([uuid.UUID(s) for s in section_ids]))
+        if source_file_ids:
+            document_ids = select(CourseDocumentRecord.id).where(
+                CourseDocumentRecord.conversation_id == conversation_id,
+                CourseDocumentRecord.source_file_id.in_(source_file_ids),
+            )
+            stmt = stmt.where(CourseSectionRecord.document_id.in_(document_ids))
         result = await session.execute(stmt)
         return list(result.scalars().all())
 
@@ -106,13 +126,19 @@ class CourseContentStore:
         conversation_id: uuid.UUID,
         *,
         limit: int = 5000,
+        source_file_ids: list[str] | None = None,
     ) -> list[RetrievalChunk]:
-        result = await session.execute(
+        if source_file_ids == []:
+            return []
+        stmt = (
             select(SearchChunkRecord)
             .where(SearchChunkRecord.conversation_id == conversation_id)
             .order_by(SearchChunkRecord.document_id, SearchChunkRecord.chunk_index)
             .limit(limit)
         )
+        if source_file_ids:
+            stmt = stmt.where(SearchChunkRecord.source_file_id.in_(source_file_ids))
+        result = await session.execute(stmt)
         return [record_to_chunk(record) for record in result.scalars().all()]
 
     async def get_neighbor_chunks(

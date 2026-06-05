@@ -54,12 +54,15 @@ class CourseContextService:
         conversation_id: uuid.UUID | str,
         query: str,
         mode: RetrievalMode = "semantic_topk",
+        *,
+        source_file_ids: list[str] | None = None,
     ) -> list[Chunk]:
         async with session_scope() as session:
             all_chunks = await self._store.get_chunks(
                 session,
                 uuid.UUID(str(conversation_id)),
                 limit=self._settings.course_context_max_chunks,
+                source_file_ids=source_file_ids,
             )
         searchable_chunks = _searchable_chunks(all_chunks)
         if not searchable_chunks:
@@ -77,6 +80,7 @@ class CourseContextService:
         query: str,
         *,
         limit: int = 12,
+        source_file_ids: list[str] | None = None,
     ) -> list[Chunk]:
         """Return chunks connected to query-matching knowledge graph nodes."""
 
@@ -130,18 +134,13 @@ class CourseContextService:
                 chunk_ids = _graph_chunk_ids(node_scores, nodes, edges, limit=max(limit * 2, 16))
                 if not chunk_ids:
                     return []
-                records = list(
-                    (
-                        await session.execute(
-                            select(SearchChunkRecord).where(
-                                SearchChunkRecord.conversation_id == cid,
-                                SearchChunkRecord.id.in_(chunk_ids),
-                            )
-                        )
-                    )
-                    .scalars()
-                    .all()
+                stmt = select(SearchChunkRecord).where(
+                    SearchChunkRecord.conversation_id == cid,
+                    SearchChunkRecord.id.in_(chunk_ids),
                 )
+                if source_file_ids:
+                    stmt = stmt.where(SearchChunkRecord.source_file_id.in_(source_file_ids))
+                records = list((await session.execute(stmt)).scalars().all())
         except Exception:
             logger.exception("knowledge graph retrieval candidates failed; continuing without graph candidates")
             return []
@@ -169,9 +168,17 @@ class CourseContextService:
                 break
         return out
 
-    async def get_full_course_outline(self, conversation_id: uuid.UUID | str) -> list[Chunk]:
+    async def get_full_course_outline(
+        self,
+        conversation_id: uuid.UUID | str,
+        source_file_ids: list[str] | None = None,
+    ) -> list[Chunk]:
         async with session_scope() as session:
-            sections = await self._store.get_sections(session, uuid.UUID(str(conversation_id)))
+            sections = await self._store.get_sections(
+                session,
+                uuid.UUID(str(conversation_id)),
+                source_file_ids=source_file_ids,
+            )
         if not sections:
             return []
         lines = []
@@ -189,9 +196,17 @@ class CourseContextService:
             )
         ]
 
-    async def get_course_sections(self, conversation_id: uuid.UUID | str) -> list[Chunk]:
+    async def get_course_sections(
+        self,
+        conversation_id: uuid.UUID | str,
+        source_file_ids: list[str] | None = None,
+    ) -> list[Chunk]:
         async with session_scope() as session:
-            sections = await self._store.get_sections(session, uuid.UUID(str(conversation_id)))
+            sections = await self._store.get_sections(
+                session,
+                uuid.UUID(str(conversation_id)),
+                source_file_ids=source_file_ids,
+            )
         return [self._section_to_chunk(section, context_type="course_section") for section in sections]
 
     async def get_section_content(self, section_id: uuid.UUID | str) -> Chunk | None:
@@ -202,9 +217,14 @@ class CourseContextService:
     async def get_representative_course_context(
         self,
         conversation_id: uuid.UUID | str,
+        source_file_ids: list[str] | None = None,
     ) -> list[Chunk]:
         async with session_scope() as session:
-            sections = await self._store.get_sections(session, uuid.UUID(str(conversation_id)))
+            sections = await self._store.get_sections(
+                session,
+                uuid.UUID(str(conversation_id)),
+                source_file_ids=source_file_ids,
+            )
         if not sections:
             return []
         major = [section for section in sections if section.level <= 2] or sections
@@ -214,10 +234,22 @@ class CourseContextService:
             major = major[::stride][:target]
         return [self._section_summary_chunk(section, "representative_section") for section in major]
 
-    async def get_mindmap_course_context(self, conversation_id: uuid.UUID | str) -> list[Chunk]:
+    async def get_mindmap_course_context(
+        self,
+        conversation_id: uuid.UUID | str,
+        source_file_ids: list[str] | None = None,
+    ) -> list[Chunk]:
         async with session_scope() as session:
-            documents = await self._store.get_documents(session, uuid.UUID(str(conversation_id)))
-            sections = await self._store.get_sections(session, uuid.UUID(str(conversation_id)))
+            documents = await self._store.get_documents(
+                session,
+                uuid.UUID(str(conversation_id)),
+                source_file_ids=source_file_ids,
+            )
+            sections = await self._store.get_sections(
+                session,
+                uuid.UUID(str(conversation_id)),
+                source_file_ids=source_file_ids,
+            )
         if not documents:
             return []
 
@@ -249,26 +281,60 @@ class CourseContextService:
         self,
         conversation_id: uuid.UUID | str,
         topic: str,
+        source_file_ids: list[str] | None = None,
     ) -> list[Chunk]:
-        chunks = await self.get_relevant_chunks(conversation_id, topic, "semantic_topk")
+        chunks = await self.get_relevant_chunks(
+            conversation_id,
+            topic,
+            "semantic_topk",
+            source_file_ids=source_file_ids,
+        )
         section_ids = _section_ids(chunks)
         async with session_scope() as session:
             sections = await self._store.get_sections(
                 session,
                 uuid.UUID(str(conversation_id)),
                 section_ids=list(section_ids),
+                source_file_ids=source_file_ids,
             )
         summaries = [self._section_summary_chunk(section, "topic_section") for section in sections]
         return _dedupe_chunks([*summaries, *chunks])
 
-    async def get_equations(self, conversation_id: uuid.UUID | str) -> list[Chunk]:
-        return await self._typed_section_items(conversation_id, "equations", "equations")
+    async def get_equations(
+        self,
+        conversation_id: uuid.UUID | str,
+        source_file_ids: list[str] | None = None,
+    ) -> list[Chunk]:
+        return await self._typed_section_items(
+            conversation_id,
+            "equations",
+            "equations",
+            source_file_ids=source_file_ids,
+        )
 
-    async def get_tables(self, conversation_id: uuid.UUID | str) -> list[Chunk]:
-        return await self._typed_section_items(conversation_id, "tables", "tables")
+    async def get_tables(
+        self,
+        conversation_id: uuid.UUID | str,
+        source_file_ids: list[str] | None = None,
+    ) -> list[Chunk]:
+        return await self._typed_section_items(
+            conversation_id,
+            "tables",
+            "tables",
+            source_file_ids=source_file_ids,
+        )
 
-    async def get_timeline_events(self, conversation_id: uuid.UUID | str) -> list[Chunk]:
-        return await self._typed_section_items(conversation_id, "timeline_events", "timeline_events")
+    async def get_timeline_events(
+        self,
+        conversation_id: uuid.UUID | str,
+        source_file_ids: list[str] | None = None,
+    ) -> list[Chunk]:
+        return await self._typed_section_items(
+            conversation_id,
+            "timeline_events",
+            "timeline_events",
+            source_file_ids=source_file_ids,
+        )
 
     async def get_generator_context(
         self,
@@ -277,13 +343,23 @@ class CourseContextService:
         output_type: str,
         query: str,
         topic: str | None = None,
+        source_file_ids: list[str] | None = None,
     ) -> list[Chunk]:
         if output_type in {"text", "chat"}:
-            return await self.get_relevant_chunks(conversation_id, query, "semantic_topk")
+            return await self.get_relevant_chunks(
+                conversation_id,
+                query,
+                "semantic_topk",
+                source_file_ids=source_file_ids,
+            )
 
         if output_type == "podcast":
             if topic:
-                focused = await self.get_topic_context(conversation_id, topic)
+                focused = await self.get_topic_context(
+                    conversation_id,
+                    topic,
+                    source_file_ids=source_file_ids,
+                )
                 if focused:
                     return focused
                 return await self.get_generator_context(
@@ -291,46 +367,86 @@ class CourseContextService:
                     output_type=output_type,
                     query="",
                     topic=None,
+                    source_file_ids=source_file_ids,
                 )
             return _dedupe_chunks(
                 [
-                    *(await self.get_full_course_outline(conversation_id)),
-                    *(await self.get_relevant_chunks(conversation_id, "", "narrative_arc")),
-                    *(await self.get_representative_course_context(conversation_id)),
+                    *(await self.get_full_course_outline(conversation_id, source_file_ids=source_file_ids)),
+                    *(
+                        await self.get_relevant_chunks(
+                            conversation_id,
+                            "",
+                            "narrative_arc",
+                            source_file_ids=source_file_ids,
+                        )
+                    ),
+                    *(
+                        await self.get_representative_course_context(
+                            conversation_id,
+                            source_file_ids=source_file_ids,
+                        )
+                    ),
                 ]
             )
 
         if output_type == "quiz":
             if topic:
-                return await self.get_topic_context(conversation_id, topic)
+                return await self.get_topic_context(
+                    conversation_id,
+                    topic,
+                    source_file_ids=source_file_ids,
+                )
             return _dedupe_chunks(
                 [
-                    *(await self.get_full_course_outline(conversation_id)),
-                    *(await self.get_representative_course_context(conversation_id)),
-                    *(await self.get_equations(conversation_id)),
-                    *(await self.get_tables(conversation_id)),
+                    *(await self.get_full_course_outline(conversation_id, source_file_ids=source_file_ids)),
+                    *(
+                        await self.get_representative_course_context(
+                            conversation_id,
+                            source_file_ids=source_file_ids,
+                        )
+                    ),
+                    *(await self.get_equations(conversation_id, source_file_ids=source_file_ids)),
+                    *(await self.get_tables(conversation_id, source_file_ids=source_file_ids)),
                 ]
             )
 
         if output_type == "mindmap":
             if topic:
-                return await self.get_topic_context(conversation_id, topic)
-            return await self.get_mindmap_course_context(conversation_id)
+                return await self.get_topic_context(
+                    conversation_id,
+                    topic,
+                    source_file_ids=source_file_ids,
+                )
+            return await self.get_mindmap_course_context(
+                conversation_id,
+                source_file_ids=source_file_ids,
+            )
 
         if output_type == "presentation":
             if topic:
                 return _dedupe_chunks(
                     [
-                        *(await self.get_topic_context(conversation_id, topic)),
-                        *(await self.get_equations(conversation_id)),
-                        *(await self.get_tables(conversation_id)),
+                        *(
+                            await self.get_topic_context(
+                                conversation_id,
+                                topic,
+                                source_file_ids=source_file_ids,
+                            )
+                        ),
+                        *(await self.get_equations(conversation_id, source_file_ids=source_file_ids)),
+                        *(await self.get_tables(conversation_id, source_file_ids=source_file_ids)),
                     ]
                 )
             return _dedupe_chunks(
                 [
-                    *(await self.get_representative_course_context(conversation_id)),
-                    *(await self.get_equations(conversation_id)),
-                    *(await self.get_tables(conversation_id)),
+                    *(
+                        await self.get_representative_course_context(
+                            conversation_id,
+                            source_file_ids=source_file_ids,
+                        )
+                    ),
+                    *(await self.get_equations(conversation_id, source_file_ids=source_file_ids)),
+                    *(await self.get_tables(conversation_id, source_file_ids=source_file_ids)),
                 ]
             )
 
@@ -339,9 +455,15 @@ class CourseContextService:
                 conversation_id,
                 query or topic or "",
                 "relationship_dense",
+                source_file_ids=source_file_ids,
             )
 
-        return await self.get_relevant_chunks(conversation_id, query, "semantic_topk")
+        return await self.get_relevant_chunks(
+            conversation_id,
+            query,
+            "semantic_topk",
+            source_file_ids=source_file_ids,
+        )
 
     async def _retrieve_from_chunks(
         self,
@@ -377,22 +499,38 @@ class CourseContextService:
         retriever.index_bm25(all_chunks)
 
         k = self._settings.retrieval_top_k
+        allowed_chunk_ids = {chunk.chunk_id for chunk in all_chunks if chunk.chunk_id}
         match mode:
             case "semantic_topk":
-                return _merge_formula_hits(
-                    query,
-                    await self._semantic_topk(query, retriever, k),
-                    all_chunks,
-                    target=max(k, self._settings.retrieval_rerank_candidate_k),
+                return _filter_allowed_chunks(
+                    _merge_formula_hits(
+                        query,
+                        await self._semantic_topk(query, retriever, k),
+                        all_chunks,
+                        target=max(k, self._settings.retrieval_rerank_candidate_k),
+                    ),
+                    allowed_chunk_ids,
                 )
             case "coverage_broad":
-                return await coverage_broad(query, retriever, k=max(k * 2, 16))
+                return _filter_allowed_chunks(
+                    await coverage_broad(query, retriever, k=max(k * 2, 16)),
+                    allowed_chunk_ids,
+                )
             case "narrative_arc":
-                return await narrative_arc(query, retriever, all_chunks)
+                return _filter_allowed_chunks(
+                    await narrative_arc(query, retriever, all_chunks),
+                    allowed_chunk_ids,
+                )
             case "topic_clusters":
-                return await topic_clusters(query, retriever, n_clusters=max(6, min(12, k)))
+                return _filter_allowed_chunks(
+                    await topic_clusters(query, retriever, n_clusters=max(6, min(12, k))),
+                    allowed_chunk_ids,
+                )
             case "relationship_dense":
-                return await relationship_dense(query, retriever)
+                return _filter_allowed_chunks(
+                    await relationship_dense(query, retriever),
+                    allowed_chunk_ids,
+                )
 
     def _get_vectors_or_none(self) -> object | None:
         if self._vectors is not None:
@@ -411,9 +549,15 @@ class CourseContextService:
         conversation_id: uuid.UUID | str,
         attr: str,
         context_type: str,
+        *,
+        source_file_ids: list[str] | None = None,
     ) -> list[Chunk]:
         async with session_scope() as session:
-            sections = await self._store.get_sections(session, uuid.UUID(str(conversation_id)))
+            sections = await self._store.get_sections(
+                session,
+                uuid.UUID(str(conversation_id)),
+                source_file_ids=source_file_ids,
+            )
         out: list[Chunk] = []
         for section in sections:
             items = getattr(section, attr)
@@ -646,6 +790,12 @@ def _dedupe_chunks(chunks: list[Chunk]) -> list[Chunk]:
         seen.add(chunk.chunk_id)
         out.append(chunk)
     return out
+
+
+def _filter_allowed_chunks(chunks: list[Chunk], allowed_chunk_ids: set[str]) -> list[Chunk]:
+    if not allowed_chunk_ids:
+        return []
+    return [chunk for chunk in chunks if chunk.chunk_id in allowed_chunk_ids]
 
 
 _SUPPLEMENTAL_DOCUMENT_RE = re.compile(

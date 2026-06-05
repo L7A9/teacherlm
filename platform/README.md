@@ -1,183 +1,236 @@
-# TeacherLM — Platform
+# TeacherLM Platform
 
-AI teacher for students. Upload course files, chat with a teacher grounded in
-those files, and generate quizzes, reports, mind maps, diagrams, podcasts, and
-presentations from the same corpus.
+The platform contains the FastAPI backend, Next.js frontend, background worker, and Docker Compose stack used by TeacherLM.
 
-The platform runs the user-facing app and infrastructure. Individual
-generators (teacher, quiz, report, etc.) are separate services registered in
-`../generators_registry.json` and brought up one at a time.
+## Services
 
-## Architecture
+`docker-compose.yml` starts:
 
+| Service | Purpose | Port |
+| --- | --- | ---: |
+| `frontend` | Next.js workspace UI | 3000 |
+| `backend` | FastAPI API server | 8000 |
+| `arq_worker` | ingestion and course-generation jobs | internal |
+| `postgres` | relational data | 5432 |
+| `redis` | ARQ queue | 6379 |
+| `qdrant` | vector search | 6333 |
+| `minio` | files, parsed markdown, artifacts | 9000 / 9001 |
+| `teacher_gen` | teacher chat generator | 8001 |
+| `quiz_gen` | quiz generator | 8002 |
+| `podcast_gen` | podcast generator | 8007 |
+| `mindmap_gen` | mind map generator | 8008 |
+
+The backend and generator containers use the host Ollama endpoint by default:
+
+```text
+http://host.docker.internal:11434
 ```
- ┌───────────┐     ┌─────────────┐    ┌──────────────┐
- │ frontend  │◄───►│  backend    │◄──►│  Postgres    │
- │ Next.js   │ SSE │  FastAPI    │    │  (messages,  │
- │ :3000     │     │  :8000      │    │   files,     │
- └───────────┘     └─────┬───────┘    │   learner)   │
-                         │            └──────────────┘
-                         │    enqueue
-                         ▼
-                   ┌───────────┐  ┌──────────┐  ┌──────────┐
-                   │  Redis    │  │ Qdrant   │  │ MinIO    │
-                   │  (arq)    │  │ vectors  │  │ files +  │
-                   │  :6379    │  │ :6333    │  │ artifacts│
-                   └───────────┘  └──────────┘  │ :9000    │
-                         │                      └──────────┘
-                         ▼
-                   ┌───────────┐
-                   │ arq_worker│     (runs ingestion: parse → chunk → embed)
-                   └───────────┘
-                         │
-                         ▼
-                   ┌───────────┐
-                   │  Ollama   │   (host-side — NOT in compose)
-                   │  :11434   │
-                   └───────────┘
-                         ▲
-                         │
-                   ┌───────────┐
-                   │ generators│   (teacher_gen, quiz_gen, … — separate
-                   │  (each    │    services dispatched by the backend
-                   │   their   │    through generators_registry.json)
-                   │   own svc)│
-                   └───────────┘
-```
-
-## Prerequisites
-
-- **Docker Desktop** (or Docker Engine + `docker compose` v2)
-- **Ollama**, running locally on the host: <https://ollama.com>
-  - The compose stack reaches Ollama via `host.docker.internal`.
-- **LlamaCloud API key**: <https://cloud.llamaindex.ai> — required for parsing.
-  - This project uses `llama-cloud >= 1.0`. Do **not** install `llama-parse`
-    or `llama-cloud-services` (deprecated May 2026).
-- Python **3.14+** (only needed if you want to run the backend outside Docker).
-- Node **20+** (only needed if you want to run the frontend outside Docker).
 
 ## Setup
 
-### 1. Install the shared core package (editable)
-
-This step is only required if you plan to run the backend or generators on
-your host. Inside Docker the core package is installed automatically.
+From the repository root:
 
 ```bash
-cd packages/teacherlm_core
-pip install -e .
-```
-
-### 2. Copy and fill in environment variables
-
-```bash
+cp platform/.env.example platform/.env
+# Edit platform/.env before starting the stack.
+./run.sh build
 cd platform
-cp .env.example .env
-```
-
-Then edit `.env`:
-
-- `LLAMA_CLOUD_API_KEY` — required.
-- `OLLAMA_HOST` — leave as `http://localhost:11434` for host-side usage; the
-  compose stack automatically rewrites it to `host.docker.internal:11434`
-  inside the network.
-- `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` — change from defaults if deploying
-  anywhere beyond your laptop.
-- `NEXT_PUBLIC_API_BASE_URL` — point the browser at the backend URL users
-  will hit (defaults to `http://localhost:8000`).
-
-### 3. Start the stack
-
-```bash
-docker compose up -d --build
-```
-
-First build takes several minutes (Python 3.14 slim + fastembed wheels).
-
-### 4. Run the bootstrap script
-
-```bash
 ./scripts/init.sh
 ```
 
-This pulls the required Ollama models (`llama3.1:8b`, `nomic-embed-text`),
-creates the MinIO bucket, and applies Alembic migrations.
+`scripts/init.sh` pulls default Ollama models, creates the MinIO bucket, and runs Alembic migrations.
 
-Visit <http://localhost:3000>.
-
-## Bringing up generators
-
-All seven generators ship **disabled** in `../generators_registry.json`. That
-way the platform boots before any generator service exists, and the frontend
-greys out the buttons for missing types.
-
-Workflow per generator:
-
-1. Build the generator service under `generators/<name>_gen/` (each has its
-   own `CLAUDE.md` and I/O contract — see the root `CLAUDE.md`).
-2. Run it on a reachable URL (local port, another compose service, etc.).
-3. Flip `enabled: true` for that entry in `generators_registry.json` and set
-   its `url`. The backend picks the change up on next `/api/generators`
-   poll (it reloads the registry on startup and the frontend refetches on a
-   60 s stale time).
-4. The corresponding button in the chat footer becomes active.
-
-Recommended order: `teacher_gen` first (it's the chat default — the app is
-unusable without it), then any of the artifact generators.
-
-## Day-to-day
-
-- **Logs**: `docker compose logs -f backend arq_worker`
-- **Shell into backend**: `docker compose exec backend bash`
-- **New migration**: `docker compose exec backend alembic revision --autogenerate -m "..."`, commit the file, then `./scripts/init.sh` on peers to apply.
-- **MinIO console**: <http://localhost:9001> (creds from `.env`).
-- **Qdrant dashboard**: <http://localhost:6333/dashboard>.
-
-## Resetting
+Useful runtime commands from the repository root:
 
 ```bash
+./run.sh up
+./run.sh logs
+./run.sh ps
+./run.sh stop
+./run.sh down
+```
+
+The reset script removes local platform data:
+
+```bash
+cd platform
 ./scripts/reset.sh
 ```
 
-This stops containers and deletes their volumes. Everything — uploads,
-conversations, embeddings, learner state — is gone. Run `docker compose up -d`
-and `./scripts/init.sh` again to start fresh.
+## Environment
 
-## Running outside Docker
+Important environment groups:
 
-Each service can be run directly:
+- Database: `DATABASE_URL`
+- Queue: `REDIS_URL`
+- Vector store: `QDRANT_URL`, `QDRANT_COLLECTION`
+- Object storage: `MINIO_*`
+- Parser: `LLAMA_CLOUD_API_KEY`
+- Runtime settings encryption: `SETTINGS_ENCRYPTION_KEY`
+- Ollama defaults: `OLLAMA_URL`, `OLLAMA_CHAT_MODEL`, `OLLAMA_ANALYSIS_MODEL`, `OLLAMA_EMBED_MODEL`
+- Retrieval: `RETRIEVAL_*`
+- Course context: `COURSE_CONTEXT_*`
+- Ingestion worker limits: `INGESTION_*`
 
-```bash
-# Backend
-cd platform/backend
-pip install -r requirements.txt
-alembic upgrade head
-uvicorn main:app --reload --port 8000
+Do not commit real API keys in `.env` or `.env.example`.
 
-# arq worker (separate shell)
-arq workers.ingestion_worker.WorkerSettings
+Runtime model settings can also be configured through `/api/runtime-settings`. Supported LLM provider types are:
 
-# Frontend
-cd platform/frontend
-npm install
-npm run dev
+- `ollama`
+- `openai`
+- `anthropic`
+- `openai_compatible`
+
+Provider API keys stored through runtime settings are encrypted with `SETTINGS_ENCRYPTION_KEY`.
+
+## Backend App
+
+The FastAPI app lives in `platform/backend`.
+
+Included routers:
+
+- `/api/health`
+- `/api/conversations`
+- `/api/conversations/{conversation_id}/files`
+- `/api/conversations/{conversation_id}/chat`
+- `/api/conversations/{conversation_id}/generate`
+- `/api/generators`
+- `/api/conversations/{conversation_id}/coursebuilder`
+- `/api/conversations/{conversation_id}/course-player`
+- `/api/conversations/{conversation_id}/knowledge-checks`
+- `/api/conversations/{conversation_id}/knowledge-graph`
+- `/api/conversations/{conversation_id}/review-tests`
+- `/api/runtime-settings`
+
+On startup the backend loads the generator registry, ensures the MinIO bucket exists, warms the reranker when enabled, and creates the ARQ Redis pool.
+
+## File Ingestion
+
+Uploaded files are stored in MinIO and ingested by the ARQ worker.
+
+Pipeline:
+
+1. Parse file bytes with `llama-cloud`.
+2. Store parsed markdown in MinIO.
+3. Clean and normalize the markdown.
+4. Extract course documents, sections, concepts, and structure.
+5. Chunk sections and annotate search chunks.
+6. Store structured records in Postgres.
+7. Upsert vectors to Qdrant.
+8. Rebuild concepts, learning map, knowledge graph, and CourseBuilder output when all files are ready.
+
+The parser intentionally uses `llama-cloud >= 1.0`; deprecated `llama-parse` and `llama-cloud-services` are not used.
+
+## Chat And Generation
+
+Chat endpoint:
+
+```text
+POST /api/conversations/{conversation_id}/chat
 ```
 
-You'll still need Postgres / Redis / Qdrant / MinIO somewhere — the easiest
-path is `docker compose up -d postgres redis qdrant minio` while running the
-app code on your host.
+Generate endpoint:
 
-## Compatibility rules (non-negotiable)
+```text
+POST /api/conversations/{conversation_id}/generate
+```
 
-These are enforced by the stack and re-stated here for discoverability:
+Both stream server-sent events and accept `source_file_ids`.
 
-- **Python 3.14+** (strict)
-- **Never** LangChain / LangGraph (Pydantic V1 warnings on 3.14)
-- **Never** `llama-parse` or `llama-cloud-services` (deprecated May 2026)
-- **Use** `llama-cloud >= 1.0`
-- **Use** Pydantic V2 only (`>= 2.12`)
-- **Use** Ollama's native `format=` for structured outputs (no LangChain wrappers)
-- **Use** FastAPI `>= 0.135`
-- **Use** `fastembed` in preference to `sentence-transformers`
+Source-file behavior:
 
-See the root `CLAUDE.md` for the full contract.
+- If one ready file exists, the frontend forces it on.
+- If multiple ready files exist, the student selects files from the Sources sidebar.
+- Backend routes reject an explicit empty file selection.
+- Retrieval filters by selected ready file ids.
+- CourseBuilder does not use this filter; it uses all course files.
+
+Common SSE events:
+
+- `token` or `chunk`
+- `sources`
+- `artifact`
+- `progress`
+- `done`
+- `error`
+
+## Retrieval
+
+Default retrieval values:
+
+| Setting | Default |
+| --- | ---: |
+| `RETRIEVAL_TOP_K` | 16 |
+| `RETRIEVAL_RERANK_TOP_K` | 16 |
+| `RETRIEVAL_DENSE_CANDIDATE_K` | 80 |
+| `RETRIEVAL_SPARSE_CANDIDATE_K` | 80 |
+| `RETRIEVAL_RERANK_CANDIDATE_K` | 50 |
+
+Output type to retrieval mode mapping:
+
+| Output type | Mode |
+| --- | --- |
+| `text` | `semantic_topk` |
+| `quiz` | `coverage_broad` |
+| `podcast` | `narrative_arc` |
+| `mindmap` | `topic_clusters` |
+| `report` | `topic_clusters` |
+| `presentation` | `topic_clusters` |
+| `chart` / `diagram` | `relationship_dense` |
+
+The backend uses hybrid dense plus sparse retrieval, optional reranking, context expansion, section-aware context, course overview handling, and output-specific context policies.
+
+## CourseBuilder
+
+CourseBuilder is the generated course interface used by the frontend course pane.
+
+It:
+
+- Waits for course files to finish ingestion.
+- Uses all course materials in the conversation.
+- Extracts or reconstructs chapter and subchapter structure.
+- Generates grounded lessons with citations.
+- Generates chapter quizzes.
+- Records progress events and validation status.
+
+The active frontend displays chapters as open/close accordions. Subchapters are shown directly under the chapter summary rather than inside an extra lesson holder. Opening one subchapter closes the previous subchapter in that chapter.
+
+## Frontend App
+
+The frontend lives in `platform/frontend`.
+
+Main workspace surfaces:
+
+- Sources sidebar: upload files, see ingestion status, select source files.
+- Course pane: generated CourseBuilder content.
+- Chat pane: teacher chat and generator buttons.
+- Generated items sidebar: generated quiz, podcast, mind map, and downloadable artifacts.
+
+On mobile and tablet, a top-right toggle switches between course and chat views. This avoids nested popups when generator dialogs are open.
+
+## Scripts
+
+Backend scripts:
+
+- `scripts/evaluate_retrieval.py`
+- `scripts/eval_retrieval.py`
+- `scripts/eval_course_context.py`
+- `scripts/benchmark_embeddings.py`
+- `scripts/reindex_from_parsed.py`
+
+Platform scripts:
+
+- `scripts/init.sh`
+- `scripts/reset.sh`
+
+See `backend/evals/README.md` for retrieval and course-context evaluation usage.
+
+## Tests
+
+From the repository root:
+
+```bash
+pytest platform/backend/tests
+```
+
+The root `pytest.ini` also includes shared-core and generator test directories.
