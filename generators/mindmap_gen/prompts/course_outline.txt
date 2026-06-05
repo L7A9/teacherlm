@@ -9,9 +9,13 @@ Target shape:
   "Machine Learning", "Mathématiques", "Python", or "Blockchain" unless that
   is truly the document title.
 - {n_branches} major branches: the main conceptual modules of the lesson.
-- Each major branch: 2-5 subtopics.
-- Each subtopic: 0-4 concrete leaf concepts, examples, formulas, metrics,
+- Each major branch: 3-6 subtopics when the source supports them.
+- Each subtopic: 1-4 concrete leaf concepts, examples, formulas, metrics,
   variants, limitations, or named methods.
+- Prefer a 4-level study hierarchy when supported:
+  root -> major module -> category/method -> concrete detail.
+- The final map should resemble a NotebookLM mind map: compact labels,
+  meaningful nested groups, and enough detail to study from directly.
 
 Quality rules:
 - Use ONLY information present in the provided content.

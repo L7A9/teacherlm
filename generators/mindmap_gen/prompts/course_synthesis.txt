@@ -9,8 +9,12 @@ Target shape:
 - Central topic: the real course subject, not a file name, week number, broad
   school subject, or one lecture title.
 - {n_branches} major branches: the main modules students should study.
-- Each major branch: 2-5 subtopics.
-- Each subtopic: 0-4 concrete leaf details.
+- Each major branch: 3-6 subtopics when the extracted material supports them.
+- Each subtopic: 1-4 concrete leaf details when available.
+- Prefer a 4-level hierarchy when possible:
+  root -> major module -> category/method -> concrete detail.
+- The final shape should be rich like a NotebookLM mind map, not a flat list
+  of slide titles.
 
 Quality rules:
 - Use ONLY information that appears in the extracted outlines.

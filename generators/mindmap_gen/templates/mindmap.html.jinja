@@ -36,6 +36,16 @@
     }
     .header button:hover { background: #334155; color: #f1f5f9; }
     #mm { width: 100vw; height: calc(100vh - 45px); display: block; }
+    .markmap-link{fill:none!important}
+    .markmap-node{color:var(--branch-color,#cbd5e1)!important}
+    .markmap-node>line,
+    .markmap-node>circle{stroke:currentColor!important}
+    .markmap-foreign,
+    .markmap-foreign *{
+      color:inherit!important;
+      border-color:currentColor!important;
+      text-decoration-color:currentColor!important;
+    }
   </style>
 </head>
 <body>
@@ -56,29 +66,129 @@
     const BRANCH_COLORS = [
       "#60a5fa","#4ade80","#f472b6","#fb923c",
       "#a78bfa","#38bdf8","#34d399","#facc15",
-      "#e879f9","#2dd4bf"
+      "#e879f9","#2dd4bf","#f87171","#c084fc"
     ];
+    const ROOT_COLOR = "#cbd5e1";
 
     const svg = document.querySelector('#mm');
     const errEl = document.querySelector('#error');
 
-    function openInitialStudyDepth(node, depth = 0, maxOpenDepth = 3) {
+    function collapseInitialTree(node, depth = 0) {
       if (!node?.children?.length) return;
       node.payload = { ...(node.payload ?? {}) };
-      if (depth >= maxOpenDepth) {
-        node.payload.fold = 1;
-      } else {
+      if (depth === 0) {
         delete node.payload.fold;
+      } else {
+        node.payload.fold = 1;
       }
       for (const child of node.children) {
-        openInitialStudyDepth(child, depth + 1, maxOpenDepth);
+        collapseInitialTree(child, depth + 1);
       }
+    }
+
+    function fitMindmap(mm) {
+      try {
+        mm.fit?.();
+      } catch {
+        // ignore
+      }
+    }
+
+    function applyVisibleBranchColors() {
+      const branchNodes = Array.from(
+        svg.querySelectorAll('g.markmap-node[data-depth="2"]'),
+      );
+      const colorByBranchPath = new Map();
+      branchNodes.forEach((node, index) => {
+        const path = node.getAttribute('data-path');
+        if (path) {
+          colorByBranchPath.set(path, BRANCH_COLORS[index % BRANCH_COLORS.length]);
+        }
+      });
+
+      function resolveColor(path, depth) {
+        if (!path || depth === '1') return ROOT_COLOR;
+        const branchPath = path.split('.').slice(0, 2).join('.');
+        return (
+          colorByBranchPath.get(branchPath) ||
+          BRANCH_COLORS[fallbackColorIndex(branchPath) % BRANCH_COLORS.length]
+        );
+      }
+
+      for (const node of Array.from(svg.querySelectorAll('g.markmap-node'))) {
+        const color = resolveColor(
+          node.getAttribute('data-path'),
+          node.getAttribute('data-depth'),
+        );
+        node.style.setProperty('--branch-color', color);
+        node.style.setProperty('color', color, 'important');
+        for (const labelPart of Array.from(
+          node.querySelectorAll('foreignObject, foreignObject *'),
+        )) {
+          labelPart.style.setProperty('color', color, 'important');
+          labelPart.style.setProperty('border-color', color, 'important');
+          labelPart.style.setProperty('text-decoration-color', color, 'important');
+        }
+        node.querySelector('text')?.style.setProperty('fill', color, 'important');
+        for (const svgPart of Array.from(
+          node.querySelectorAll('circle,path,line,polyline'),
+        )) {
+          svgPart.setAttribute('stroke', color);
+          svgPart.style.setProperty('stroke', color, 'important');
+          if (svgPart.tagName.toLowerCase() === 'circle') {
+            svgPart.setAttribute('fill', color);
+            svgPart.style.setProperty('fill', color, 'important');
+          }
+        }
+      }
+
+      for (const link of Array.from(svg.querySelectorAll('path.markmap-link'))) {
+        const color = resolveColor(
+          link.getAttribute('data-path'),
+          link.getAttribute('data-depth'),
+        );
+        link.setAttribute('stroke', color);
+        link.setAttribute('fill', 'none');
+        link.style.setProperty('stroke', color, 'important');
+        link.style.setProperty('fill', 'none', 'important');
+      }
+    }
+
+    function refreshMindmapView(mm, delay = 80) {
+      window.setTimeout(() => {
+        fitMindmap(mm);
+        applyVisibleBranchColors();
+        window.setTimeout(() => applyVisibleBranchColors(), 420);
+      }, delay);
+    }
+
+    function fallbackColorIndex(value) {
+      let hash = 0;
+      for (let index = 0; index < value.length; index += 1) {
+        hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+      }
+      return hash;
+    }
+
+    function branchColor(node) {
+      let branch = node;
+      while (branch?.parent?.parent) {
+        branch = branch.parent;
+      }
+      if (!branch?.parent) return ROOT_COLOR;
+
+      const siblings = Array.isArray(branch.parent.children) ? branch.parent.children : [];
+      const siblingIndex = siblings.indexOf(branch);
+      const colorIndex = siblingIndex >= 0
+        ? siblingIndex
+        : fallbackColorIndex(String(branch?.state?.path ?? branch?.content ?? ""));
+      return BRANCH_COLORS[colorIndex % BRANCH_COLORS.length];
     }
 
     try {
       const transformer = new Transformer();
       const { root } = transformer.transform(markdown);
-      openInitialStudyDepth(root);
+      collapseInitialTree(root);
 
       const mm = Markmap.create(svg, {
         duration: 400,
@@ -92,13 +202,10 @@
           --markmap-circle-open-bg: #1e293b;
           --markmap-font: 400 13px/1.5 system-ui, sans-serif;
         }`,
-        color: (node) => {
-          const parts = String(node?.state?.path ?? "").split(".");
-          const branchIdx = parts.length >= 2 ? parseInt(parts[1]) || 0 : 0;
-          return BRANCH_COLORS[Math.abs(branchIdx) % BRANCH_COLORS.length];
-        },
+        color: branchColor,
       }, root);
-      window.setTimeout(() => mm.fit?.(), 80);
+      refreshMindmapView(mm);
+      svg.addEventListener('click', () => refreshMindmapView(mm, 450), true);
     } catch (err) {
       svg.style.display = 'none';
       errEl.style.display = 'block';

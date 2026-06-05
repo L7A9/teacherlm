@@ -76,6 +76,9 @@ async def generate(
     retrieval_query = _retrieval_query(body.output_type, body.topic)
     generation_options = await get_runtime_settings_service().resolve_options(session, body.options)
     if body.output_type == "mindmap":
+        generation_options.setdefault("llm_refine", True)
+        generation_options.setdefault("max_nodes", 110)
+        generation_options.setdefault("size", "standard")
         prior_mindmaps = await session.scalar(
             select(func.count())
             .select_from(Message)

@@ -431,31 +431,18 @@ const FIELDS_BY_TYPE: Record<OutputType, FieldSpec[]> = {
       ],
     },
   ],
-  mindmap: [
-    {
-      kind: "select",
-      name: "size",
-      label: "Size",
-      default: "standard",
-      options: [
-        { value: "concise", label: "Concise (~4 branches)" },
-        { value: "standard", label: "Standard (~6 branches)" },
-        { value: "comprehensive", label: "Comprehensive (~9 branches)" },
-      ],
-    },
-    {
-      kind: "number",
-      name: "max_nodes",
-      label: "Max nodes (hard cap)",
-      default: 60,
-      min: 15,
-      max: 200,
-      step: 5,
-    },
-  ],
+  mindmap: [],
 };
 
 function defaultsFor(outputType: OutputType): Record<string, unknown> {
+  if (outputType === "mindmap") {
+    return {
+      llm_refine: true,
+      max_nodes: 110,
+      size: "standard",
+    };
+  }
+
   const out: Record<string, unknown> = {};
   for (const field of FIELDS_BY_TYPE[outputType]) {
     out[field.name] = field.default;

@@ -11,8 +11,10 @@ the actual concepts from the module content.
 Return a structured hierarchy with:
 - central_topic: the likely subject of this batch
 - branches: 3-7 candidate course modules found in this batch
-- each branch: 2-5 subtopics
-- each subtopic: 0-4 concrete leaf details
+- each branch: 3-6 subtopics when the batch supports them
+- each subtopic: 1-4 concrete leaf details when available
+- preserve nested heading chains as category -> method/detail, so the merger
+  can build a NotebookLM-style map instead of a flat list
 
 Rules:
 - Use ONLY the provided batch content.
