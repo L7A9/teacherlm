@@ -1,37 +1,129 @@
 # teacherlm_core
 
-Shared library for the TeacherLM platform and generators. Installed as an editable local dependency by every generator and by the platform backend.
+`teacherlm_core` is the shared package installed by the platform and generator services. It holds the stable generator contract, retrieval primitives, LLM wrappers, shared prompts, and grounding utilities.
 
-## Modules
+## Package Areas
 
-- `retrieval/` — hybrid retriever, BM25, cross-encoder reranker, retrieval-mode strategies.
-- `llm/` — async Ollama client, streaming helper, structured-output helper.
-- `prompts/` — shared teacher personality prompt (`teacher_voice.txt`), tone guidelines, citation rules. All generators prepend `teacher_voice.txt` to their mode-specific system prompts.
-- `confidence/` — groundedness and coverage scoring.
-- `schemas/` — Pydantic V2 models for the cross-generator contract (`GeneratorInput`, `GeneratorOutput`, `LearnerState`, `Chunk`).
+```text
+teacherlm_core/
+  confidence/
+  llm/
+  prompts/
+  retrieval/
+  schemas/
+```
 
-## Install
+## Schemas
 
-From the repo root:
+The generator I/O contract is defined here and should remain stable.
+
+Input:
+
+```json
+{
+  "conversation_id": "string",
+  "user_message": "string",
+  "context_chunks": [
+    {
+      "text": "string",
+      "source": "string",
+      "score": 0.0,
+      "chunk_id": "string"
+    }
+  ],
+  "learner_state": {
+    "understood_concepts": [],
+    "struggling_concepts": [],
+    "mastery_scores": {},
+    "session_turns": 0
+  },
+  "chat_history": [
+    {
+      "role": "user",
+      "content": "string"
+    }
+  ],
+  "options": {}
+}
+```
+
+Output:
+
+```json
+{
+  "response": "markdown string",
+  "generator_id": "string",
+  "output_type": "text",
+  "artifacts": [],
+  "sources": [],
+  "learner_updates": {
+    "concepts_covered": [],
+    "concepts_demonstrated": [],
+    "concepts_struggled": []
+  },
+  "metadata": {}
+}
+```
+
+Artifact records may include fields such as `type`, `url`, `filename`, and `key`.
+
+## LLM Layer
+
+The shared `OllamaClient` wrapper supports:
+
+- Ollama
+- OpenAI
+- Anthropic
+- OpenAI-compatible providers
+
+For Ollama structured output, the wrapper uses the Ollama Python library native `format=` argument. Runtime provider overrides can be passed in generator input options by the platform.
+
+## Retrieval
+
+Core retrieval modules provide:
+
+- Hybrid dense plus sparse retrieval.
+- Reciprocal rank fusion.
+- Optional cross-encoder reranking through `fastembed`.
+- Retrieval mode helpers.
+- Evaluation utilities.
+
+Supported retrieval modes:
+
+- `semantic_topk`
+- `coverage_broad`
+- `narrative_arc`
+- `topic_clusters`
+- `relationship_dense`
+
+The platform maps output types to these modes and applies output-specific context policies before calling generators.
+
+## Confidence
+
+The confidence utilities compute lightweight groundedness and coverage signals from generated text and retrieved source chunks. Generators can include those signals in output metadata.
+
+## Shared Prompt
+
+`prompts/teacher_voice.txt` contains the shared teacher personality prompt used by teacher-facing outputs. It keeps explanations warm, student-centered, and grounded in course evidence.
+
+## Development
+
+Install in editable mode from this package directory:
 
 ```bash
-pip install -e packages/teacherlm_core
+pip install -e .
 ```
 
-Or, from inside a generator's Dockerfile build context (with the repo root as context):
+Run shared-core tests from the repository root:
 
-```dockerfile
-COPY packages/teacherlm_core /app/packages/teacherlm_core
-RUN pip install -e /app/packages/teacherlm_core
+```bash
+pytest packages/teacherlm_core/tests
 ```
 
-## Requirements
+Project compatibility rules:
 
-- Python 3.14+
-- Pydantic V2 (>=2.12)
-- No LangChain / LangGraph (incompatible with Pydantic V2 on Python 3.14)
-- No `llama-parse` / `llama-cloud-services` (deprecated May 2026)
-
-## Versioning
-
-This package is versioned together with the platform release. Generators pin it via a local editable install — there is no separate PyPI publication.
+- Python `3.14+`.
+- Pydantic V2 only.
+- No LangChain or LangGraph.
+- No deprecated LlamaParse packages.
+- Prefer `fastembed` where embeddings or reranking are needed.

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import type { OutputType } from "@/lib/types";
+import type { OutputType, UUID } from "@/lib/types";
 
 export type Theme = "dark" | "light";
 
@@ -8,6 +8,7 @@ interface UiState {
   theme: Theme;
   sourcesCollapsed: boolean;
   progressCollapsed: boolean;
+  sourceFileSelectionByConversation: Record<UUID, string[]>;
 
   generatorDialog: {
     open: boolean;
@@ -19,6 +20,7 @@ interface UiState {
   setProgressCollapsed: (collapsed: boolean) => void;
   toggleSources: () => void;
   toggleProgress: () => void;
+  setSourceFileSelection: (conversationId: UUID, sourceFileIds: string[]) => void;
   openGeneratorDialog: (outputType: OutputType) => void;
   closeGeneratorDialog: () => void;
 }
@@ -27,6 +29,7 @@ export const useUiStore = create<UiState>((set) => ({
   theme: "dark",
   sourcesCollapsed: false,
   progressCollapsed: false,
+  sourceFileSelectionByConversation: {},
   generatorDialog: { open: false, outputType: null },
 
   setTheme: (theme) => {
@@ -47,6 +50,14 @@ export const useUiStore = create<UiState>((set) => ({
 
   toggleProgress: () =>
     set((s) => ({ progressCollapsed: !s.progressCollapsed })),
+
+  setSourceFileSelection: (conversationId, sourceFileIds) =>
+    set((s) => ({
+      sourceFileSelectionByConversation: {
+        ...s.sourceFileSelectionByConversation,
+        [conversationId]: sourceFileIds,
+      },
+    })),
 
   openGeneratorDialog: (outputType) =>
     set({ generatorDialog: { open: true, outputType } }),

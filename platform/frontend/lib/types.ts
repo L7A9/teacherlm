@@ -120,12 +120,14 @@ export interface MessageList {
 export interface ChatRequest {
   user_message: string;
   options?: Record<string, unknown>;
+  source_file_ids?: string[] | null;
 }
 
 export interface GenerateRequest {
   output_type: OutputType;
   options?: Record<string, unknown>;
   topic?: string | null;
+  source_file_ids?: string[] | null;
 }
 
 // ---------- files ----------

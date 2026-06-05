@@ -4,11 +4,11 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import Link from "next/link";
 
-import ChatRoundedIcon from "@mui/icons-material/ChatRounded";
-import { Dialog, Fab, Tooltip } from "@mui/material";
 import {
+  BookOpen,
   GraduationCap,
   GripVertical,
+  MessageCircle,
   PanelLeft,
   PanelRight,
   Settings,
@@ -23,13 +23,14 @@ import { ProgressPanel } from "@/components/workspace/ProgressPanel";
 import { SourcesPanel } from "@/components/workspace/SourcesPanel";
 import { useConversation, useUpdateConversation } from "@/hooks/useConversations";
 import type { UUID } from "@/lib/types";
-import { cn } from "@/lib/utils";
 import { useConversationStore } from "@/stores/conversationStore";
 import { useUiStore } from "@/stores/uiStore";
 
 interface Props {
   conversationId: UUID;
 }
+
+type MobileMainView = "course" | "chat";
 
 export function Workspace({ conversationId }: Props) {
   const setActive = useConversationStore((s) => s.setActive);
@@ -44,7 +45,7 @@ export function Workspace({ conversationId }: Props) {
   );
   const [mobileSourcesOpen, setMobileSourcesOpen] = useState(false);
   const [mobileGeneratedOpen, setMobileGeneratedOpen] = useState(false);
-  const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  const [mobileMainView, setMobileMainView] = useState<MobileMainView>("course");
   const sourcesVisible = isNarrow ? mobileSourcesOpen : !sourcesCollapsed;
   const generatedVisible = isNarrow ? mobileGeneratedOpen : !progressCollapsed;
 
@@ -65,7 +66,7 @@ export function Workspace({ conversationId }: Props) {
     if (!isNarrow) {
       setMobileSourcesOpen(false);
       setMobileGeneratedOpen(false);
-      setMobileChatOpen(false);
+      setMobileMainView("course");
       return;
     }
 
@@ -73,7 +74,6 @@ export function Workspace({ conversationId }: Props) {
       if (event.key !== "Escape") return;
       setMobileSourcesOpen(false);
       setMobileGeneratedOpen(false);
-      setMobileChatOpen(false);
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
@@ -90,6 +90,8 @@ export function Workspace({ conversationId }: Props) {
         conversationId={conversationId}
         sourcesVisible={sourcesVisible}
         generatedVisible={generatedVisible}
+        mobileMainView={mobileMainView}
+        showMobileChatToggle={isNarrow}
         onToggleSources={() => {
           if (isNarrow) setMobileSourcesOpen((open) => !open);
           else toggleSources();
@@ -97,6 +99,11 @@ export function Workspace({ conversationId }: Props) {
         onToggleProgress={() => {
           if (isNarrow) setMobileGeneratedOpen((open) => !open);
           else toggleProgress();
+        }}
+        onToggleMobileMainView={() => {
+          setMobileSourcesOpen(false);
+          setMobileGeneratedOpen(false);
+          setMobileMainView((view) => (view === "chat" ? "course" : "chat"));
         }}
       />
 
@@ -121,23 +128,26 @@ export function Workspace({ conversationId }: Props) {
           className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex-row"
           aria-label="Learning workspace"
         >
-          <div
-            className={cn(
-              "min-h-0 min-w-0 border-border",
-              isNarrow
-                ? "flex-1"
-                : "flex-shrink-0 basis-[44%] border-b md:basis-[var(--course-pane-width)] md:border-b-0 md:border-r",
-            )}
-            style={
-              {
-                "--course-pane-width": `clamp(320px, ${courseWidth}%, calc(100% - 360px))`,
-              } as CSSProperties
-            }
-          >
-            <CoursePanel conversationId={conversationId} />
-          </div>
-          {!isNarrow && (
+          {isNarrow ? (
+            <div className="min-h-0 min-w-0 flex-1">
+              {mobileMainView === "chat" ? (
+                <ChatPanel conversationId={conversationId} />
+              ) : (
+                <CoursePanel conversationId={conversationId} />
+              )}
+            </div>
+          ) : (
             <>
+              <div
+                className="min-h-0 min-w-0 flex-shrink-0 basis-[44%] border-border border-b md:basis-[var(--course-pane-width)] md:border-b-0 md:border-r"
+                style={
+                  {
+                    "--course-pane-width": `clamp(320px, ${courseWidth}%, calc(100% - 360px))`,
+                  } as CSSProperties
+                }
+              >
+                <CoursePanel conversationId={conversationId} />
+              </div>
               <ResizeHandle
                 onDrag={(clientX) => {
                   const rect = mainRef.current?.getBoundingClientRect();
@@ -160,56 +170,6 @@ export function Workspace({ conversationId }: Props) {
           />
         )}
 
-        {isNarrow && (
-          <>
-            <Tooltip title="Ask your teacher">
-              <Fab
-                color="primary"
-                aria-label="Open chat"
-                onClick={() => setMobileChatOpen(true)}
-                sx={{
-                  position: "absolute",
-                  bottom: { xs: 16, sm: 20 },
-                  right: { xs: 16, sm: 20 },
-                  zIndex: 30,
-                  boxShadow: "0 18px 42px hsl(var(--background) / 0.45)",
-                }}
-              >
-                <ChatRoundedIcon />
-              </Fab>
-            </Tooltip>
-            <Dialog
-              open={mobileChatOpen}
-              onClose={() => setMobileChatOpen(false)}
-              aria-label="Chat with your teacher"
-              sx={{
-                "& .MuiBackdrop-root": {
-                  bgcolor: "hsl(var(--background) / 0.62)",
-                  backdropFilter: "blur(10px)",
-                },
-                "& .MuiDialog-container": {
-                  alignItems: "flex-end",
-                  justifyContent: { xs: "center", sm: "flex-end" },
-                },
-                "& .MuiDialog-paper": {
-                  m: { xs: 1, sm: 2 },
-                  width: { xs: "calc(100% - 16px)", sm: 460 },
-                  maxWidth: "none",
-                  height: { xs: "min(82dvh, 700px)", sm: "min(78dvh, 720px)" },
-                  overflow: "hidden",
-                  border: "1px solid hsl(var(--border))",
-                  bgcolor: "hsl(var(--background))",
-                  borderRadius: "8px",
-                },
-              }}
-            >
-              <ChatPanel
-                conversationId={conversationId}
-                onClose={() => setMobileChatOpen(false)}
-              />
-            </Dialog>
-          </>
-        )}
       </div>
 
       <GeneratorDialog />
@@ -222,18 +182,25 @@ interface TopBarProps {
   conversationId: UUID;
   sourcesVisible: boolean;
   generatedVisible: boolean;
+  mobileMainView: MobileMainView;
+  showMobileChatToggle: boolean;
   onToggleSources: () => void;
   onToggleProgress: () => void;
+  onToggleMobileMainView: () => void;
 }
 
 function TopBar({
   conversationId,
   sourcesVisible,
   generatedVisible,
+  mobileMainView,
+  showMobileChatToggle,
   onToggleSources,
   onToggleProgress,
+  onToggleMobileMainView,
 }: TopBarProps) {
   const { data: conversation } = useConversation(conversationId);
+  const mobileChatActive = mobileMainView === "chat";
 
   return (
     <header className="app-chrome app-pane flex h-12 shrink-0 items-center justify-between border-b border-border px-3 sm:px-4">
@@ -265,6 +232,22 @@ function TopBar({
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
+        {showMobileChatToggle && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onToggleMobileMainView}
+            aria-label={mobileChatActive ? "Show course" : "Show chat"}
+            title={mobileChatActive ? "Show course" : "Show chat"}
+            className="lg:hidden"
+          >
+            {mobileChatActive ? (
+              <BookOpen className="h-4 w-4" />
+            ) : (
+              <MessageCircle className="h-4 w-4" />
+            )}
+          </Button>
+        )}
         <Button variant="ghost" size="icon" asChild title="Settings">
           <Link href="/settings" aria-label="Settings">
             <Settings className="h-4 w-4" />

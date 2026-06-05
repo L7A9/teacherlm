@@ -75,6 +75,9 @@ async def generate(
     synth_message = _synthesize_prompt(body.output_type, topic)
     retrieval_query = _retrieval_query(body.output_type, body.topic)
     generation_options = await get_runtime_settings_service().resolve_options(session, body.options)
+    source_file_ids = _normalize_source_file_ids(body.source_file_ids)
+    if body.source_file_ids is not None and not source_file_ids:
+        raise HTTPException(status_code=400, detail="select at least one source file")
     if body.output_type == "mindmap":
         generation_options.setdefault("llm_refine", True)
         generation_options.setdefault("max_nodes", 110)
@@ -112,6 +115,7 @@ async def generate(
         query=retrieval_query,
         conversation_id=conversation_id,
         topic=topic,
+        source_file_ids=source_file_ids,
     )
 
     payload = GeneratorInput(
@@ -258,3 +262,17 @@ def _extract_text(data: Any) -> str:
             if isinstance(value, str):
                 return value
     return ""
+
+
+def _normalize_source_file_ids(source_file_ids: list[str] | None) -> list[str] | None:
+    if source_file_ids is None:
+        return None
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in source_file_ids:
+        text = str(raw or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+    return out

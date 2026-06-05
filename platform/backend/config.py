@@ -88,7 +88,7 @@ class Settings(BaseSettings):
     chunk_question_max_chars: int = 2200
 
     # --- Retrieval ---
-    retrieval_top_k: int = 8
+    retrieval_top_k: int = 16
     retrieval_dense_candidate_k: int = 80
     retrieval_sparse_candidate_k: int = 80
     retrieval_context_expansion_enabled: bool = True
@@ -99,7 +99,7 @@ class Settings(BaseSettings):
     retrieval_rerank_warmup_enabled: bool = True
     retrieval_reranker_model: str = "BAAI/bge-reranker-base"
     retrieval_rerank_candidate_k: int = 50
-    retrieval_rerank_top_k: int = 8
+    retrieval_rerank_top_k: int = 16
     retrieval_rerank_modes: list[str] = Field(
         default_factory=lambda: [
             "semantic_topk",

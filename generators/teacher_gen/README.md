@@ -1,100 +1,102 @@
 # teacher_gen
 
-Chat Q&A generator with teacher personality and adaptive guidance. This is the main chat experience of TeacherLM — it answers questions grounded in uploaded course files, switches to Socratic mode when a student is stuck, affirms when a student gets it, and tracks learner progress across the session.
+`teacher_gen` is the default chat generator for TeacherLM. It answers student questions in a warm teacher voice while staying grounded in retrieved course chunks.
 
-- **Port:** 8001
-- **Python:** 3.14+
-- **Output type:** `text`
-- **Retrieval mode requested:** `semantic_topk`
+## Service
 
-## What it does
+Default port: `8001`
 
-For each turn, the pipeline:
+Endpoints:
 
-1. **Analyzes the query** — classifies intent (`new_question` / `clarification` / `confusion` / `confirmation` / `follow_up`) and scores `confusion_level`.
-2. **Picks a response mode**:
-   - `guide` — Socratic, one question, no answer (student is confused)
-   - `quiz_back` — affirm partial + probe the gap (student is half-right)
-   - `affirm` — celebrate + suggest next concept (student got it)
-   - `explain` — direct answer with analogies and citations (default)
-   - Stuck-safety: if the student has been struggling for more than `stuck_turns_threshold` turns, the pipeline falls back to `explain` instead of another Socratic question.
-3. **Uses backend-prepared context chunks** from the shared RAG pipeline.
-4. **Streams the response** in the shared teacher voice (prompts prepend `teacherlm_core/prompts/teacher_voice.txt`).
-5. **Scores confidence** (groundedness + coverage) and **extracts learner updates** (concepts covered / demonstrated / struggled).
+- `GET /health`
+- `GET /info`
+- `POST /run`
 
-## Endpoints
+`/run` streams server-sent events.
 
-| Method | Path      | Description |
-|--------|-----------|-------------|
-| POST   | `/run`    | SSE stream. Body: `GeneratorInput`. Events: `analysis`, `sources`, `token` (many), `done`. |
-| GET    | `/health` | Liveness. |
-| GET    | `/info`   | Capabilities, models, version. |
+Common events:
 
-The `done` event payload matches the platform-wide `GeneratorOutput` contract (`response`, `generator_id`, `output_type`, `artifacts`, `sources`, `learner_updates`, `metadata`).
+- `analysis`: query analysis and selected response mode.
+- `sources`: source chunks used by the response.
+- `token`: streamed markdown response text.
+- `done`: final generator output.
+- `error`: failure details.
 
-## Running locally
+## Generator Info
+
+| Field | Value |
+| --- | --- |
+| Generator id | `teacher_gen` |
+| Output type | `text` |
+| Retrieval mode | `semantic_topk` |
+| Max context chunks consumed | 16 |
+
+The backend retrieves and filters context first, including selected source-file filters from the frontend. `teacher_gen` then uses at most the first 16 provided context chunks.
+
+## Behavior
+
+The generator can:
+
+- Explain course concepts.
+- Guide the student through reasoning.
+- Ask quick check-back questions.
+- Affirm correct understanding.
+- Refuse off-topic answers when the retrieved evidence is too weak.
+- Produce formula-focused answers when the context contains formula cards.
+- Produce course-overview answers when the user asks for broad course structure.
+- Return learner updates for covered, demonstrated, and struggled concepts.
+- Include confidence metadata based on groundedness and coverage.
+
+Responses must use uploaded course evidence only. If the course context does not support an answer, the generator should say so and guide the student back to available material.
+
+## Input Options
+
+The platform may pass:
+
+- Runtime LLM provider overrides.
+- Forced language preferences.
+- Source-file-filtered context chunks.
+- Chat history.
+- Learner state.
+
+The frontend sends selected file ids to the backend. The backend applies the filter before calling this generator.
+
+## Environment
+
+Common environment variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `TEACHER_GEN_OLLAMA_URL` | Ollama base URL override |
+| `TEACHER_GEN_CHAT_MODEL` | model for final chat responses |
+| `TEACHER_GEN_ANALYSIS_MODEL` | model for query analysis |
+| `TEACHER_GEN_EXTRACTION_MODEL` | model for learner-update extraction |
+| `TEACHER_GEN_MAX_CONTEXT_CHUNKS` | maximum chunks consumed by the generator |
+| `OLLAMA_URL` | shared Ollama fallback URL |
+| `OLLAMA_CHAT_MODEL` | shared chat model fallback |
+| `OLLAMA_ANALYSIS_MODEL` | shared analysis model fallback |
+
+## Local Run
+
+From this directory:
 
 ```bash
-cd teacherlm/generators/teacher_gen
+pip install -e ../../packages/teacherlm_core
 pip install -r requirements.txt
-python -m teacher_gen.app
-# or
-uvicorn teacher_gen.app:app --host 0.0.0.0 --port 8001
+uvicorn app:app --host 0.0.0.0 --port 8001
 ```
 
-`ollama` must be reachable at `TEACHER_GEN_OLLAMA_HOST` (default `http://localhost:11434`) with the configured models pulled.
-
-## Running in Docker
-
-Build from the **repo root** so the build context includes `packages/teacherlm_core`:
+Through Docker Compose:
 
 ```bash
-docker build -f generators/teacher_gen/Dockerfile -t teacherlm/teacher_gen:latest .
-docker run --rm -p 8001:8001 \
-  -e TEACHER_GEN_OLLAMA_HOST=http://host.docker.internal:11434 \
-  teacherlm/teacher_gen:latest
+cd ../../platform
+docker compose up -d teacher_gen
 ```
 
-## Configuration
+## Tests
 
-All settings are env-prefixed with `TEACHER_GEN_`. Highlights:
+From the repository root:
 
-| Env var                               | Default                          |
-|---------------------------------------|----------------------------------|
-| `TEACHER_GEN_PORT`                    | `8001`                           |
-| `TEACHER_GEN_OLLAMA_HOST`             | `http://localhost:11434`         |
-| `TEACHER_GEN_CHAT_MODEL`              | `llama3.1:8b-instruct`           |
-| `TEACHER_GEN_ANALYSIS_MODEL`          | `llama3.1:8b-instruct`           |
-| `TEACHER_GEN_EXTRACTION_MODEL`        | `llama3.1:8b-instruct`           |
-| `TEACHER_GEN_CONFUSION_GUIDE_THRESHOLD` | `0.7`                          |
-| `TEACHER_GEN_STUCK_TURNS_THRESHOLD`   | `4`                              |
-
-## Enabling in `generators_registry.json`
-
-Add an entry at the repo root `generators_registry.json`:
-
-```json
-{
-  "generators": [
-    {
-      "id": "teacher_gen",
-      "name": "Teacher",
-      "description": "Chat Q&A with teacher personality and adaptive guidance.",
-      "output_type": "text",
-      "endpoint": "http://teacher_gen:8001/run",
-      "info_endpoint": "http://teacher_gen:8001/info",
-      "health_endpoint": "http://teacher_gen:8001/health",
-      "retrieval_mode": "semantic_topk",
-      "streams": true,
-      "default": true,
-      "enabled": true
-    }
-  ]
-}
+```bash
+pytest generators/teacher_gen/tests
 ```
-
-The `streams: true` flag tells the platform to proxy SSE events to the frontend. The `default: true` flag marks this as the generator the platform routes to when the user hasn't explicitly chosen a different output type.
-
-## Voice and prompts
-
-All mode prompts are prepended with the shared `teacherlm_core/prompts/teacher_voice.txt`. To tune the personality globally (across every generator), edit that file — do **not** duplicate voice instructions inside each mode prompt. Mode prompts should describe only what is specific to that mode (explain / guide / quiz_back / affirm).

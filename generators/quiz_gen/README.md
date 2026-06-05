@@ -1,74 +1,105 @@
 # quiz_gen
 
-Adaptive quiz generator for TeacherLM. Port **8002**, Python **3.14+**.
+`quiz_gen` creates grounded quizzes from retrieved course context. It is designed for broad coverage across the selected ready source files.
 
-Generates MCQ / true-false / fill-in-the-blank questions grounded in a
-student's uploaded course materials. Adapts difficulty to `learner_state` and
-returns the quiz as both inline `metadata.quiz_data` and an artifact JSON in
-MinIO.
+## Service
 
-## Pipeline
+Default port: `8002`
 
-1. Extract concepts from the retrieved chunks, grouped by Bloom's level
-   (`remember | understand | apply | analyze`) — via `ollama format=` with
-   the `ExtractedConcepts` schema.
-2. Plan the question mix from `learner_state` (60% struggling / 30% coverage
-   / 10% stretch) — see `services/difficulty_adapter.py`.
-3. Generate one question at a time, each via
-   `ollama format=Schema.model_json_schema()` for reliability.
-4. Enhance MCQ distractors with `fastembed` cosine similarity in the
-   `[0.4, 0.7]` band (hard negatives).
-5. Validate quality (option distinctness, single blank, etc.).
-6. Build a teacher-voice intro message that names struggling concepts.
-7. Save the quiz JSON to MinIO at
-   `conversations/{conversation_id}/artifacts/{uuid}_quiz.json` and return a
-   presigned URL.
-8. Return a `GeneratorOutput` with the intro as `response`, the artifact, and
-   `learner_updates.concepts_covered` populated.
+Endpoints:
 
-## Endpoints
+- `GET /health`
+- `GET /info`
+- `POST /run`
 
-- `GET  /health` — liveness probe.
-- `GET  /info`   — capabilities, models, retrieval mode (`coverage_broad`).
-- `POST /run`    — SSE stream. Body: `GeneratorInput`.
+`/run` streams server-sent events.
 
-## Configuration
+Common events:
 
-All settings prefixed `QUIZ_GEN_` (env or `.env`). Notable knobs:
+- `progress`: generation stage updates.
+- `token` or `chunk`: streamed response text when emitted.
+- `artifact`: generated artifact metadata.
+- `done`: final generator output.
+- `error`: failure details.
 
-| Setting | Default | Purpose |
-|---|---|---|
-| `QUIZ_GEN_PORT` | `8002` | HTTP port |
-| `QUIZ_GEN_OLLAMA_HOST` | `http://localhost:11434` | Ollama base URL |
-| `QUIZ_GEN_GENERATION_MODEL` | `llama3.1:8b-instruct-q4_K_M` | Used for question generation |
-| `QUIZ_GEN_DEFAULT_QUESTION_COUNT` | `8` | Default `n_questions` |
-| `QUIZ_GEN_MIX_STRUGGLING` / `MIX_COVERAGE` / `MIX_STRETCH` | `0.6 / 0.3 / 0.1` | Slot mix |
-| `QUIZ_GEN_DISTRACTOR_SIM_MIN` / `_MAX` | `0.4 / 0.7` | Hard-negative band |
-| `QUIZ_GEN_MINIO_ENDPOINT` | `localhost:9000` | Artifact storage |
-| `QUIZ_GEN_MINIO_BUCKET` | `teacherlm` | Shared with platform |
+## Generator Info
 
-`options.n_questions` (or `count`) in `GeneratorInput.options` overrides the
-default per request, clamped to `[min_question_count, max_question_count]`.
+| Field | Value |
+| --- | --- |
+| Generator id | `quiz_gen` |
+| Output type | `quiz` |
+| Retrieval mode | `coverage_broad` |
 
-## Local run
+The backend retrieves broad course coverage before calling this generator. If the student selected specific source files in the frontend, the backend filters retrieval to those files first.
+
+## Quiz Options
+
+Supported request options include:
+
+| Option | Notes |
+| --- | --- |
+| `question_count` | Default `8`, minimum `3`, maximum `30` |
+| `n_questions` | Alias for `question_count` |
+| `count` | Alias for `question_count` |
+| `question_types` | Values can include `mcq`, `true_false`, `fill_blank` |
+
+Frontend aliases are normalized:
+
+- `multiple_choice` becomes `mcq`.
+- `short_answer` becomes `fill_blank`.
+
+The generator uses course concepts, learner state, and Bloom-level planning to shape the quiz. It validates questions, removes weak duplicates, and can top up with grounded true/false questions if needed.
+
+## Output
+
+The final response contains:
+
+- A markdown quiz summary.
+- `metadata.quiz_data` with the generated quiz structure.
+- Planning metadata such as Bloom distribution and dropped/top-up question counts.
+- A JSON artifact uploaded to MinIO when artifact storage is available.
+- Learner updates for concepts covered by the quiz.
+
+Questions are grounded in uploaded course chunks. Each multiple-choice question has one correct answer and plausible distractors.
+
+## Environment
+
+Common environment variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `QUIZ_GEN_OLLAMA_URL` | Ollama base URL override |
+| `QUIZ_GEN_MODEL` | quiz-generation model |
+| `QUIZ_GEN_DEFAULT_QUESTION_COUNT` | default number of questions |
+| `QUIZ_GEN_MIN_QUESTIONS` | lower bound |
+| `QUIZ_GEN_MAX_QUESTIONS` | upper bound |
+| `QUIZ_GEN_ENHANCE_DISTRACTORS` | enable extra distractor pass |
+| `MINIO_ENDPOINT` | artifact storage endpoint |
+| `MINIO_ACCESS_KEY` | artifact storage access key |
+| `MINIO_SECRET_KEY` | artifact storage secret key |
+| `MINIO_BUCKET` | artifact bucket |
+
+## Local Run
+
+From this directory:
 
 ```bash
+pip install -e ../../packages/teacherlm_core
 pip install -r requirements.txt
-QUIZ_GEN_OLLAMA_HOST=http://localhost:11434 \
-QUIZ_GEN_MINIO_ENDPOINT=localhost:9000 \
-uvicorn quiz_gen.app:app --host 0.0.0.0 --port 8002
+uvicorn app:app --host 0.0.0.0 --port 8002
 ```
 
-(Run from `generators/` so `quiz_gen` resolves as a package, or use the
-Dockerfile which sets `PYTHONPATH=/app/generators`.)
-
-## Docker
+Through Docker Compose:
 
 ```bash
-docker build -f generators/quiz_gen/Dockerfile -t teacherlm/quiz_gen:latest .
+cd ../../platform
+docker compose up -d quiz_gen
 ```
 
-To enable in the platform: flip `enabled: true` for `quiz_gen` in
-`generators_registry.json` and add the service to `platform/docker-compose.yml`
-(mirror the `teacher_gen` block, change ports/env to `QUIZ_GEN_*`, and set
-`QUIZ_GEN_MINIO_ENDPOINT=minio:9000`).
+## Tests
+
+From the repository root:
+
+```bash
+pytest generators/quiz_gen/tests
+```

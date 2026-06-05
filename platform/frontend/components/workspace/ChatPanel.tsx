@@ -12,7 +12,8 @@ import { MessageList } from "@/components/chat/MessageList";
 import { OutputTypeButtons } from "@/components/chat/OutputTypeButtons";
 import { useLearnerState } from "@/hooks/useConversations";
 import { useFiles } from "@/hooks/useFiles";
-import type { UUID } from "@/lib/types";
+import { useSourceFileSelection } from "@/hooks/useSourceFileSelection";
+import type { UploadedFile, UUID } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useProgressStore } from "@/stores/progressStore";
 
@@ -22,6 +23,8 @@ interface Props {
   onClose?: () => void;
 }
 
+const EMPTY_UPLOADED_FILES: UploadedFile[] = [];
+
 export function ChatPanel({ conversationId, className, onClose }: Props) {
   const inputRef = useRef<ChatInputHandle>(null);
   useLearnerState(conversationId);
@@ -29,11 +32,19 @@ export function ChatPanel({ conversationId, className, onClose }: Props) {
   const learner = useProgressStore((s) => s.stateByConversation[conversationId]);
 
   const hint = buildHint(learner);
-  const hasCourseFiles = (files?.items.length ?? 0) > 0;
-  const actionsDisabled = filesLoading || !hasCourseFiles;
+  const fileItems = files?.items ?? EMPTY_UPLOADED_FILES;
+  const { readyFiles, selectedSourceFileIds } = useSourceFileSelection(
+    conversationId,
+    fileItems,
+  );
+  const hasCourseFiles = readyFiles.length > 0;
+  const hasSelectedSourceFiles = selectedSourceFileIds.length > 0;
+  const actionsDisabled = filesLoading || !hasCourseFiles || !hasSelectedSourceFiles;
   const noFilesReason = filesLoading
     ? "Checking uploaded files..."
-    : "Upload at least one course file first.";
+    : hasCourseFiles
+      ? "Select at least one source file."
+      : "Wait until at least one course file is ready.";
 
   return (
     <section
