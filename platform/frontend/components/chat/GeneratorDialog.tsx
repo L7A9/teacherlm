@@ -44,8 +44,18 @@ const DESCRIPTIONS: Record<OutputType, string> = {
   report: "Choose a format and how deep the write-up should go.",
   presentation: "Choose a length and style for your slide deck.",
   chart: "Pick a diagram style — the teacher will extract the relationships.",
-  podcast: "Pick a duration and presenter style.",
+  podcast: "Generate a listen-along episode from the selected course materials.",
   mindmap: "A bird's-eye view of every theme in your uploaded materials.",
+};
+
+const SUBMIT_LABELS: Record<OutputType, string> = {
+  text: "Ask",
+  quiz: "Generate",
+  report: "Generate",
+  presentation: "Generate",
+  chart: "Generate",
+  podcast: "Generate podcast",
+  mindmap: "Generate",
 };
 
 const EMPTY_SOURCE_FILE_IDS: string[] = [];
@@ -99,7 +109,7 @@ export function GeneratorDialog() {
           <DialogTitle>{TITLES[outputType]}</DialogTitle>
           <DialogDescription>{DESCRIPTIONS[outputType]}</DialogDescription>
         </DialogHeader>
-        <LanguageBanner forcedLanguage={forcedLanguage} />
+        {outputType !== "podcast" && <LanguageBanner forcedLanguage={forcedLanguage} />}
         <OptionsForm outputType={outputType} onSubmit={handleSubmit} onCancel={closeDialog} />
       </DialogContent>
     </Dialog>
@@ -155,10 +165,10 @@ function OptionsForm({ outputType, onSubmit, onCancel }: FormProps) {
     setTopic("");
   }, [outputType]);
 
-  const fields = FIELDS_BY_TYPE[outputType];
-  // Mind map and quiz intentionally have no topic input — both always
+  const fields = outputType === "podcast" ? [] : FIELDS_BY_TYPE[outputType];
+  // Mind map, quiz, and podcast intentionally have no topic input — they always
   // operate on the full uploaded corpus rather than a narrow slice.
-  const showTopic = outputType !== "mindmap" && outputType !== "quiz";
+  const showTopic = !["mindmap", "quiz", "podcast"].includes(outputType);
 
   return (
     <form
@@ -200,7 +210,7 @@ function OptionsForm({ outputType, onSubmit, onCancel }: FormProps) {
         </Button>
         <Button type="submit">
           <Sparkles className="h-4 w-4" />
-          Generate
+          {SUBMIT_LABELS[outputType]}
         </Button>
       </DialogFooter>
     </form>

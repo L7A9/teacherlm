@@ -12,8 +12,11 @@ import {
   GraduationCap,
   KeyRound,
   Languages,
+  Moon,
+  Palette,
   Save,
   Server,
+  Sun,
   Trash2,
   UploadCloud,
 } from "lucide-react";
@@ -33,13 +36,21 @@ import {
   type LlmProvider,
   useSettingsStore,
 } from "@/stores/settingsStore";
+import {
+  THEME_OPTIONS,
+  type Theme,
+  useUiStore,
+} from "@/stores/uiStore";
 
 const AUTO_VALUE = "__auto__";
+const SAVED_SECRET_MASK = "saved-key-configured";
 
 export default function SettingsPage() {
   const qc = useQueryClient();
   const forcedLanguage = useSettingsStore((s) => s.forcedLanguage);
   const setForcedLanguage = useSettingsStore((s) => s.setForcedLanguage);
+  const theme = useUiStore((s) => s.theme);
+  const setTheme = useUiStore((s) => s.setTheme);
 
   const [hydrated, setHydrated] = useState(false);
   const [llmEnabled, setLlmEnabled] = useState(false);
@@ -145,6 +156,45 @@ export default function SettingsPage() {
       </header>
 
       <div className="mx-auto flex max-w-4xl flex-col gap-4 px-4 py-6 sm:px-6">
+        <section className="rounded-md border border-border bg-surface">
+          <header className="app-chrome flex items-center justify-between gap-3 border-b border-border px-5 py-3">
+            <div className="flex items-center gap-2">
+              <Palette className="h-4 w-4 text-primary" />
+              <h2 className="text-sm font-semibold">Appearance</h2>
+            </div>
+            <StatusPill active={hydrated}>
+              {hydrated ? themeLabel(theme) : "Loading"}
+            </StatusPill>
+          </header>
+          <div className="px-5 py-4">
+            <div className="grid max-w-md grid-cols-2 gap-2 rounded-md border border-border bg-background p-1">
+              {THEME_OPTIONS.map((option) => {
+                const active = hydrated && theme === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    disabled={!hydrated}
+                    onClick={() => setTheme(option.value)}
+                    className={cn(
+                      "app-chrome flex h-10 items-center justify-center gap-2 rounded-sm px-3 text-sm font-medium transition-colors",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      active
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                      !hydrated && "cursor-not-allowed opacity-50",
+                    )}
+                    aria-pressed={active}
+                  >
+                    <ThemeIcon theme={option.value} />
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
         <section className="rounded-md border border-border bg-surface">
           <header className="app-chrome flex items-center justify-between gap-3 border-b border-border px-5 py-3">
             <div className="flex items-center gap-2">
@@ -341,6 +391,15 @@ export default function SettingsPage() {
   );
 }
 
+function ThemeIcon({ theme }: { theme: Theme }) {
+  if (theme === "light") return <Sun className="h-4 w-4" />;
+  return <Moon className="h-4 w-4" />;
+}
+
+function themeLabel(theme: Theme) {
+  return THEME_OPTIONS.find((option) => option.value === theme)?.label ?? theme;
+}
+
 function StatusPill({
   active,
   children,
@@ -385,6 +444,14 @@ function SecretField({
   onChange: (value: string) => void;
   onClear: () => void;
 }) {
+  const [editingSavedKey, setEditingSavedKey] = useState(false);
+  const showingSavedMask = keySet && !value && !editingSavedKey;
+  const displayValue = showingSavedMask ? SAVED_SECRET_MASK : value;
+
+  useEffect(() => {
+    if (!keySet || value) setEditingSavedKey(false);
+  }, [keySet, value]);
+
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between gap-3">
@@ -400,10 +467,17 @@ function SecretField({
         <Input
           id={id}
           type="password"
-          value={value}
+          value={displayValue}
           disabled={disabled}
-          placeholder={placeholder}
+          placeholder={editingSavedKey ? "Enter replacement key" : placeholder}
           autoComplete="off"
+          title={showingSavedMask ? "A key is saved. Focus to enter a replacement." : undefined}
+          onFocus={() => {
+            if (keySet && !value) setEditingSavedKey(true);
+          }}
+          onBlur={() => {
+            if (keySet && !value) setEditingSavedKey(false);
+          }}
           onChange={(e) => onChange(e.target.value)}
         />
         <Button

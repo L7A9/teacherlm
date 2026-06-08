@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 import unittest
+from unittest.mock import patch
 
 from db.models import (
     CourseBuilderChapterRecord,
@@ -35,6 +36,7 @@ from services.coursebuilder_service import (
     _lesson_supported_chunks,
     _lesson_query,
     _reserved_lesson_chunk_ids,
+    _repair_damaged_latex,
     _selected_index,
     _stable_id,
     _title_supported_chunks,
@@ -786,6 +788,254 @@ class CourseBuilderServiceTests(unittest.TestCase):
         )
         self.assertEqual(outline.chapters[1].lessons[0].title, "Matrix factorization")
 
+    def test_outline_localizes_primary_unit_titles_when_language_selected(self) -> None:
+        service = CourseBuilderService()
+        captured: dict[str, str] = {}
+        source_structure = [
+            _OutlineChapter(
+                title="Semaine 1 : Fondements",
+                lessons=[_OutlineLesson(title="Definition et objectifs")],
+            ),
+            _OutlineChapter(
+                title="Semaine 2 : Collaborative Filtering",
+                lessons=[_OutlineLesson(title="Matrix factorization")],
+            ),
+        ]
+
+        async def fake_structured(messages, schema, *, llm_options):  # noqa: ANN001
+            captured["system"] = messages[0]["content"]
+            captured["user"] = messages[1]["content"]
+            return _CourseOutline(
+                title="Evaluation Guide",
+                language="en-us",
+                chapters=[
+                    _OutlineChapter(
+                        title="Week 1: Foundations",
+                        lessons=[_OutlineLesson(title="Definition and objectives")],
+                    ),
+                    _OutlineChapter(
+                        title="Week 2: Collaborative Filtering",
+                        lessons=[_OutlineLesson(title="Matrix factorization")],
+                    ),
+                ],
+            )
+
+        service._structured = fake_structured  # type: ignore[method-assign]
+        context = CourseBuilderContextPack(
+            rich_summary="Rich summary text.",
+            documents=[
+                _document(
+                    "rs_course.pdf",
+                    "rs course",
+                    metadata={"intake_normalized": True, "primary_unit_count": 2},
+                )
+            ],
+            sections=[
+                _section(
+                    "Definition et objectifs",
+                    ["rs course", "Semaine 1 : Fondements", "Definition et objectifs"],
+                    metadata={
+                        "course_unit_title": "Semaine 1 : Fondements",
+                        "course_unit_role": "primary",
+                    },
+                )
+            ],
+            phases=[],
+            objectives=[],
+            concepts=[],
+            representative_chunks=[],
+            source_structure=source_structure,
+            markdown_planning_context=(
+                "### Markdown source 1: rs_course.pdf\n"
+                "```markdown\n"
+                "Table des matieres\n"
+                "1 Semaine 1 : Fondements 4\n"
+                "1.1 Definition et objectifs 4\n"
+                "2 Semaine 2 : Collaborative Filtering 5\n"
+                "```"
+            ),
+            markdown_source_count=1,
+            markdown_raw_chars=160,
+        )
+
+        outline = asyncio.run(service._outline(CONV_ID, [], context, llm_options={"language": "en-us"}))
+
+        self.assertIn("English (US)", captured["system"])
+        self.assertIn("selected settings language is English (US)", captured["user"])
+        self.assertEqual(
+            [chapter.title for chapter in outline.chapters],
+            ["Week 1: Foundations", "Week 2: Collaborative Filtering"],
+        )
+        self.assertEqual(outline.chapters[0].lessons[0].title, "Definition and objectives")
+        self.assertIn("Semaine 1 : Fondements", outline.chapters[0].source_queries)
+        self.assertIn("Definition et objectifs", outline.chapters[0].lessons[0].source_queries)
+
+    def test_outline_repairs_untranslated_chapter_title_when_lessons_are_localized(self) -> None:
+        service = CourseBuilderService()
+        captured: dict[str, list[str] | str] = {"schemas": []}
+        source_structure = [
+            _OutlineChapter(
+                title="Semaine 1 : Fondements",
+                lessons=[_OutlineLesson(title="Definition et objectifs")],
+            ),
+            _OutlineChapter(
+                title="Introduction a la RMSE",
+                lessons=[_OutlineLesson(title="Erreur quadratique moyenne")],
+            ),
+        ]
+
+        async def fake_structured(messages, schema, *, llm_options):  # noqa: ANN001
+            captured["schemas"].append(schema.__name__)  # type: ignore[union-attr]
+            if schema.__name__ == "_LocalizedChapterTitleBatch":
+                captured["repair_prompt"] = messages[1]["content"]
+                return schema(chapters=[{"index": 0, "title": "Week 1: Foundations"}])
+            return _CourseOutline(
+                title="Evaluation Guide",
+                language="en-us",
+                chapters=[
+                    _OutlineChapter(
+                        title="Semaine 1 : Fondements",
+                        lessons=[_OutlineLesson(title="Definition and objectives")],
+                    ),
+                    _OutlineChapter(
+                        title="Introduction to RMSE",
+                        lessons=[_OutlineLesson(title="Root mean squared error")],
+                    )
+                ],
+            )
+
+        service._structured = fake_structured  # type: ignore[method-assign]
+        context = CourseBuilderContextPack(
+            rich_summary="Rich summary text.",
+            documents=[
+                _document(
+                    "rs_course.pdf",
+                    "rs course",
+                    metadata={"intake_normalized": True, "primary_unit_count": 1},
+                )
+            ],
+            sections=[],
+            phases=[],
+            objectives=[],
+            concepts=[],
+            representative_chunks=[],
+            source_structure=source_structure,
+            markdown_planning_context=(
+                "### Markdown source 1: rs_course.pdf\n"
+                "```markdown\n"
+                "Table des matieres\n"
+                "1 Semaine 1 : Fondements 4\n"
+                "1.1 Definition et objectifs 4\n"
+                "2 Introduction a la RMSE 8\n"
+                "2.1 Erreur quadratique moyenne 8\n"
+                "```"
+            ),
+            markdown_source_count=1,
+            markdown_raw_chars=120,
+        )
+
+        outline = asyncio.run(service._outline(CONV_ID, [], context, llm_options={"language": "en-us"}))
+
+        self.assertEqual(captured["schemas"], ["_CourseOutline", "_LocalizedChapterTitleBatch"])
+        self.assertIn("Semaine 1 : Fondements", str(captured["repair_prompt"]))
+        self.assertEqual(outline.chapters[0].title, "Week 1: Foundations")
+        self.assertEqual(outline.chapters[0].lessons[0].title, "Definition and objectives")
+        self.assertIn("Semaine 1 : Fondements", outline.chapters[0].source_queries)
+        self.assertEqual(outline.chapters[1].title, "Introduction to RMSE")
+        self.assertEqual(outline.chapters[1].lessons[0].title, "Root mean squared error")
+
+    def test_source_outline_titles_are_localized_without_markdown_when_language_selected(self) -> None:
+        service = CourseBuilderService()
+        captured: dict[str, str] = {}
+        source_structure = [
+            _OutlineChapter(
+                title="Semaine 1 : Fondements",
+                lessons=[_OutlineLesson(title="Definition et objectifs")],
+            )
+        ]
+
+        async def fake_structured(messages, schema, *, llm_options):  # noqa: ANN001
+            captured["system"] = messages[0]["content"]
+            captured["user"] = messages[1]["content"]
+            return _CourseOutline(
+                title="Recommender Systems",
+                language="en-us",
+                chapters=[
+                    _OutlineChapter(
+                        title="Week 1: Foundations",
+                        lessons=[_OutlineLesson(title="Definition and objectives")],
+                    )
+                ],
+            )
+
+        service._structured = fake_structured  # type: ignore[method-assign]
+        context = CourseBuilderContextPack(
+            rich_summary="Rich summary text.",
+            documents=[],
+            sections=[],
+            phases=[],
+            objectives=[],
+            concepts=[],
+            representative_chunks=[],
+            source_structure=source_structure,
+        )
+
+        outline = asyncio.run(service._outline(CONV_ID, [], context, llm_options={"language": "en-us"}))
+
+        self.assertIn("CourseBuilder outline for display", captured["system"])
+        self.assertIn("Target language: English (US)", captured["user"])
+        self.assertEqual(outline.chapters[0].title, "Week 1: Foundations")
+        self.assertEqual(outline.chapters[0].lessons[0].title, "Definition and objectives")
+        self.assertIn("Semaine 1 : Fondements", outline.chapters[0].source_queries)
+        self.assertIn("Definition et objectifs", outline.chapters[0].lessons[0].source_queries)
+
+    def test_fallback_outline_titles_are_localized_when_language_selected(self) -> None:
+        service = CourseBuilderService()
+        captured: dict[str, str] = {}
+        chunks = [
+            _chunk(
+                "fallback-1",
+                ["Semaine 1 : Fondements"],
+                "Definition et objectifs du cours.",
+            )
+        ]
+
+        async def fake_structured(messages, schema, *, llm_options):  # noqa: ANN001
+            captured["system"] = messages[0]["content"]
+            captured["user"] = messages[1]["content"]
+            return _CourseOutline(
+                title="Foundations",
+                language="en-us",
+                chapters=[
+                    _OutlineChapter(
+                        title="Week 1: Foundations",
+                        lessons=[_OutlineLesson(title="Definition and objectives")],
+                    )
+                ],
+            )
+
+        service._structured = fake_structured  # type: ignore[method-assign]
+        context = CourseBuilderContextPack(
+            rich_summary="Rich summary text.",
+            documents=[],
+            sections=[],
+            phases=[],
+            objectives=[],
+            concepts=[],
+            representative_chunks=[],
+        )
+
+        with patch("services.coursebuilder_service.extract_source_structure", return_value=[]):
+            outline = asyncio.run(service._outline(CONV_ID, chunks, context, llm_options={"language": "en-us"}))
+
+        self.assertIn("CourseBuilder outline for display", captured["system"])
+        self.assertIn("Target language: English (US)", captured["user"])
+        self.assertEqual(outline.language, "en-us")
+        self.assertEqual(outline.chapters[0].title, "Week 1: Foundations")
+        self.assertEqual(outline.chapters[0].lessons[0].title, "Definition and objectives")
+        self.assertIn("Semaine 1 : Fondements", outline.chapters[0].source_queries)
+        self.assertIn("Semaine 1 : Fondements", outline.chapters[0].lessons[0].source_queries)
+
     def test_markdown_planning_falls_back_to_markdown_toc_when_llm_returns_prose(self) -> None:
         service = CourseBuilderService()
 
@@ -917,6 +1167,53 @@ class CourseBuilderServiceTests(unittest.TestCase):
         self.assertEqual(content.support_status, "insufficient_source_material")
         self.assertEqual(content.blocks[0].block_type, "warning")
         self.assertEqual(content.blocks[0].content, insufficient_source_message())
+
+    def test_lesson_content_prompt_requests_scientific_math_and_tables(self) -> None:
+        service = CourseBuilderService()
+        captured: dict[str, str] = {}
+        chapter = CourseBuilderChapterRecord(
+            id=_stable_id(CONV_ID, "chapter"),
+            course_id=_stable_id(CONV_ID, "course"),
+            conversation_id=CONV_ID,
+            title="Evaluation Metrics",
+            order_index=0,
+        )
+
+        async def fake_structured(messages, schema, *, llm_options):  # noqa: ANN001
+            captured["system"] = messages[0]["content"]
+            return schema(blocks=[])
+
+        service._structured = fake_structured  # type: ignore[method-assign]
+
+        asyncio.run(
+            service._lesson_content_from_chunks(
+                chapter,
+                _OutlineLesson(title="RMSE"),
+                [
+                    _chunk(
+                        "metric",
+                        ["Evaluation", "RMSE"],
+                        "RMSE = sqrt(1/n sum_i (y_i - yhat_i)^2). The table compares RMSE and MAE.",
+                    )
+                ],
+                llm_options=None,
+            )
+        )
+
+        self.assertIn("LaTeX math delimiters", captured["system"])
+        self.assertIn("$$...$$", captured["system"])
+        self.assertIn("Markdown tables", captured["system"])
+        self.assertIn("data_json={columns, rows}", captured["system"])
+
+    def test_repairs_json_damaged_latex_formula_commands(self) -> None:
+        damaged = "RMSE = oot{2}{\x0crac{1}{N} ext{sum}_{u,i} ( hat{r}_{u,i} - r_{u,i})^2} ext{ (1)}"
+
+        repaired = _repair_damaged_latex(damaged)
+
+        self.assertEqual(
+            repaired,
+            r"RMSE = \sqrt{\frac{1}{N} \sum_{u,i} ( \hat{r}_{u,i} - r_{u,i})^2} \text{ (1)}",
+        )
 
     def test_title_only_lesson_block_content_is_too_thin(self) -> None:
         self.assertTrue(_is_thin_lesson_content("explanation", "SVD", "SVD"))

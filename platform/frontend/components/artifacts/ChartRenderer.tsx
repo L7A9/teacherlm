@@ -7,6 +7,7 @@ import { Minus, Plus, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import type { ChartArtifactMetadata } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useUiStore } from "@/stores/uiStore";
 
 type PanZoomInstance = {
   zoomIn: () => void;
@@ -27,6 +28,7 @@ export function ChartRenderer({ metadata, className }: Props) {
   const panZoomRef = useRef<PanZoomInstance | null>(null);
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const theme = useUiStore((s) => s.theme);
 
   const code = metadata.mermaid_code?.trim();
 
@@ -45,7 +47,7 @@ export function ChartRenderer({ metadata, className }: Props) {
         const mermaid = (await import("mermaid")).default;
         mermaid.initialize({
           startOnLoad: false,
-          theme: "dark",
+          theme: theme === "dark" ? "dark" : "default",
           securityLevel: "strict",
           fontFamily: "var(--font-sans)",
         });
@@ -62,7 +64,7 @@ export function ChartRenderer({ metadata, className }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [code, uid]);
+  }, [code, theme, uid]);
 
   // Wire svg-pan-zoom once the SVG is in the DOM.
   useEffect(() => {

@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneDark } from "react-syntax-highlighter/dist/cjs/styles/prism";
+import { oneDark, oneLight } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -23,6 +23,7 @@ import { ArtifactRenderer } from "@/components/artifacts/ArtifactRenderer";
 import { Badge } from "@/components/ui/Badge";
 import type { Message, OutputType, UUID } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useUiStore } from "@/stores/uiStore";
 
 // Output types whose generated artifacts live ONLY in the right-rail Progress
 // panel (as a clickable button that opens a modal). Keeping these out of the
@@ -199,48 +200,48 @@ async function copyToClipboard(value: string): Promise<boolean> {
 const markdownComponents: Components = {
   // Headings
   h1: ({ node, ...props }) => (
-    <h1 className="mt-6 mb-4 text-2xl font-bold text-slate-100" {...props} />
+    <h1 className="mt-6 mb-4 text-2xl font-bold text-foreground" {...props} />
   ),
   h2: ({ node, ...props }) => (
     <h2
-      className="mt-5 mb-3 border-b border-slate-700 pb-1.5 text-xl font-semibold text-slate-100"
+      className="mt-5 mb-3 border-b border-border pb-1.5 text-xl font-semibold text-foreground"
       {...props}
     />
   ),
   h3: ({ node, ...props }) => (
-    <h3 className="mt-4 mb-2 text-lg font-semibold text-slate-100" {...props} />
+    <h3 className="mt-4 mb-2 text-lg font-semibold text-foreground" {...props} />
   ),
   h4: ({ node, ...props }) => (
-    <h4 className="mt-3 mb-1.5 text-base font-semibold text-slate-200" {...props} />
+    <h4 className="mt-3 mb-1.5 text-base font-semibold text-foreground" {...props} />
   ),
   h5: ({ node, ...props }) => (
     <h5
-      className="mt-3 mb-1 text-sm font-semibold uppercase tracking-wide text-slate-300"
+      className="mt-3 mb-1 text-sm font-semibold uppercase tracking-wide text-muted-foreground"
       {...props}
     />
   ),
   h6: ({ node, ...props }) => (
     <h6
-      className="mt-3 mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400"
+      className="mt-3 mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
       {...props}
     />
   ),
 
   // Paragraphs
   p: ({ node, ...props }) => (
-    <p className="mb-4 leading-7 text-slate-300 last:mb-0" {...props} />
+    <p className="mb-4 leading-7 text-surface-foreground last:mb-0" {...props} />
   ),
 
   // Lists
   ul: ({ node, ...props }) => (
     <ul
-      className="mb-4 ml-6 list-disc space-y-2 text-slate-300 marker:text-slate-500 last:mb-0"
+      className="mb-4 ml-6 list-disc space-y-2 text-surface-foreground marker:text-muted-foreground last:mb-0"
       {...props}
     />
   ),
   ol: ({ node, ...props }) => (
     <ol
-      className="mb-4 ml-6 list-decimal space-y-2 text-slate-300 marker:text-slate-500 last:mb-0"
+      className="mb-4 ml-6 list-decimal space-y-2 text-surface-foreground marker:text-muted-foreground last:mb-0"
       {...props}
     />
   ),
@@ -256,7 +257,7 @@ const markdownComponents: Components = {
     }
     return (
       <code
-        className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[0.85em] text-pink-400"
+        className="rounded bg-muted px-1.5 py-0.5 font-mono text-[0.85em] text-primary"
         {...props}
       >
         {children}
@@ -270,7 +271,7 @@ const markdownComponents: Components = {
   // Blockquotes
   blockquote: ({ node, ...props }) => (
     <blockquote
-      className="my-4 border-l-4 border-teal-500 bg-slate-800/50 px-4 py-2 not-italic text-slate-300"
+      className="my-4 border-l-4 border-accent bg-accent/10 px-4 py-2 not-italic text-surface-foreground"
       {...props}
     />
   ),
@@ -279,30 +280,30 @@ const markdownComponents: Components = {
   table: ({ node, ...props }) => (
     <div className="my-4 overflow-x-auto">
       <table
-        className="min-w-full border-collapse border border-slate-700 text-left"
+        className="min-w-full border-collapse border border-border text-left"
         {...props}
       />
     </div>
   ),
-  thead: ({ node, ...props }) => <thead className="bg-slate-800" {...props} />,
+  thead: ({ node, ...props }) => <thead className="bg-muted" {...props} />,
   th: ({ node, ...props }) => (
     <th
-      className="border border-slate-700 px-4 py-2 text-left font-semibold text-slate-200"
+      className="border border-border px-4 py-2 text-left font-semibold text-foreground"
       {...props}
     />
   ),
   td: ({ node, ...props }) => (
     <td
-      className="border border-slate-700 px-4 py-2 align-top text-slate-300"
+      className="border border-border px-4 py-2 align-top text-surface-foreground"
       {...props}
     />
   ),
-  tr: ({ node, ...props }) => <tr className="even:bg-slate-800/30" {...props} />,
+  tr: ({ node, ...props }) => <tr className="even:bg-muted/50" {...props} />,
 
   // Links
   a: ({ node, ...props }) => (
     <a
-      className="text-teal-400 underline-offset-2 hover:text-teal-300 hover:underline"
+      className="text-primary underline-offset-2 hover:underline"
       target="_blank"
       rel="noreferrer"
       {...props}
@@ -310,13 +311,13 @@ const markdownComponents: Components = {
   ),
 
   // Horizontal rule
-  hr: ({ node, ...props }) => <hr className="my-6 border-slate-700" {...props} />,
+  hr: ({ node, ...props }) => <hr className="my-6 border-border" {...props} />,
 
   // Strong / em
   strong: ({ node, ...props }) => (
-    <strong className="font-semibold text-slate-100" {...props} />
+    <strong className="font-semibold text-foreground" {...props} />
   ),
-  em: ({ node, ...props }) => <em className="italic text-slate-300" {...props} />,
+  em: ({ node, ...props }) => <em className="italic text-surface-foreground" {...props} />,
 };
 
 const markdownRemarkPlugins: PluggableList = [remarkGfm, remarkMath];
@@ -327,12 +328,16 @@ const markdownRehypePlugins: PluggableList = [
 export function AssistantMarkdown({ content }: { content: string }) {
   const normalized = normalizeDisplayMath(
     normalizeLeakedLatexMatrices(
-      degradeMalformedTables(repairMalformedMathFences(content)),
+      degradeMalformedTables(
+        repairMalformedMathFences(
+          normalizeLatexDelimiters(repairDamagedLatexCommands(content)),
+        ),
+      ),
     ),
   );
 
   return (
-    <div className="prose prose-invert prose-slate max-w-none">
+    <div className="prose prose-slate max-w-none dark:prose-invert">
       <ReactMarkdown
         remarkPlugins={markdownRemarkPlugins}
         rehypePlugins={markdownRehypePlugins}
@@ -342,6 +347,49 @@ export function AssistantMarkdown({ content }: { content: string }) {
       </ReactMarkdown>
     </div>
   );
+}
+
+function repairDamagedLatexCommands(content: string): string {
+  let repaired = content
+    .replace(/\f(?=rac\b)/g, "\\f")
+    .replace(/\t(?=ext\b)/g, "\\t")
+    .replace(/\r(?=oot\b)/g, "\\r")
+    .replace(/\\root\{2\}\{/g, "\\sqrt{")
+    .replace(/(^|[^\\A-Za-z])oot\{2\}\{/g, (_match: string, prefix: string) => {
+      return `${prefix}\\sqrt{`;
+    })
+    .replace(/(^|[^\\A-Za-z])root\{2\}\{/g, (_match: string, prefix: string) => {
+      return `${prefix}\\sqrt{`;
+    });
+
+  const commands: Record<string, string> = {
+    rac: "frac",
+    ext: "text",
+    hat: "hat",
+    sqrt: "sqrt",
+    sum: "sum",
+  };
+
+  for (const [damaged, command] of Object.entries(commands)) {
+    repaired = repaired.replace(
+      new RegExp(`(^|[^\\\\A-Za-z])${damaged}(?=\\s*\\{|_)`, "g"),
+      (_match: string, prefix: string) => `${prefix}\\${command}`,
+    );
+  }
+
+  return repaired.replace(/\\text\{\s*sum\s*\}(?=_|\s*_\{)/g, "\\sum");
+}
+
+function normalizeLatexDelimiters(content: string): string {
+  return content
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_match, math: string) => {
+      const trimmed = math.trim();
+      return trimmed ? `$$\n${trimmed}\n$$` : "";
+    })
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_match, math: string) => {
+      const trimmed = math.trim();
+      return trimmed ? `$${trimmed}$` : "";
+    });
 }
 
 function normalizeLeakedLatexMatrices(content: string): string {
@@ -825,6 +873,7 @@ function splitTopLevel(input: string, separator: string) {
 
 function CodeBlock({ language, code }: { language: string; code: string }) {
   const [copied, setCopied] = useState(false);
+  const theme = useUiStore((s) => s.theme);
 
   const onCopy = async () => {
     try {
@@ -837,13 +886,13 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
   };
 
   return (
-    <div className="group relative my-4 overflow-hidden rounded-lg border border-slate-800 bg-slate-950">
-      <div className="flex items-center justify-between border-b border-slate-800 bg-slate-900/80 px-3 py-1.5 text-[11px] text-slate-400">
+    <div className="group relative my-4 overflow-hidden rounded-lg border border-border bg-background">
+      <div className="flex items-center justify-between border-b border-border bg-muted px-3 py-1.5 text-[11px] text-muted-foreground">
         <span className="font-mono uppercase tracking-wide">{language}</span>
         <button
           type="button"
           onClick={onCopy}
-          className="app-chrome inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200 active:bg-slate-700"
+          className="app-chrome inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-muted-foreground transition-colors hover:bg-background hover:text-foreground active:bg-background/80"
           aria-label={copied ? "Copied" : "Copy code"}
         >
           {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
@@ -852,7 +901,7 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
       </div>
       <SyntaxHighlighter
         language={language}
-        style={oneDark}
+        style={theme === "dark" ? oneDark : oneLight}
         PreTag="div"
         customStyle={{
           margin: 0,
