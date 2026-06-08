@@ -6,7 +6,7 @@ import { CssBaseline, ThemeProvider, createTheme } from "@mui/material";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 
-import { useUiStore } from "@/stores/uiStore";
+import { applyTheme, useUiStore } from "@/stores/uiStore";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -25,7 +25,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const theme = useUiStore((s) => s.theme);
 
   useEffect(() => {
-    document.documentElement.classList.toggle("dark", theme === "dark");
+    applyTheme(theme);
   }, [theme]);
 
   const muiTheme = useMemo(

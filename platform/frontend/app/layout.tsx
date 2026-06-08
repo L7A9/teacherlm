@@ -20,6 +20,26 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
+const themeScript = `
+(function () {
+  try {
+    var stored = window.localStorage.getItem("teacherlm-ui");
+    var theme = "dark";
+    if (stored) {
+      var parsed = JSON.parse(stored);
+      var value = parsed && parsed.state && parsed.state.theme;
+      if (value === "light" || value === "dark") theme = value;
+    }
+    var root = document.documentElement;
+    root.classList.toggle("dark", theme === "dark");
+    root.style.colorScheme = theme;
+  } catch (_) {
+    document.documentElement.classList.add("dark");
+    document.documentElement.style.colorScheme = "dark";
+  }
+})();
+`;
+
 export default function RootLayout({
   children,
 }: {
@@ -27,6 +47,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body
         className="min-h-dvh bg-background font-sans text-foreground antialiased"
       >

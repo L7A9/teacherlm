@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 import unicodedata
@@ -13,6 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from teacherlm_core.llm.language import language_name
 from teacherlm_core.llm.ollama_client import OllamaClient
 from teacherlm_core.llm.runtime import build_llm_client_kwargs, has_llm_override
 
@@ -102,6 +104,15 @@ class _CourseOutline(BaseModel):
     prerequisites: list[str] = Field(default_factory=list)
     language: str = "auto"
     chapters: list[_OutlineChapter] = Field(default_factory=list)
+
+
+class _LocalizedChapterTitle(BaseModel):
+    index: int
+    title: str = ""
+
+
+class _LocalizedChapterTitleBatch(BaseModel):
+    chapters: list[_LocalizedChapterTitle] = Field(default_factory=list)
 
 
 class _LessonBlockCandidate(BaseModel):
@@ -522,7 +533,7 @@ class CourseBuilderService:
                             block_candidate.source_chunk_ids,
                             lesson_chunks,
                         )
-                        content = block_candidate.content.strip()
+                        content = _repair_damaged_latex(block_candidate.content).strip()
                         if _is_thin_lesson_content(
                             block_type,
                             content,
@@ -974,9 +985,20 @@ class CourseBuilderService:
         if markdown_outline:
             return markdown_outline
         if source_outline:
+            localized_outline = await self._localized_outline_titles(
+                source_outline,
+                llm_options=llm_options,
+            )
+            if localized_outline:
+                return localized_outline
             return source_outline
 
-        return _fallback_outline(chunks)
+        fallback_outline = _fallback_outline(chunks)
+        localized_fallback = await self._localized_outline_titles(
+            fallback_outline,
+            llm_options=llm_options,
+        )
+        return localized_fallback or fallback_outline
 
     async def _markdown_outline(
         self,
@@ -997,16 +1019,29 @@ class CourseBuilderService:
         if source_candidate is None:
             return None
 
+        target_language_code, target_language = _target_language_from_options(llm_options)
+        title_rule = (
+            "The user selected "
+            f"{target_language}. Translate or rewrite course, chapter, and lesson display titles "
+            f"into {target_language}, while preserving the exact chapter order and "
+            "lesson/sub-chapter order. Keep original source titles in source_queries so retrieval "
+            "can still fetch evidence later. Proper nouns and established technical terms may stay as-is."
+            if target_language
+            else (
+                "Keep the exact chapter order, lesson/sub-chapter order, and display titles from "
+                "the provided source outline. Do not add, remove, or rename chapters or lessons "
+                "unless the same title is explicitly supported by the parser markdown."
+            )
+        )
         messages = [
             {
                 "role": "system",
                 "content": (
                     "You are the CourseBuilder planning step for TeacherLM. "
                     "Normalize a source-extracted course plan without changing its skeleton. "
-                    "Keep the exact chapter order and lesson/sub-chapter order from the provided "
-                    "source outline. Do not add, remove, or rename chapters or lessons unless the "
-                    "same title is explicitly supported by the parser markdown. You may only fill "
-                    "description, learning objectives, prerequisite, language, and source_queries. "
+                    f"{title_rule} "
+                    "You may only fill description, learning objectives, prerequisite, language, "
+                    "source_queries, and localized display titles when a target language is selected. "
                     "Return ONLY valid JSON "
                     "matching the requested schema. Do not return prose, summaries, or Markdown fences."
                 ),
@@ -1015,8 +1050,10 @@ class CourseBuilderService:
                 "role": "user",
                 "content": (
                     "Normalize this source-extracted course outline. The chapters and lessons below "
-                    "are the source of truth; preserve them as the course skeleton. Add source_queries "
-                    "that include the chapter and lesson titles so retrieval can fetch evidence later.\n\n"
+                    "are the source of truth for structure; preserve them as the course skeleton. "
+                    f"{_language_outline_instruction(target_language_code, target_language)}"
+                    "Add source_queries that include the original chapter and lesson titles so retrieval "
+                    "can fetch evidence later.\n\n"
                     f"Conversation: {conversation_id}\n\n"
                     "Source outline to preserve:\n"
                     f"{_format_source_structure(source_candidate.chapters)}\n\n"
@@ -1031,9 +1068,171 @@ class CourseBuilderService:
             outline = await self._structured(messages, _CourseOutline, llm_options=llm_options)
         except Exception:
             logger.warning("CourseBuilder markdown planning LLM failed; using parser markdown TOC skeleton")
+            localized_fallback = await self._localized_outline_titles(
+                source_candidate,
+                llm_options=llm_options,
+            )
+            if localized_fallback:
+                return localized_fallback
             return source_candidate
         outline = _normalize_markdown_outline(outline, context_pack)
-        return _merge_outline_metadata(outline, source_candidate)
+        merged_outline = _merge_outline_metadata(
+            outline,
+            source_candidate,
+            allow_localized_titles=bool(target_language),
+        )
+        return await self._ensure_localized_chapter_titles(
+            merged_outline,
+            source_candidate,
+            llm_options=llm_options,
+        )
+
+    async def _localized_outline_titles(
+        self,
+        source_outline: _CourseOutline,
+        *,
+        llm_options: dict[str, Any] | None,
+    ) -> _CourseOutline | None:
+        target_language_code, target_language = _target_language_from_options(llm_options)
+        if not target_language:
+            return None
+
+        source_json = json.dumps(
+            source_outline.model_dump(mode="json"),
+            ensure_ascii=False,
+            indent=2,
+        )
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You localize a TeacherLM CourseBuilder outline for display. "
+                    f"Translate or rewrite every course, chapter, and lesson display title into {target_language}. "
+                    "Also localize descriptions, learning objectives, and prerequisites. Preserve the exact "
+                    "course skeleton: same chapter count, chapter order, lesson count, lesson order, phase_id, "
+                    "objective_ids, and source_queries. Keep source_queries in the original source language "
+                    "because they are used for retrieval. Proper nouns and established technical terms may stay as-is. "
+                    "Return ONLY valid JSON matching the requested schema."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Target language: {target_language}\n"
+                    f"Set the output language field to: {target_language_code}\n\n"
+                    "Source outline JSON:\n"
+                    f"{source_json}"
+                ),
+            },
+        ]
+        try:
+            localized = await self._structured(messages, _CourseOutline, llm_options=llm_options)
+        except Exception:
+            logger.warning("CourseBuilder outline title localization failed; using source titles")
+            return None
+        localized.language = target_language_code or localized.language
+        merged_outline = _merge_outline_metadata(
+            localized,
+            source_outline,
+            allow_localized_titles=True,
+        )
+        return await self._ensure_localized_chapter_titles(
+            merged_outline,
+            source_outline,
+            llm_options=llm_options,
+        )
+
+    async def _ensure_localized_chapter_titles(
+        self,
+        outline: _CourseOutline,
+        source_outline: _CourseOutline,
+        *,
+        llm_options: dict[str, Any] | None,
+    ) -> _CourseOutline:
+        target_language_code, target_language = _target_language_from_options(llm_options)
+        if not target_language:
+            return outline
+
+        indexes = _chapter_indexes_needing_title_localization(
+            outline,
+            source_outline,
+            target_language_code,
+        )
+        if not indexes:
+            return outline
+
+        rows = [
+            {
+                "index": index,
+                "source_title": source_outline.chapters[index].title,
+                "current_display_title": outline.chapters[index].title,
+                "localized_lesson_titles": [lesson.title for lesson in outline.chapters[index].lessons[:6]],
+                "source_lesson_titles": [lesson.title for lesson in source_outline.chapters[index].lessons[:6]],
+            }
+            for index in indexes
+            if index < len(outline.chapters) and index < len(source_outline.chapters)
+        ]
+        if not rows:
+            return outline
+
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You repair TeacherLM CourseBuilder chapter display titles. "
+                    f"The selected settings language is {target_language}. "
+                    f"Translate every current_display_title into {target_language}; do not leave a title "
+                    "in the source language. Keep the same index values. Lesson titles are hints only. "
+                    "Preserve proper nouns, acronyms, and established technical terms. "
+                    "Return ONLY valid JSON matching the requested schema."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Target language: {target_language}\n"
+                    f"Language code: {target_language_code}\n\n"
+                    "Translate these chapter display titles:\n"
+                    f"{json.dumps(rows, ensure_ascii=False, indent=2)}"
+                ),
+            },
+        ]
+        try:
+            translated = await self._structured(messages, _LocalizedChapterTitleBatch, llm_options=llm_options)
+        except Exception:
+            logger.warning("CourseBuilder chapter title localization repair failed; using existing chapter titles")
+            translated = _LocalizedChapterTitleBatch()
+
+        title_by_index = {
+            item.index: _clean_title(item.title)
+            for item in translated.chapters
+            if isinstance(item.index, int) and _clean_title(item.title)
+        }
+        needed_indexes = set(indexes)
+        chapters: list[_OutlineChapter] = []
+        for index, chapter in enumerate(outline.chapters):
+            if index not in needed_indexes:
+                chapters.append(chapter)
+                continue
+            title = title_by_index.get(index, "")
+            if not title or _looks_like_markup(title):
+                title = _fallback_localized_chapter_title(
+                    source_outline.chapters[index].title if index < len(source_outline.chapters) else chapter.title,
+                    target_language_code,
+                )
+            if title and _chapter_title_still_needs_localization(
+                title,
+                source_outline.chapters[index].title if index < len(source_outline.chapters) else chapter.title,
+                target_language_code,
+                chapter,
+                source_outline.chapters[index] if index < len(source_outline.chapters) else None,
+            ):
+                title = _fallback_localized_chapter_title(
+                    source_outline.chapters[index].title if index < len(source_outline.chapters) else chapter.title,
+                    target_language_code,
+                )
+            chapters.append(chapter.model_copy(update={"title": title or chapter.title}))
+        return outline.model_copy(update={"chapters": chapters})
 
     async def _ensure_rich_lesson_chunks(
         self,
@@ -1212,6 +1411,12 @@ class CourseBuilderService:
                     "developed teaching prose: 2-4 connected paragraphs, usually 120-260 words, "
                     "that explain what the idea means, how it works, why it matters in this lesson, "
                     "and at least one concrete mechanism, contrast, or example when the sources support it. "
+                    "When the source contains formulas, equations, matrices, variables, numeric comparisons, "
+                    "or tabular data, preserve that scientific structure: use LaTeX math delimiters "
+                    "($...$ for inline math, $$...$$ for display math), and use Markdown tables or "
+                    "table blocks with data_json={columns, rows}. Because this is JSON output, escape "
+                    "every LaTeX backslash as \\\\; for example write $$\\\\sqrt{\\\\frac{1}{N} "
+                    "\\\\sum_i e_i^2}$$, never raw JSON escapes like \\t, \\f, or \\r. "
                     "Do not merely repeat the block title, list headings, cite a plan item, or write a one-line label. "
                     "If support is weak, say so clearly."
                 ),
@@ -1249,7 +1454,10 @@ class CourseBuilderService:
                     "Return only JSON. Do not write final lesson content yet. "
                     "Each block needs a type, title, and a source_query for retrieving exact source chunks. "
                     "Prefer blocks that can become rich teaching paragraphs with mechanisms, contrasts, "
-                    "examples, or consequences. Do not plan blocks from table-of-contents or plan markers alone."
+                    "examples, or consequences. If the lesson chunks include formulas, variables, matrices, "
+                    "or quantitative definitions, plan an equation block. If they include rows, columns, "
+                    "comparisons, or numeric data, plan a table block. Do not plan blocks from "
+                    "table-of-contents or plan markers alone."
                 ),
             },
             {
@@ -1292,7 +1500,14 @@ class CourseBuilderService:
                     "For explanation, definition, example, procedure, and summary blocks, content must be "
                     "2-4 connected paragraphs, usually 120-260 words, and must teach the idea rather than "
                     "just naming it. Explain relationships, mechanisms, examples, contrasts, or consequences "
-                    "found in the chunks. Never use a parser plan marker such as 'Source plan item' as the "
+                    "found in the chunks. For equation blocks, write the formula in LaTeX using $$...$$, "
+                    "then explain each symbol or term in grounded prose when the source supports it. "
+                    "For table blocks, use a clean Markdown table in content, or fill data_json with "
+                    "columns and rows; cells may contain LaTeX math. Because this is JSON output, "
+                    "escape every LaTeX backslash as \\\\; for example write "
+                    "$$\\\\sqrt{\\\\frac{1}{N} \\\\sum_i e_i^2}$$, never raw JSON escapes like "
+                    "\\t, \\f, or \\r. "
+                    "Never use a parser plan marker such as 'Source plan item' as the "
                     "lesson explanation. Do not invent facts. If support is weak, use a warning block."
                 ),
             },
@@ -1732,6 +1947,22 @@ def _language_from_options(options: dict[str, Any] | None) -> str | None:
     return value if value and value not in {"auto", "__auto__"} else None
 
 
+def _target_language_from_options(options: dict[str, Any] | None) -> tuple[str | None, str | None]:
+    code = _language_from_options(options)
+    if not code:
+        return None, None
+    return code, language_name(code) or code
+
+
+def _language_outline_instruction(language_code: str | None, language: str | None) -> str:
+    if not language_code or not language:
+        return ""
+    return (
+        f"The selected settings language is {language}; all display titles and student-facing "
+        f"outline text must be in {language}. "
+    )
+
+
 def _safe_language(value: str) -> str | None:
     language = str(value or "").strip().lower()
     return None if language in {"", "auto", "__auto__", "unknown"} else language[:32]
@@ -1739,6 +1970,33 @@ def _safe_language(value: str) -> str | None:
 
 def _clean_title(value: str) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip())[:512]
+
+
+def _repair_damaged_latex(value: str) -> str:
+    text = str(value or "")
+    if not text:
+        return ""
+    text = text.replace("\x0crac", r"\frac")
+    text = text.replace("\x09ext", r"\text")
+    text = text.replace("\x0doot", r"\root")
+    text = re.sub(r"\\root\{2\}\{", r"\\sqrt{", text)
+    text = re.sub(r"\r(?=oot\b)", r"\\r", text)
+    text = re.sub(r"(^|[^\\A-Za-z])oot\{2\}\{", r"\1\\sqrt{", text)
+    text = re.sub(r"(^|[^\\A-Za-z])root\{2\}\{", r"\1\\sqrt{", text)
+    command_replacements = {
+        "rac": "frac",
+        "ext": "text",
+        "hat": "hat",
+        "sqrt": "sqrt",
+        "sum": "sum",
+    }
+    for damaged, command in command_replacements.items():
+        text = re.sub(
+            rf"(^|[^\\A-Za-z]){damaged}(?=\s*\{{|_)",
+            rf"\1\\{command}",
+            text,
+        )
+    return re.sub(r"\\text\{\s*sum\s*\}(?=_|\s*_\{)", r"\\sum", text)
 
 
 def _clean_list(values: list[str]) -> list[str]:
@@ -2674,6 +2932,8 @@ def _should_prefer_source_outline(source_outline: _CourseOutline, generated_outl
 def _merge_outline_metadata(
     generated_outline: _CourseOutline,
     source_outline: _CourseOutline,
+    *,
+    allow_localized_titles: bool = False,
 ) -> _CourseOutline:
     return _CourseOutline(
         title=_clean_title(generated_outline.title) or source_outline.title,
@@ -2681,23 +2941,37 @@ def _merge_outline_metadata(
         learning_objectives=_clean_list(generated_outline.learning_objectives) or source_outline.learning_objectives,
         prerequisites=_clean_list(generated_outline.prerequisites),
         language=_safe_language(generated_outline.language) or source_outline.language,
-        chapters=_merge_source_chapter_titles(source_outline.chapters, generated_outline.chapters),
+        chapters=_merge_source_chapter_titles(
+            source_outline.chapters,
+            generated_outline.chapters,
+            allow_localized_titles=allow_localized_titles,
+        ),
     )
 
 
 def _merge_source_chapter_titles(
     source_chapters: list[_OutlineChapter],
     generated_chapters: list[_OutlineChapter],
+    *,
+    allow_localized_titles: bool = False,
 ) -> list[_OutlineChapter]:
     merged: list[_OutlineChapter] = []
     for index, source_chapter in enumerate(source_chapters):
         generated_chapter = generated_chapters[index] if index < len(generated_chapters) else None
-        chapter_title = _normalized_source_title(source_chapter.title, generated_chapter.title if generated_chapter else "")
+        chapter_title = _merged_display_title(
+            source_chapter.title,
+            generated_chapter.title if generated_chapter else "",
+            allow_localized_titles=allow_localized_titles,
+        )
         generated_lessons = generated_chapter.lessons if generated_chapter else []
         lessons: list[_OutlineLesson] = []
         for lesson_index, source_lesson in enumerate(source_chapter.lessons):
             generated_lesson = generated_lessons[lesson_index] if lesson_index < len(generated_lessons) else None
-            lesson_title = _normalized_source_title(source_lesson.title, generated_lesson.title if generated_lesson else "")
+            lesson_title = _merged_display_title(
+                source_lesson.title,
+                generated_lesson.title if generated_lesson else "",
+                allow_localized_titles=allow_localized_titles,
+            )
             lessons.append(
                 _OutlineLesson(
                     title=lesson_title,
@@ -2754,6 +3028,100 @@ def _normalized_source_title(source_title: str, generated_title: str) -> str:
     if cleaned_generated and _title_key(cleaned_generated) == _title_key(source_title):
         return cleaned_generated
     return source_title
+
+
+def _merged_display_title(
+    source_title: str,
+    generated_title: str,
+    *,
+    allow_localized_titles: bool,
+) -> str:
+    cleaned_generated = _clean_title(generated_title)
+    if allow_localized_titles and cleaned_generated and not _looks_like_markup(cleaned_generated):
+        return cleaned_generated
+    return _normalized_source_title(source_title, generated_title)
+
+
+def _chapter_indexes_needing_title_localization(
+    outline: _CourseOutline,
+    source_outline: _CourseOutline,
+    language_code: str | None,
+) -> list[int]:
+    indexes: list[int] = []
+    for index, chapter in enumerate(outline.chapters):
+        source_chapter = source_outline.chapters[index] if index < len(source_outline.chapters) else None
+        if _chapter_title_still_needs_localization(
+            chapter.title,
+            source_chapter.title if source_chapter else "",
+            language_code,
+            chapter,
+            source_chapter,
+        ):
+            indexes.append(index)
+    return indexes
+
+
+def _chapter_title_still_needs_localization(
+    title: str,
+    source_title: str,
+    language_code: str | None,
+    chapter: _OutlineChapter,
+    source_chapter: _OutlineChapter | None,
+) -> bool:
+    if not language_code or not source_title:
+        return False
+    if _title_key(title) != _title_key(source_title):
+        return False
+    if _title_has_target_language_mismatch_signal(source_title, language_code):
+        return True
+    if source_chapter is None:
+        return False
+    for lesson_index, lesson in enumerate(chapter.lessons):
+        source_lesson = source_chapter.lessons[lesson_index] if lesson_index < len(source_chapter.lessons) else None
+        if source_lesson and _title_key(lesson.title) != _title_key(source_lesson.title):
+            return True
+    return False
+
+
+def _title_has_target_language_mismatch_signal(title: str, language_code: str | None) -> bool:
+    if not language_code:
+        return False
+    language = language_code.lower()
+    text = _fold_for_match(title)
+    if language.startswith("en"):
+        if re.search(r"[àâçéèêëîïôùûüÿœæ]", str(title or "").lower()):
+            return True
+        if re.search(
+            r"\b(semaine|chapitre|fondements?|objectifs?|problemes?|mod[eè]les?|donnees|cours|"
+            r"methodes?|travaux|pratique|evaluation|semana|capitulo|fundamentos|objetivos|datos)\b",
+            text,
+        ):
+            return True
+        return bool(re.search(r"[\u0600-\u06ff\u3040-\u30ff\u3400-\u9fff]", str(title or "")))
+    return False
+
+
+def _fallback_localized_chapter_title(title: str, language_code: str | None) -> str:
+    if not language_code or not language_code.lower().startswith("en"):
+        return ""
+    text = _clean_title(title)
+    if not text:
+        return ""
+    replacements = {
+        r"\b[Ss]emaine\b": "Week",
+        r"\b[Cc]hapitre\b": "Chapter",
+        r"\b[Ff]ondements\b": "Foundations",
+        r"\b[Oo]bjectifs\b": "Objectives",
+        r"\b[Pp]robl[eè]mes?\b": "Problem",
+        r"\b[Mm]od[eè]les?\b": "Models",
+        r"\b[Dd]onn[eé]es\b": "Data",
+        r"\b[Mm][eé]thodes?\b": "Methods",
+        r"\b[EÉeé]valuation\b": "Evaluation",
+    }
+    for pattern, replacement in replacements.items():
+        text = re.sub(pattern, replacement, text)
+    text = re.sub(r"\s+:\s+", ": ", text)
+    return _clean_title(text)
 
 
 def _title_key(value: str) -> str:
@@ -2986,6 +3354,7 @@ def _fallback_outline(chunks: list[SearchChunkRecord]) -> _CourseOutline:
             _OutlineChapter(
                 title=title,
                 description=_first_sentence(group[0].text),
+                source_queries=[title],
                 lessons=[
                     _OutlineLesson(
                         title=lesson_title,

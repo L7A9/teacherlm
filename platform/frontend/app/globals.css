@@ -2,17 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Dark theme is the default — html gets `class="dark"` in layout.tsx.
-   Light mode variables live under `:root` for a future toggle. */
+/* Dark remains the default, but the persisted theme can remove `.dark`
+   before hydration so the light variables under `:root` are active. */
 
 :root {
-  --background: 0 0% 100%;
-  --foreground: 240 10% 10%;
-  --surface: 0 0% 98%;
-  --surface-foreground: 240 10% 10%;
-  --muted: 240 5% 96%;
-  --muted-foreground: 240 4% 40%;
-  --border: 240 6% 90%;
+  --background: 240 18% 92%;
+  --foreground: 240 10% 12%;
+  --surface: 240 18% 97%;
+  --surface-foreground: 240 10% 12%;
+  --muted: 240 13% 88%;
+  --muted-foreground: 240 5% 34%;
+  --border: 240 9% 70%;
   --ring: 252 80% 60%;
   --primary: 252 80% 60%;
   --primary-foreground: 0 0% 100%;
@@ -53,6 +53,11 @@
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-sans);
+  }
+  html {
+    color-scheme: light;
+  }
+  html.dark {
     color-scheme: dark;
   }
   body {
@@ -147,6 +152,20 @@
     overflow-x: auto;
     overflow-y: hidden;
     padding-bottom: 0.25rem;
+  }
+
+  .course-markdown.scientific-table .prose {
+    font-size: inherit;
+    line-height: inherit;
+  }
+
+  .course-markdown.scientific-table .prose :where(p, ul, ol, blockquote, table) {
+    margin: 0;
+  }
+
+  .course-markdown.scientific-table .katex-display {
+    margin: 0;
+    padding-bottom: 0;
   }
 }
 

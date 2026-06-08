@@ -90,15 +90,23 @@ export function LessonBlockRenderer({
 }
 
 function BlockBody({ block }: Props) {
-  if (block.block_type === "table") return <TableBlock data={block.data_json} content={block.content} />;
-  if (block.block_type === "equation") return <AssistantMarkdown content={mathBlock(block.content)} />;
+  if (isTableBlock(block.block_type)) {
+    return <TableBlock data={block.data_json} content={block.content} />;
+  }
+  if (isEquationBlock(block.block_type)) {
+    return <ScientificMarkdown content={equationContent(block.content)} />;
+  }
   if (block.block_type === "chart") return <ChartBlock data={block.data_json} fallback={block.content} />;
   if (block.block_type === "diagram") {
-    return <AssistantMarkdown content={`\`\`\`mermaid\n${block.content}\n\`\`\``} />;
+    return <ScientificMarkdown content={`\`\`\`mermaid\n${block.content}\n\`\`\``} />;
   }
+  return <ScientificMarkdown content={block.content} />;
+}
+
+function ScientificMarkdown({ content }: { content: string }) {
   return (
     <div className="course-markdown text-xs leading-5 text-muted-foreground">
-      <AssistantMarkdown content={block.content} />
+      <AssistantMarkdown content={content} />
     </div>
   );
 }
@@ -107,16 +115,16 @@ function TableBlock({ data, content }: { data: Record<string, unknown>; content:
   const columns = Array.isArray(data.columns) ? data.columns.map(String) : [];
   const rows = Array.isArray(data.rows) ? data.rows : [];
   if (columns.length === 0 || rows.length === 0) {
-    return <AssistantMarkdown content={content} />;
+    return <ScientificMarkdown content={content} />;
   }
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-xs">
+    <div className="course-markdown scientific-table overflow-x-auto">
+      <table className="w-full min-w-max border-collapse text-xs">
         <thead>
           <tr>
             {columns.map((column) => (
               <th key={column} className="border border-border bg-muted px-2 py-1 text-left">
-                {column}
+                <MarkdownCell content={column} />
               </th>
             ))}
           </tr>
@@ -126,7 +134,7 @@ function TableBlock({ data, content }: { data: Record<string, unknown>; content:
             <tr key={rowIndex}>
               {columns.map((column) => (
                 <td key={column} className="border border-border px-2 py-1">
-                  {cellValue(row, column)}
+                  <MarkdownCell content={cellValue(row, column)} />
                 </td>
               ))}
             </tr>
@@ -135,6 +143,10 @@ function TableBlock({ data, content }: { data: Record<string, unknown>; content:
       </table>
     </div>
   );
+}
+
+function MarkdownCell({ content }: { content: string }) {
+  return <AssistantMarkdown content={content} />;
 }
 
 function ChartBlock({ data, fallback }: { data: Record<string, unknown>; fallback: string }) {
@@ -182,10 +194,30 @@ function ChartBlock({ data, fallback }: { data: Record<string, unknown>; fallbac
   );
 }
 
-function mathBlock(content: string) {
+function equationContent(content: string) {
   const trimmed = content.trim();
-  if (trimmed.startsWith("$$")) return trimmed;
+  if (!trimmed) return "";
+  if (!isBareEquation(trimmed)) return trimmed;
+  if (trimmed.startsWith("$$") || trimmed.startsWith("$")) return trimmed;
   return `$$\n${trimmed}\n$$`;
+}
+
+function isBareEquation(content: string) {
+  if (content.includes("\n\n")) return false;
+  if (/^(\$\$|\$|\\\[|\\\()/.test(content)) return true;
+  if (/[.!?]\s+[A-ZÀ-Ý]/.test(content)) return false;
+  if (content.length > 240) return false;
+  return /[=≈≤≥<>]|\\(?:frac|sum|sqrt|int|lim|begin|alpha|beta|gamma|lambda|mu|sigma|theta)\b/.test(
+    content,
+  );
+}
+
+function isEquationBlock(type: string) {
+  return ["equation", "formula"].includes(type.toLowerCase());
+}
+
+function isTableBlock(type: string) {
+  return type.toLowerCase() === "table";
 }
 
 function cellValue(row: unknown, column: string) {
