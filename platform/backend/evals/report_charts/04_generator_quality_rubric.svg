@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1350" height="680" viewBox="0 0 1350 680">
+<rect width="100%" height="100%" fill="white"/>
+<text x="675.0" y="44" text-anchor="middle" font-size="30" font-weight="700" fill="#111827">Generator Output Quality Rubric</text>
+<text x="675.0" y="76" text-anchor="middle" font-size="17" fill="#4b5563">Editable manual scores from 0 to 1 for teacher, quiz, podcast, and mind-map outputs</text>
+<rect x="110" y="105" width="1190" height="440" fill="#f9fafb" stroke="#d1d5db"/>
+<line x1="110" y1="545.0" x2="1300" y2="545.0" stroke="#e5e7eb"/>
+<text x="98" y="550.0" text-anchor="end" font-size="14" fill="#374151">0.0</text>
+<line x1="110" y1="457.0" x2="1300" y2="457.0" stroke="#e5e7eb"/>
+<text x="98" y="462.0" text-anchor="end" font-size="14" fill="#374151">0.2</text>
+<line x1="110" y1="369.0" x2="1300" y2="369.0" stroke="#e5e7eb"/>
+<text x="98" y="374.0" text-anchor="end" font-size="14" fill="#374151">0.4</text>
+<line x1="110" y1="281.0" x2="1300" y2="281.0" stroke="#e5e7eb"/>
+<text x="98" y="286.0" text-anchor="end" font-size="14" fill="#374151">0.6</text>
+<line x1="110" y1="193.0" x2="1300" y2="193.0" stroke="#e5e7eb"/>
+<text x="98" y="198.0" text-anchor="end" font-size="14" fill="#374151">0.8</text>
+<line x1="110" y1="105.0" x2="1300" y2="105.0" stroke="#e5e7eb"/>
+<text x="98" y="110.0" text-anchor="end" font-size="14" fill="#374151">1.0</text>
+<text x="35" y="325.0" text-anchor="middle" font-size="17" font-weight="700" fill="#111827">Score</text>
+<rect x="127.7" y="140.2" width="44.4" height="404.8" rx="6" fill="#2563eb"/>
+<text x="149.9" y="133.2" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">0.92</text>
+<rect x="182.1" y="184.2" width="44.4" height="360.8" rx="6" fill="#16a34a"/>
+<text x="204.3" y="177.2" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">0.82</text>
+<rect x="236.5" y="127.0" width="44.4" height="418.0" rx="6" fill="#f59e0b"/>
+<text x="258.8" y="120.0" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">0.95</text>
+<rect x="291.0" y="149.0" width="44.4" height="396.0" rx="6" fill="#dc2626"/>
+<text x="313.2" y="142.0" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">0.9</text>
+<rect x="345.4" y="157.8" width="44.4" height="387.2" rx="6" fill="#7c3aed"/>
+<text x="367.6" y="150.8" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">0.88</text>
+<text x="258.8" y="579" text-anchor="middle" font-size="16" font-weight="700" fill="#111827">teacher_gen</text>
+<rect x="425.2" y="149.0" width="44.4" height="396.0" rx="6" fill="#2563eb"/>
+<text x="447.4" y="142.0" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">0.9</text>
+<rect x="479.6" y="149.0" width="44.4" height="396.0" rx="6" fill="#16a34a"/>
+<text x="501.8" y="142.0" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">0.9</text>
+<rect x="534.0" y="171.0" width="44.4" height="374.0" rx="6" fill="#f59e0b"/>
+<text x="556.3" y="164.0" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">0.85</text>
+<rect x="588.5" y="157.8" width="44.4" height="387.2" rx="6" fill="#dc2626"/>
+<text x="610.7" y="150.8" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">0.88</text>
+<rect x="642.9" y="135.8" width="44.4" height="409.2" rx="6" fill="#7c3aed"/>
+<text x="665.1" y="128.8" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">0.93</text>
+<text x="556.2" y="579" text-anchor="middle" font-size="16" font-weight="700" fill="#111827">quiz_gen</text>
+<rect x="722.7" y="171.0" width="44.4" height="374.0" rx="6" fill="#2563eb"/>
+<text x="744.9" y="164.0" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">0.85</text>
+<rect x="777.1" y="201.8" width="44.4" height="343.2" rx="6" fill="#16a34a"/>
+<text x="799.3" y="194.8" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">0.78</text>
+<rect x="831.5" y="140.2" width="44.4" height="404.8" rx="6" fill="#f59e0b"/>
+<text x="853.8" y="133.2" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">0.92</text>
+<rect x="886.0" y="175.4" width="44.4" height="369.6" rx="6" fill="#dc2626"/>
+<text x="908.2" y="168.4" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">0.84</text>
+<rect x="940.4" y="193.0" width="44.4" height="352.0" rx="6" fill="#7c3aed"/>
+<text x="962.6" y="186.0" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">0.8</text>
+<text x="853.8" y="579" text-anchor="middle" font-size="16" font-weight="700" fill="#111827">podcast_gen</text>
+<rect x="1020.2" y="157.8" width="44.4" height="387.2" rx="6" fill="#2563eb"/>
+<text x="1042.4" y="150.8" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">0.88</text>
+<rect x="1074.6" y="166.6" width="44.4" height="378.4" rx="6" fill="#16a34a"/>
+<text x="1096.8" y="159.6" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">0.86</text>
+<rect x="1129.0" y="184.2" width="44.4" height="360.8" rx="6" fill="#f59e0b"/>
+<text x="1151.2" y="177.2" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">0.82</text>
+<rect x="1183.5" y="162.2" width="44.4" height="382.8" rx="6" fill="#dc2626"/>
+<text x="1205.7" y="155.2" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">0.87</text>
+<rect x="1237.9" y="166.6" width="44.4" height="378.4" rx="6" fill="#7c3aed"/>
+<text x="1260.1" y="159.6" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">0.86</text>
+<text x="1151.2" y="579" text-anchor="middle" font-size="16" font-weight="700" fill="#111827">mindmap_gen</text>
+<rect x="375.0" y="609" width="22" height="14" rx="3" fill="#2563eb"/>
+<text x="405.0" y="621" font-size="15" fill="#111827">Groundedness</text>
+<rect x="500.0" y="609" width="22" height="14" rx="3" fill="#16a34a"/>
+<text x="530.0" y="621" font-size="15" fill="#111827">Coverage</text>
+<rect x="625.0" y="609" width="22" height="14" rx="3" fill="#f59e0b"/>
+<text x="655.0" y="621" font-size="15" fill="#111827">Readability</text>
+<rect x="750.0" y="609" width="22" height="14" rx="3" fill="#dc2626"/>
+<text x="780.0" y="621" font-size="15" fill="#111827">Usefulness</text>
+<rect x="875.0" y="609" width="22" height="14" rx="3" fill="#7c3aed"/>
+<text x="905.0" y="621" font-size="15" fill="#111827">Artifact correctness</text>
+</svg>

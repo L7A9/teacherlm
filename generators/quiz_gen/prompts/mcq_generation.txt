@@ -1,24 +1,25 @@
-Write ONE multiple-choice question for the concept and Bloom level below, grounded strictly in the provided chunk.
+Write ONE serious multiple-choice course question for the concept and Bloom level below, grounded strictly in the provided chunk.
 
 Requirements:
 - bloom_level: must equal "{bloom_level}" exactly.
-- question: clear, single-idea, no trick wording. Match the Bloom level (recall vs. application vs. analysis).
-- options: 4 plausible options. The correct one MUST be derivable from the chunk. Distractors will be improved in a later step — for now make them content-relevant, not silly.
+- question: clear, single-idea, no trick wording. Match the Bloom level and make it feel like a real course quiz or exam question.
+- options: exactly 4 plausible options. The correct one MUST be derivable from the chunk. Distractors must be content-relevant and the same kind of answer as the correct option, not silly or obviously wrong.
 - correct_index: 0-based index into options.
-- explanation: 1-2 sentences citing the source. Phrase as a teacher: "Right — the chunk shows that..."
+- explanation: 1-2 sentences citing the source. Phrase as a teacher: "Right - the chunk shows that..."
 - concept: must equal "{concept}" exactly.
 - source_chunk_id: must equal "{chunk_id}" exactly.
 
 HARD RULES:
 - Every claim in the question, correct option, and explanation must be supported by the chunk.
 - Do NOT invent facts, numbers, names, or examples not present in the chunk.
-- Do NOT ask the student to remember the exact final result/output of a worked
-  example from the course. If a question uses an example, include all needed
-  data in the question and test the concept, method, formula, interpretation,
-  or next step rather than memorized example results.
-- All four options should be distinct.
+- Do NOT write generic source-awareness questions such as "Which concept is covered/supported?", "Which source section...?", "According to the chunk/source...", or "The course material covers...".
+- Do NOT reveal the correct answer in the question wording. The correct option must not appear verbatim in the question.
+- Do NOT make the correct answer merely the concept label from === CONCEPT ===. Ask about a mechanism, relationship, condition, formula interpretation, consequence, comparison, or application taught by the source.
+- Do NOT use giveaway options such as "the course material", "not enough information", "all of the above", "none of the above", or joke/obviously unrelated distractors.
+- Do NOT ask the student to remember the exact final result/output of a worked example from the course. If a question uses an example, include all needed data in the question and test the concept, method, formula, interpretation, or next step rather than memorized example results.
+- All four options must be distinct, plausible, and similar in length/specificity.
 
-Return ONLY the structured JSON object — no prose, no code fences.
+Return ONLY the structured JSON object - no prose, no code fences.
 
 === CONCEPT ===
 {concept}

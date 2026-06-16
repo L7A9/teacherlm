@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="330" viewBox="0 0 1200 330">
+<rect width="100%" height="100%" fill="white"/>
+<text x="600.0" y="42" text-anchor="middle" font-size="28" font-weight="700" fill="#111827">Course Builder Generation Timeline</text>
+<text x="600.0" y="72" text-anchor="middle" font-size="16" fill="#4b5563">Measured from progress event timestamps for the latest completed run</text>
+<rect x="70.0" y="135" width="8.9" height="54" fill="#2563eb"/>
+<rect x="78.9" y="135" width="3.0" height="54" fill="#16a34a"/>
+<rect x="81.9" y="135" width="3.0" height="54" fill="#f59e0b"/>
+<rect x="84.9" y="135" width="27.0" height="54" fill="#dc2626"/>
+<rect x="111.9" y="135" width="862.1" height="54" fill="#7c3aed"/>
+<text x="542.9" y="158" text-anchor="middle" font-size="13" font-weight="700" fill="white">Lesson writing</text>
+<text x="542.9" y="177" text-anchor="middle" font-size="12" fill="white">375.2s</text>
+<rect x="974.0" y="135" width="159.1" height="54" fill="#0891b2"/>
+<text x="1053.5" y="158" text-anchor="middle" font-size="13" font-weight="700" fill="white">Quiz generation</text>
+<text x="1053.5" y="177" text-anchor="middle" font-size="12" fill="white">69.2s</text>
+<rect x="1133.1" y="135" width="3.0" height="54" fill="#db2777"/>
+<rect x="1136.1" y="135" width="3.0" height="54" fill="#4b5563"/>
+<rect x="70" y="135" width="1060" height="54" fill="none" stroke="#111827"/>
+<rect x="70" y="225" width="14" height="14" rx="3" fill="#2563eb"/>
+<text x="90" y="237" font-size="13" fill="#111827">Queued (3.9s)</text>
+<rect x="200" y="225" width="14" height="14" rx="3" fill="#16a34a"/>
+<text x="220" y="237" font-size="13" fill="#111827">Analyzing (0.1s)</text>
+<rect x="340" y="225" width="14" height="14" rx="3" fill="#f59e0b"/>
+<text x="360" y="237" font-size="13" fill="#111827">Outline generation (0.7s)</text>
+<rect x="530" y="225" width="14" height="14" rx="3" fill="#dc2626"/>
+<text x="550" y="237" font-size="13" fill="#111827">Chapter creation (11.7s)</text>
+<rect x="720" y="225" width="14" height="14" rx="3" fill="#7c3aed"/>
+<text x="740" y="237" font-size="13" fill="#111827">Lesson writing (375.2s)</text>
+<rect x="900" y="225" width="14" height="14" rx="3" fill="#0891b2"/>
+<text x="920" y="237" font-size="13" fill="#111827">Quiz generation (69.2s)</text>
+<rect x="70" y="253" width="14" height="14" rx="3" fill="#db2777"/>
+<text x="90" y="265" font-size="13" fill="#111827">Validation (0.1s)</text>
+<rect x="218" y="253" width="14" height="14" rx="3" fill="#4b5563"/>
+<text x="238" y="265" font-size="13" fill="#111827">Ready (0.5s)</text>
+<text x="600.0" y="310" text-anchor="middle" font-size="13" fill="#6b7280">Total measured/estimated duration: 461.3s</text>
+</svg>

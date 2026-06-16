@@ -70,9 +70,9 @@ services:
       dockerfile: platform/backend/Dockerfile
       args:
         EMBEDDING_MODEL: ${EMBEDDING_MODEL:-intfloat/multilingual-e5-large}
-        PREFETCH_EMBEDDING_MODEL: ${PREFETCH_EMBEDDING_MODEL:-true}
+        PREFETCH_EMBEDDING_MODEL: ${PREFETCH_EMBEDDING_MODEL:-false}
         RETRIEVAL_RERANKER_MODEL: ${RETRIEVAL_RERANKER_MODEL:-BAAI/bge-reranker-base}
-        PREFETCH_RERANKER_MODEL: ${PREFETCH_RERANKER_MODEL:-true}
+        PREFETCH_RERANKER_MODEL: ${PREFETCH_RERANKER_MODEL:-false}
     restart: unless-stopped
     env_file:
       - .env
@@ -107,9 +107,9 @@ services:
       dockerfile: platform/backend/Dockerfile
       args:
         EMBEDDING_MODEL: ${EMBEDDING_MODEL:-intfloat/multilingual-e5-large}
-        PREFETCH_EMBEDDING_MODEL: ${PREFETCH_EMBEDDING_MODEL:-true}
+        PREFETCH_EMBEDDING_MODEL: ${PREFETCH_EMBEDDING_MODEL:-false}
         RETRIEVAL_RERANKER_MODEL: ${RETRIEVAL_RERANKER_MODEL:-BAAI/bge-reranker-base}
-        PREFETCH_RERANKER_MODEL: ${PREFETCH_RERANKER_MODEL:-true}
+        PREFETCH_RERANKER_MODEL: ${PREFETCH_RERANKER_MODEL:-false}
     restart: unless-stopped
     command: ["arq", "workers.ingestion_worker.WorkerSettings"]
     env_file:

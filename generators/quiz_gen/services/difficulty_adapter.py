@@ -20,8 +20,9 @@ from ..schemas import (
 # Bloom levels we draw from, ordered easiest → hardest. Used as fallback rotation.
 _BLOOM_ORDER: list[BloomLevel] = ["remember", "understand", "apply", "analyze"]
 
-# Default per-slot question-type rotation. Keeps things varied without parameters.
-_KIND_ROTATION: list[QuestionKind] = ["mcq", "mcq", "true_false", "fill_blank"]
+# Default per-slot question-type rotation. Fill-in questions are intentionally
+# excluded from the product quiz generator.
+_KIND_ROTATION: list[QuestionKind] = ["mcq", "mcq", "true_false", "mcq"]
 
 
 def _flatten(extracted: ExtractedConcepts) -> dict[str, ConceptCard]:

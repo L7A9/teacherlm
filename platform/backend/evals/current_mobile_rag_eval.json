@@ -1,0 +1,138 @@
+{
+  "conversation_id": "76aa893e-d7c7-41f8-a201-4071338198c7",
+  "cases": [
+    {
+      "id": "mobile_001_smartphone_definition",
+      "query": "What is a smartphone and what features make it different from a basic mobile phone?",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "cbf31be8-02eb-59c8-b8a6-dcf5340ed4b5",
+        "b991d09e-d25a-599d-b4c7-9027bfc7e724"
+      ]
+    },
+    {
+      "id": "mobile_002_native_vs_hybrid",
+      "query": "Compare native mobile development with hybrid mobile applications.",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "e5beb431-9123-5dbb-af13-0c50adda288e",
+        "4f8b2efc-f869-570c-8150-28d8ff83b121",
+        "64e4987b-241b-5ccb-aab2-f3b21b8613fb",
+        "f7205c42-5d05-5acf-a0e5-d84ea65aabfc",
+        "91620d96-47cd-5514-90f7-2eb5ed8b8616"
+      ]
+    },
+    {
+      "id": "android_001_main_components",
+      "query": "What are the main components of an Android application?",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "230795b3-cfe5-5def-9767-63dd2e7faa1a"
+      ]
+    },
+    {
+      "id": "android_002_activity_definition",
+      "query": "Explain what an Activity is in Android and how it relates to the user interface.",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "559329ec-319e-5e3d-8055-6e4d2510b8f4",
+        "df31b075-67a8-5dbd-aff4-fd75d54e6e49"
+      ]
+    },
+    {
+      "id": "android_003_onrestart_exact",
+      "query": "When is onRestart called in the Android activity lifecycle?",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "f3934830-b559-5b3f-8802-394b7e6bec4a",
+        "e67aeb5c-4e68-5879-8844-c3a6faaf24c0",
+        "0e7c0442-b6fb-554d-9ebd-a8a81ad2f88a"
+      ]
+    },
+    {
+      "id": "android_004_intents",
+      "query": "How do Intents allow communication between Android activities?",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "f6406ff7-c8a0-5c10-b37c-7e39345265c4",
+        "cac83950-717d-5d91-a70a-526a62ba13b9",
+        "c8b632eb-ad63-5fe1-8fda-30ef4f28cac4",
+        "4371b77d-b1b3-5fd6-903c-561015be9bbf"
+      ]
+    },
+    {
+      "id": "android_005_manifest_exact",
+      "query": "What is AndroidManifest.xml used for and how is a new activity declared?",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "5654ad3b-e5ce-5317-8fd9-626896c3faa6",
+        "9d650d8a-8ffb-52bc-b48d-7d5d7b986e5c",
+        "c8b632eb-ad63-5fe1-8fda-30ef4f28cac4"
+      ]
+    },
+    {
+      "id": "android_006_resources_exact",
+      "query": "What are res/drawable and res/layout resources in Android?",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "13e7110c-6caf-58a7-834e-2d56028cfd4c"
+      ]
+    },
+    {
+      "id": "android_007_style_xml_exact",
+      "query": "How is style.xml used with @style in Android layouts?",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "9bc10a68-0929-5ba5-b20d-73ffe6148586",
+        "b251e028-091f-50f8-8e73-f6caae2673f9",
+        "203ad3b5-3762-51f8-bd1b-fa73bf01fb3f"
+      ]
+    },
+    {
+      "id": "sqlite_001_openhelper_exact",
+      "query": "Why does Android use SQLiteOpenHelper and what methods must be implemented?",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "1a2b029c-3268-5bc6-945f-19fd264a541f",
+        "1bc8a8b3-6cbb-56ae-b89a-2a28801af5b7",
+        "651c993c-0f10-5b96-9b6a-c5dd9ef8af12",
+        "64516305-fe3e-5f38-aef9-ec77547327ba",
+        "28ab4a7b-d564-590b-a7ed-610083ff4066"
+      ]
+    },
+    {
+      "id": "sqlite_002_create_table_exact",
+      "query": "Show the CREATE TABLE syntax used by SQLite in the Android course.",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "15dbdb7d-fd83-5d86-b3bd-3363c1e20e90",
+        "ba5c6d94-0af8-5c4e-b019-4cd7dd3c4cae",
+        "3705d221-132b-55a4-b737-c6875e0ddfb1",
+        "7de355b0-bd4e-5369-afd1-4077bc7b1aae",
+        "5d13218f-8338-53b7-8ace-5cabc23fce36"
+      ]
+    },
+    {
+      "id": "sqlite_003_contentvalues_exact",
+      "query": "How are ContentValues used to insert data with SQLiteDatabase insert?",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "81599297-b428-5eeb-979f-bade737ce184",
+        "07808df1-1089-55cf-b816-153c5bdab6ed",
+        "5d60950f-b7ab-5607-86d0-acb5ab42661c"
+      ]
+    },
+    {
+      "id": "sqlite_004_sharedpreferences_exact",
+      "query": "What are SharedPreferences and which access methods are described?",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "5aba136a-967e-554f-bc65-d27d1822c82d",
+        "5f512cdc-6e26-56a8-b8c4-8f7568a560f8",
+        "d6c8dcf7-aa5b-5ddf-81c5-8584e7cdd755",
+        "48353f92-3c92-582e-b8e1-ba40dbf90392",
+        "75508f6d-1800-51d1-bcdd-d98a2db5d14f"
+      ]
+    }
+  ]
+}

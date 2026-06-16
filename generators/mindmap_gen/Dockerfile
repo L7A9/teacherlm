@@ -26,7 +26,7 @@ RUN apt-get update \
 RUN pip install --upgrade pip \
     && pip install \
         "fastapi>=0.135.0" \
-        "uvicorn[standard]>=0.32.0" \
+        "uvicorn>=0.32.0" \
         "ollama>=0.4.0" \
         "pydantic>=2.12.0" \
         "pydantic-settings>=2.6.0" \

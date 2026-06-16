@@ -8,10 +8,25 @@ from ..schemas import FillBlank, MCQ, Question, TrueFalse
 
 
 _WS_RE = re.compile(r"\s+")
+_GENERIC_SOURCE_RE = re.compile(
+    r"\b("
+    r"which concept|which source|source section|course material|retrieved section|provided chunk|"
+    r"uploaded course|uploaded material|the source includes|the source .*material|"
+    r"according to (?:the )?(?:chunk|source|course material)"
+    r")\b",
+    re.IGNORECASE,
+)
+_GIVEAWAY_OPTION_RE = re.compile(
+    r"\b("
+    r"all of the above|none of the above|not enough information|cannot be determined|"
+    r"course material|uploaded material|provided chunk|retrieved section"
+    r")\b",
+    re.IGNORECASE,
+)
 
 
 def _is_valid_mcq(q: MCQ, chunks_by_id: dict[str, Chunk] | None = None) -> bool:
-    if len(q.options) < 2:
+    if len(q.options) < 4:
         return False
     if not (0 <= q.correct_index < len(q.options)):
         return False
@@ -22,6 +37,13 @@ def _is_valid_mcq(q: MCQ, chunks_by_id: dict[str, Chunk] | None = None) -> bool:
     if len(seen) != len(q.options):
         return False
     if not q.question.strip() or not q.explanation.strip():
+        return False
+    if _looks_generic_or_source_aware(q.question):
+        return False
+    if any(_GIVEAWAY_OPTION_RE.search(option) for option in q.options):
+        return False
+    correct = q.options[q.correct_index]
+    if _answer_is_shown_in_question(q.question, correct):
         return False
     if chunks_by_id and _is_ambiguous_list_mcq(q, chunks_by_id):
         return False
@@ -46,7 +68,32 @@ def _is_ambiguous_list_mcq(q: MCQ, chunks_by_id: dict[str, Chunk]) -> bool:
 def _is_valid_true_false(q: TrueFalse) -> bool:
     if not q.question.strip() or not q.explanation.strip():
         return False
+    if _looks_generic_or_source_aware(q.question):
+        return False
     return isinstance(q.answer, bool)
+
+
+def _looks_generic_or_source_aware(question: str) -> bool:
+    return bool(_GENERIC_SOURCE_RE.search(question))
+
+
+def _answer_is_shown_in_question(question: str, answer: str) -> bool:
+    question_key = _surface_key(question)
+    answer_key = _surface_key(answer)
+    if len(answer_key) < 4:
+        return False
+    if answer_key in question_key:
+        return True
+    answer_tokens = answer_key.split()
+    if len(answer_tokens) < 2:
+        return False
+    question_tokens = set(question_key.split())
+    matched = sum(1 for token in answer_tokens if token in question_tokens and len(token) > 3)
+    return matched >= max(2, len(answer_tokens) - 1)
+
+
+def _surface_key(value: str) -> str:
+    return _WS_RE.sub(" ", re.sub(r"[^a-z0-9]+", " ", str(value or "").casefold())).strip()
 
 
 def _is_valid_fill_blank(q: FillBlank) -> bool:

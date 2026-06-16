@@ -43,7 +43,10 @@
       "Bash(python3 *)",
       "Bash(grep -n -E \"\\(>$|[^\\\\\\\\]>[[:space:]]*$|{[0-9.]+>|{eduGreen>|{eduOrange>|{eduRed>|{eduBlue>|center>|>{ |>$\\)\" /c/Users/melha_eay78bj/Desktop/teacherlm/presentation3.tex)",
       "Bash(npm install *)",
-      "Bash(npx next *)"
+      "Bash(npx next *)",
+      "Bash(pip install *)",
+      "PowerShell(python -c \"import pypdf; print\\(pypdf.__version__\\)\")",
+      "PowerShell(if \\(Test-Path images\\) { ls images | Select-Object Name } else { echo \"no images dir\" }; try { \\(Get-Command pdflatex -ErrorAction Stop\\).Source } catch { echo \"no pdflatex\" }; try { \\(Get-Command xelatex -ErrorAction Stop\\).Source } catch { echo \"no xelatex\" })"
     ]
   }
 }

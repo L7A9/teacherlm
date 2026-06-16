@@ -1,0 +1,4 @@
+variant,label,recall@5,mrr@5,ndcg@5
+semantic_only,Semantic only,0.675,0.875,0.6858
+bm25_only,BM25 only,0.6604,0.875,0.6883
+hybrid_rrf,Hybrid RRF,0.7063,0.8375,0.6991

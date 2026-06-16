@@ -11,6 +11,7 @@
 #   ./run.sh logs [svc]   # tail logs (all services or a specific one)
 #   ./run.sh ps           # show container status
 #   ./run.sh shell <svc>  # open a shell in a service container
+#   ./run.sh report-charts # run report retrieval tests and regenerate chart SVG/PNG files
 
 set -euo pipefail
 
@@ -81,6 +82,107 @@ print_stack_urls() {
   echo "If it cannot connect, allow Docker/these ports through the firewall."
 }
 
+python_bin() {
+  if [ -n "${PYTHON_BIN:-}" ]; then
+    printf '%s\n' "$PYTHON_BIN"
+    return
+  fi
+  if command -v python >/dev/null 2>&1; then
+    printf '%s\n' "python"
+    return
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    printf '%s\n' "python3"
+    return
+  fi
+  echo "python was not found. Install Python or set PYTHON_BIN=/path/to/python." >&2
+  exit 1
+}
+
+run_report_charts() {
+  local py
+  py="$(python_bin)"
+  local eval_dir="$ROOT/platform/backend/evals"
+
+  echo "Starting backend dependencies if needed..."
+  $COMPOSE up -d postgres qdrant backend
+
+  echo "Copying report benchmark inputs into the backend container..."
+  $COMPOSE cp "$ROOT/platform/backend/scripts/compare_retrieval_variants.py" \
+    backend:/app/platform/backend/scripts/compare_retrieval_variants.py
+  $COMPOSE cp "$eval_dir/current_mobile_rag_eval.json" \
+    backend:/app/platform/backend/evals/current_mobile_rag_eval.json
+  $COMPOSE cp "$eval_dir/current_mobile_exact_rag_eval.json" \
+    backend:/app/platform/backend/evals/current_mobile_exact_rag_eval.json
+
+  echo "Running mixed retrieval benchmark..."
+  if ! $COMPOSE exec -T backend python scripts/compare_retrieval_variants.py \
+      evals/current_mobile_rag_eval.json \
+      --k-values 5 \
+      --out evals/retrieval_variant_comparison.json \
+      --csv-out evals/retrieval_variant_comparison.csv \
+      --mermaid-out evals/retrieval_variant_chart.mmd \
+      > "$eval_dir/retrieval_variant_comparison.log" 2>&1; then
+    tail -n 80 "$eval_dir/retrieval_variant_comparison.log" >&2 || true
+    return 1
+  fi
+
+  echo "Running exact-term retrieval benchmark..."
+  if ! $COMPOSE exec -T backend python scripts/compare_retrieval_variants.py \
+      evals/current_mobile_exact_rag_eval.json \
+      --k-values 5 \
+      --chart-title "TeacherLM Exact-Term Retrieval Comparison" \
+      --out evals/retrieval_variant_exact_comparison.json \
+      --csv-out evals/retrieval_variant_exact_comparison.csv \
+      --mermaid-out evals/retrieval_variant_exact_chart.mmd \
+      > "$eval_dir/retrieval_variant_exact_comparison.log" 2>&1; then
+    tail -n 80 "$eval_dir/retrieval_variant_exact_comparison.log" >&2 || true
+    return 1
+  fi
+
+  echo "Copying benchmark outputs back into the workspace..."
+  $COMPOSE cp backend:/app/platform/backend/evals/retrieval_variant_comparison.json \
+    "$eval_dir/retrieval_variant_comparison.json"
+  $COMPOSE cp backend:/app/platform/backend/evals/retrieval_variant_comparison.csv \
+    "$eval_dir/retrieval_variant_comparison.csv"
+  $COMPOSE cp backend:/app/platform/backend/evals/retrieval_variant_chart.mmd \
+    "$eval_dir/retrieval_variant_chart.mmd"
+  $COMPOSE cp backend:/app/platform/backend/evals/retrieval_variant_exact_comparison.json \
+    "$eval_dir/retrieval_variant_exact_comparison.json"
+  $COMPOSE cp backend:/app/platform/backend/evals/retrieval_variant_exact_comparison.csv \
+    "$eval_dir/retrieval_variant_exact_comparison.csv"
+  $COMPOSE cp backend:/app/platform/backend/evals/retrieval_variant_exact_chart.mmd \
+    "$eval_dir/retrieval_variant_exact_chart.mmd"
+
+  echo "Rebuilding the report-charts notebook..."
+  "$py" "$eval_dir/build_teacherlm_report_charts_notebook.py"
+
+  echo "Executing notebook chart cells to generate SVG and PNG files..."
+  (cd "$ROOT" && "$py" - <<'PY'
+import json
+from pathlib import Path
+
+notebook_path = Path("platform/backend/evals/teacherlm_report_charts.ipynb")
+nb = json.loads(notebook_path.read_text(encoding="utf-8"))
+namespace = {}
+
+for index, cell in enumerate(nb["cells"], start=1):
+    if cell.get("cell_type") != "code":
+        continue
+    source = "".join(cell.get("source", []))
+    exec(compile(source, f"{notebook_path}:cell-{index}", "exec"), namespace)
+
+print("Notebook chart execution complete.")
+PY
+  )
+
+  echo
+  echo "Report charts generated:"
+  echo "  $eval_dir/report_charts"
+  echo
+  ls -1 "$eval_dir/report_charts"
+}
+
 cmd="${1:-up}"
 shift || true
 
@@ -124,9 +226,12 @@ case "$cmd" in
     svc="${1:?usage: ./run.sh shell <service>}"
     $COMPOSE exec "$svc" sh
     ;;
+  report-charts|charts)
+    run_report_charts
+    ;;
   *)
     echo "unknown command: $cmd" >&2
-    echo "usage: ./run.sh [up|build|rebuild|stop|down|logs|ps|shell]" >&2
+    echo "usage: ./run.sh [up|build|rebuild|stop|down|logs|ps|shell|report-charts|charts]" >&2
     exit 1
     ;;
 esac

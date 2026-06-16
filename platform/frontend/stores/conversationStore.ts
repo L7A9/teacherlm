@@ -99,6 +99,11 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     set((state) => {
       const current = state.streamingByConversation[conversationId];
       if (!current) return {};
+      const artifactKey = makeArtifactKey(artifact);
+      const alreadyPresent = current.artifacts.some(
+        (existing) => makeArtifactKey(existing) === artifactKey,
+      );
+      if (alreadyPresent) return {};
       return {
         streamingByConversation: {
           ...state.streamingByConversation,
@@ -183,3 +188,12 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     };
   },
 }));
+
+function makeArtifactKey(artifact: Artifact): string {
+  if (artifact.key) return `key:${artifact.key}`;
+  return [
+    artifact.type,
+    artifact.url,
+    artifact.filename ?? "",
+  ].join("\u0000");
+}

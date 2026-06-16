@@ -40,6 +40,7 @@ from services.coursebuilder_service import (
     _selected_index,
     _stable_id,
     _title_supported_chunks,
+    _usable_lessons,
     _valid_quiz_question_rows,
     _valid_source_chunk_ids,
     extract_source_structure,
@@ -186,6 +187,70 @@ class CourseBuilderServiceTests(unittest.TestCase):
                 "Definition et objectifs d'un systeme de recommandation",
             ],
         )
+
+    def test_extract_source_structure_merges_near_duplicate_intake_subchapters(self) -> None:
+        chunks = [
+            _chunk(
+                "plan",
+                ["Lecture", "Semaine 1", "Plan de la seance"],
+                "Source plan item: Definition and Core Objective of Recommendation Systems",
+                metadata={
+                    "course_unit_index": 1,
+                    "course_unit_title": "Recommendation Systems",
+                    "course_unit_role": "primary",
+                    "subchapter_titles": [
+                        "Definition and Core Objective of Recommendation Systems",
+                        "Definition and Core Purpose of Recommendation Systems",
+                        "Collaborative Filtering Basics",
+                    ],
+                },
+            )
+        ]
+
+        chapters = extract_source_structure(chunks)
+
+        self.assertEqual([chapter.title for chapter in chapters], ["Recommendation Systems"])
+        self.assertEqual(
+            [lesson.title for lesson in chapters[0].lessons],
+            [
+                "Definition and Core Objective of Recommendation Systems",
+                "Collaborative Filtering Basics",
+            ],
+        )
+        self.assertIn(
+            "Definition and Core Purpose of Recommendation Systems",
+            chapters[0].lessons[0].source_queries,
+        )
+
+    def test_usable_lessons_merges_near_duplicate_generated_titles(self) -> None:
+        chapter = _OutlineChapter(
+            title="Recommendation Systems",
+            lessons=[
+                _OutlineLesson(
+                    title="Definition and Core Objective of Recommendation Systems",
+                    learning_objectives=["Understand the objective."],
+                    source_queries=["objective query"],
+                ),
+                _OutlineLesson(
+                    title="Definition and Core Purpose of Recommendation Systems",
+                    learning_objectives=["Understand the purpose."],
+                    source_queries=["purpose query"],
+                ),
+                _OutlineLesson(title="Collaborative Filtering Basics"),
+            ],
+        )
+
+        lessons = _usable_lessons(chapter, [])
+
+        self.assertEqual(
+            [lesson.title for lesson in lessons],
+            [
+                "Definition and Core Objective of Recommendation Systems",
+                "Collaborative Filtering Basics",
+            ],
+        )
+        self.assertIn("purpose query", lessons[0].source_queries)
+        self.assertIn("Understand the purpose.", lessons[0].learning_objectives)
 
     def test_lesson_retrieval_pool_prefers_normalized_subchapter_scope(self) -> None:
         chapter = _OutlineChapter(title="Semaine 2 : Collaborative Filtering")

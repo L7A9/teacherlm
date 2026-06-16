@@ -196,6 +196,9 @@ function handleEvent(
             outputType: done.output_type,
           });
         }
+        if (Array.isArray(done.artifacts)) {
+          done.artifacts.forEach((artifact) => cb.addArtifact(conversationId, artifact));
+        }
         cb.onDone(done);
       }
       break;

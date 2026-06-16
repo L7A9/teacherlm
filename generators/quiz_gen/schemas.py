@@ -15,7 +15,7 @@ class MCQ(BaseModel):
     type: Literal["mcq"] = "mcq"
     bloom_level: BloomLevel
     question: str
-    options: list[str] = Field(min_length=2)
+    options: list[str] = Field(min_length=4)
     correct_index: int = Field(ge=0)
     explanation: str
     concept: str
