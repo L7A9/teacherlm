@@ -1,0 +1,1312 @@
+{
+  "conversation_id": "76aa893e-d7c7-41f8-a201-4071338198c7",
+  "eval_file": "evals/current_mobile_exact_rag_eval.json",
+  "source_file_ids": null,
+  "case_count": 8,
+  "corpus_chunk_count": 433,
+  "k_values": [
+    5
+  ],
+  "candidate_k": 80,
+  "variants": {
+    "semantic_only": "Dense vector search in Qdrant using the configured embedding model.",
+    "bm25_only": "Lexical BM25 search over the same PostgreSQL chunk corpus.",
+    "hybrid_rrf": "Dense candidates and BM25 candidates fused with RRF using k=60."
+  },
+  "summary": {
+    "semantic_only": {
+      "case_count": 8,
+      "metrics": {
+        "hit_rate@5": 1.0,
+        "precision@5": 0.45,
+        "recall@5": 0.675,
+        "mrr@5": 0.875,
+        "ndcg@5": 0.6858326665993275,
+        "section_recall@5": 0.0,
+        "citation_precision": 0.0,
+        "latency_ms": 294.03508224982033
+      },
+      "failed_cases": []
+    },
+    "bm25_only": {
+      "case_count": 8,
+      "metrics": {
+        "hit_rate@5": 0.875,
+        "precision@5": 0.425,
+        "recall@5": 0.6604166666666667,
+        "mrr@5": 0.875,
+        "ndcg@5": 0.6883465948180332,
+        "section_recall@5": 0.0,
+        "citation_precision": 0.0,
+        "latency_ms": 0.8843789996717533
+      },
+      "failed_cases": [
+        {
+          "id": "exact_005_sqlite_openhelper",
+          "query": "SQLiteOpenHelper onCreate onUpgrade DBconnexion Personnes.db",
+          "expected": [
+            "15dbdb7d-fd83-5d86-b3bd-3363c1e20e90",
+            "1a2b029c-3268-5bc6-945f-19fd264a541f",
+            "1bc8a8b3-6cbb-56ae-b89a-2a28801af5b7",
+            "28ab4a7b-d564-590b-a7ed-610083ff4066",
+            "64516305-fe3e-5f38-aef9-ec77547327ba",
+            "651c993c-0f10-5b96-9b6a-c5dd9ef8af12"
+          ],
+          "expected_sections": [],
+          "retrieved": [
+            "05f93f16-a240-5274-8de1-8ae5ff73e6c9",
+            "c394f188-4e75-56d7-b852-a69640767393",
+            "5d13218f-8338-53b7-8ace-5cabc23fce36",
+            "e0d8684b-cf28-5c00-8a8f-5c7884972059",
+            "77b0350d-98c5-5a6f-91d8-449df6616b0f"
+          ]
+        }
+      ]
+    },
+    "hybrid_rrf": {
+      "case_count": 8,
+      "metrics": {
+        "hit_rate@5": 1.0,
+        "precision@5": 0.475,
+        "recall@5": 0.70625,
+        "mrr@5": 0.8375,
+        "ndcg@5": 0.6990716544758433,
+        "section_recall@5": 0.0,
+        "citation_precision": 0.0,
+        "latency_ms": 294.9194612494921
+      },
+      "failed_cases": []
+    }
+  },
+  "comparison": [
+    {
+      "variant": "semantic_only",
+      "label": "Semantic only",
+      "recall@5": 0.675,
+      "mrr@5": 0.875,
+      "ndcg@5": 0.6858
+    },
+    {
+      "variant": "bm25_only",
+      "label": "BM25 only",
+      "recall@5": 0.6604,
+      "mrr@5": 0.875,
+      "ndcg@5": 0.6883
+    },
+    {
+      "variant": "hybrid_rrf",
+      "label": "Hybrid RRF",
+      "recall@5": 0.7063,
+      "mrr@5": 0.8375,
+      "ndcg@5": 0.6991
+    }
+  ],
+  "mermaid": "```mermaid\nxychart-beta\n    title \"TeacherLM Exact-Term Retrieval Comparison\"\n    x-axis [\"Semantic only\", \"BM25 only\", \"Hybrid RRF\"]\n    y-axis \"Score\" 0 --> 1\n    bar \"recall@5\" [0.675, 0.660, 0.706]\n    bar \"mrr@5\" [0.875, 0.875, 0.838]\n    bar \"ndcg@5\" [0.686, 0.688, 0.699]\n```",
+  "cases": {
+    "semantic_only": [
+      {
+        "id": "exact_001_onrestart",
+        "query": "onRestart onStop premier plan activity lifecycle",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "0e7c0442-b6fb-554d-9ebd-a8a81ad2f88a",
+          "e67aeb5c-4e68-5879-8844-c3a6faaf24c0",
+          "f3934830-b559-5b3f-8802-394b7e6bec4a"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "0e7c0442-b6fb-554d-9ebd-a8a81ad2f88a",
+          "a4915b94-a39f-55c1-9471-71561d23548f",
+          "c17eb3b8-f23a-51fe-b812-10b5731b8653",
+          "d63a6d78-449c-5ec7-8f05-eb95fe62746c",
+          "e67aeb5c-4e68-5879-8844-c3a6faaf24c0"
+        ],
+        "retrieved_sources": [
+          "Cours 2.pdf",
+          "Cours 2.pdf",
+          "Cours 2.pdf",
+          "Cours 2.pdf",
+          "Cours 2.pdf"
+        ],
+        "retrieved_section_ids": [
+          "19861d53-720f-53da-960f-034fa5c7ed39",
+          "b7bb2a8c-6767-5d23-9463-a0e6eb2362e0",
+          "8b5b0e05-96f5-56c2-a11e-70be77938661",
+          "9c9f0469-961c-53cd-8d67-9800e0f9fc98",
+          "d665ad0b-7101-5ad6-bd1b-2bdf82d74f02"
+        ],
+        "matched_relevant": [
+          "0e7c0442-b6fb-554d-9ebd-a8a81ad2f88a",
+          "e67aeb5c-4e68-5879-8844-c3a6faaf24c0"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.4,
+          "recall@5": 0.6666666666666666,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.6508205185601091,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 1879.9663409990899
+        }
+      },
+      {
+        "id": "exact_002_manifest",
+        "query": "AndroidManifest.xml activity intent-filter NouvelleActivity.class",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "4371b77d-b1b3-5fd6-903c-561015be9bbf",
+          "5654ad3b-e5ce-5317-8fd9-626896c3faa6",
+          "9d650d8a-8ffb-52bc-b48d-7d5d7b986e5c",
+          "c8b632eb-ad63-5fe1-8fda-30ef4f28cac4"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "4c252bb1-3c21-5897-af10-1fbe09a055c6",
+          "c8b632eb-ad63-5fe1-8fda-30ef4f28cac4",
+          "f10bb846-7e10-54c2-bb9d-0316bff84c32",
+          "b284246b-dcb2-5436-b5e6-d2ac81171c43",
+          "4371b77d-b1b3-5fd6-903c-561015be9bbf"
+        ],
+        "retrieved_sources": [
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 2.pdf",
+          "Cours 3.pdf",
+          "Cours 3.pdf"
+        ],
+        "retrieved_section_ids": [
+          "6897faff-2347-5783-b3a0-393f8744c0a7",
+          "3006ca17-3b15-5241-800d-15962d79647c",
+          "6054cb4d-c962-5a6a-b97f-2b1ad719bab1",
+          "1a086978-ebf4-5f75-bf13-49f7b1ad446a",
+          "768f73ca-6734-5d9a-86dd-5e9a2ee1c8d5"
+        ],
+        "matched_relevant": [
+          "4371b77d-b1b3-5fd6-903c-561015be9bbf",
+          "c8b632eb-ad63-5fe1-8fda-30ef4f28cac4"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.4,
+          "recall@5": 0.5,
+          "mrr@5": 0.5,
+          "ndcg@5": 0.3973220069685352,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 88.29906699975254
+        }
+      },
+      {
+        "id": "exact_003_resources",
+        "query": "res/drawable res/layout res/values PNG JPEG XML resources",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "13e7110c-6caf-58a7-834e-2d56028cfd4c"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "13e7110c-6caf-58a7-834e-2d56028cfd4c",
+          "5a4da5c8-fe10-5d0f-b547-0f69867efb83",
+          "09b677cc-e69e-5278-8bde-244ecb101abd",
+          "5278598e-e1ae-57d7-b00d-adf1c1c8edee",
+          "65c63a2b-5776-5b0b-bc0a-f86fa9b2c435"
+        ],
+        "retrieved_sources": [
+          "Cours 3.pdf",
+          "Cours 1.pdf",
+          "Cours 3.pdf",
+          "Cours 1.pdf",
+          "Cours 1.pdf"
+        ],
+        "retrieved_section_ids": [
+          "cf081174-1550-533c-bf0e-65eeb1873f1c",
+          "db0d64df-1c18-5649-8f24-aa39c2ebacd7",
+          "0f0ad29e-0d80-5d51-a645-02eb807b7f3c",
+          "f5290853-d0fc-5815-9dd7-4331756147a9",
+          "795e3878-e60e-5a11-ad66-285078ee9c93"
+        ],
+        "matched_relevant": [
+          "13e7110c-6caf-58a7-834e-2d56028cfd4c"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.2,
+          "recall@5": 1.0,
+          "mrr@5": 1.0,
+          "ndcg@5": 1.0,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 90.74594800040359
+        }
+      },
+      {
+        "id": "exact_004_style",
+        "query": "style.xml @style RedButton GreyLabel android:textColor",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "203ad3b5-3762-51f8-bd1b-fa73bf01fb3f",
+          "9bc10a68-0929-5ba5-b20d-73ffe6148586",
+          "b251e028-091f-50f8-8e73-f6caae2673f9"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "203ad3b5-3762-51f8-bd1b-fa73bf01fb3f",
+          "15ce2c78-6261-5337-8c6c-f170c6759b74",
+          "929ef96f-1d19-5440-8aa5-30fd9793d1d2",
+          "b251e028-091f-50f8-8e73-f6caae2673f9",
+          "dbc627cd-c38c-5561-b102-33e97287eef8"
+        ],
+        "retrieved_sources": [
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 2.pdf"
+        ],
+        "retrieved_section_ids": [
+          "3f30e295-e92b-571c-8eba-39b91a76a430",
+          "51ae42a0-9a4f-543b-93e1-1d46ec505220",
+          "18184ef1-0105-5ce2-8b85-fe2f5b735495",
+          "182313f8-94b5-538a-80c0-074c7822a036",
+          "dcd3dce6-4854-5d63-b600-c553f66c3663"
+        ],
+        "matched_relevant": [
+          "203ad3b5-3762-51f8-bd1b-fa73bf01fb3f",
+          "b251e028-091f-50f8-8e73-f6caae2673f9"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.4,
+          "recall@5": 0.6666666666666666,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.6713860725233041,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 87.04915599992091
+        }
+      },
+      {
+        "id": "exact_005_sqlite_openhelper",
+        "query": "SQLiteOpenHelper onCreate onUpgrade DBconnexion Personnes.db",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "15dbdb7d-fd83-5d86-b3bd-3363c1e20e90",
+          "1a2b029c-3268-5bc6-945f-19fd264a541f",
+          "1bc8a8b3-6cbb-56ae-b89a-2a28801af5b7",
+          "28ab4a7b-d564-590b-a7ed-610083ff4066",
+          "64516305-fe3e-5f38-aef9-ec77547327ba",
+          "651c993c-0f10-5b96-9b6a-c5dd9ef8af12"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "77b0350d-98c5-5a6f-91d8-449df6616b0f",
+          "1bc8a8b3-6cbb-56ae-b89a-2a28801af5b7",
+          "c394f188-4e75-56d7-b852-a69640767393",
+          "5d13218f-8338-53b7-8ace-5cabc23fce36",
+          "c364f139-1511-5225-baa4-73e03833aeea"
+        ],
+        "retrieved_sources": [
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf"
+        ],
+        "retrieved_section_ids": [
+          "d322946e-5d71-5c34-8557-3548d1842392",
+          "5162311a-4035-5679-b0b2-68c18f8eeda6",
+          "2ed160a0-14f5-5d53-905f-be84f2b634da",
+          "efc3add5-eec7-5ebe-b37b-b867f8023c46",
+          "292b3fac-87d1-54aa-b576-a2be87cfc5d9"
+        ],
+        "matched_relevant": [
+          "1bc8a8b3-6cbb-56ae-b89a-2a28801af5b7"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.2,
+          "recall@5": 0.16666666666666666,
+          "mrr@5": 0.5,
+          "ndcg@5": 0.21398626473452756,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 50.46197900082916
+        }
+      },
+      {
+        "id": "exact_006_create_table",
+        "query": "CREATE TABLE IF NOT EXISTS INTEGER PRIMARY KEY TEXT CHECK prix",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "15dbdb7d-fd83-5d86-b3bd-3363c1e20e90",
+          "3705d221-132b-55a4-b737-c6875e0ddfb1",
+          "5d13218f-8338-53b7-8ace-5cabc23fce36",
+          "7de355b0-bd4e-5369-afd1-4077bc7b1aae",
+          "ba5c6d94-0af8-5c4e-b019-4cd7dd3c4cae"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "3705d221-132b-55a4-b737-c6875e0ddfb1",
+          "15dbdb7d-fd83-5d86-b3bd-3363c1e20e90",
+          "7a15cc67-0ee8-5935-ae93-3469aa1d199c",
+          "5d13218f-8338-53b7-8ace-5cabc23fce36",
+          "7de355b0-bd4e-5369-afd1-4077bc7b1aae"
+        ],
+        "retrieved_sources": [
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf"
+        ],
+        "retrieved_section_ids": [
+          "b3a68ebf-c52c-5717-afd7-7a170348b8b2",
+          "b760c851-8ea6-567c-bb39-af2239ea1133",
+          "dd465afd-b7ef-5c00-9754-901319163738",
+          "efc3add5-eec7-5ebe-b37b-b867f8023c46",
+          "53a75239-615c-5e61-a1e1-3edc99e4d0c9"
+        ],
+        "matched_relevant": [
+          "15dbdb7d-fd83-5d86-b3bd-3363c1e20e90",
+          "3705d221-132b-55a4-b737-c6875e0ddfb1",
+          "5d13218f-8338-53b7-8ace-5cabc23fce36",
+          "7de355b0-bd4e-5369-afd1-4077bc7b1aae"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.8,
+          "recall@5": 0.8,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.830419897363192,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 51.09650899976259
+        }
+      },
+      {
+        "id": "exact_007_contentvalues",
+        "query": "ContentValues values.put SQLiteDatabase wDB.insert nom_table",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "07808df1-1089-55cf-b816-153c5bdab6ed",
+          "5d60950f-b7ab-5607-86d0-acb5ab42661c",
+          "81599297-b428-5eeb-979f-bade737ce184"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "81599297-b428-5eeb-979f-bade737ce184",
+          "5d60950f-b7ab-5607-86d0-acb5ab42661c",
+          "07808df1-1089-55cf-b816-153c5bdab6ed",
+          "cdbbf305-52f5-54e0-ab61-047c700edbef",
+          "057ef6aa-cea1-58d5-b320-a71f3b399871"
+        ],
+        "retrieved_sources": [
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf"
+        ],
+        "retrieved_section_ids": [
+          "1a941615-5a62-5b78-9152-391280a778e2",
+          "0ddc252d-9784-51cc-b4d4-bff52012631a",
+          "541334af-b62f-5a50-afb5-5e8533097809",
+          "2104bc24-07e8-5827-b275-69350f54dcaf",
+          "1c4d3e07-53f2-5cb1-88a2-a7502fbd3ded"
+        ],
+        "matched_relevant": [
+          "07808df1-1089-55cf-b816-153c5bdab6ed",
+          "5d60950f-b7ab-5607-86d0-acb5ab42661c",
+          "81599297-b428-5eeb-979f-bade737ce184"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.6,
+          "recall@5": 1.0,
+          "mrr@5": 1.0,
+          "ndcg@5": 1.0,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 46.58921800000826
+        }
+      },
+      {
+        "id": "exact_008_sharedpreferences",
+        "query": "SharedPreferences PreferenceManager.getDefaultSharedPreferences getPreferences getSharedPreferences",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "48353f92-3c92-582e-b8e1-ba40dbf90392",
+          "5aba136a-967e-554f-bc65-d27d1822c82d",
+          "5f512cdc-6e26-56a8-b8c4-8f7568a560f8",
+          "75508f6d-1800-51d1-bcdd-d98a2db5d14f",
+          "d6c8dcf7-aa5b-5ddf-81c5-8584e7cdd755"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "48353f92-3c92-582e-b8e1-ba40dbf90392",
+          "5f512cdc-6e26-56a8-b8c4-8f7568a560f8",
+          "75508f6d-1800-51d1-bcdd-d98a2db5d14f",
+          "dafe4c40-af5b-555c-b8c3-5b43e1d160ff",
+          "d3d08907-8224-5e15-8fe7-5024e8679c39"
+        ],
+        "retrieved_sources": [
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf"
+        ],
+        "retrieved_section_ids": [
+          "6cbb4a0f-0af8-519d-a43b-4236807dc5c6",
+          "62c604bd-2529-5d05-b595-791fa26ad2d9",
+          "f031d0d9-8355-5ed8-a12d-ebfe21a99662",
+          "4c1bb33f-e2e1-51c7-8325-3a2f99b90049",
+          "fffe75db-ea93-5474-9ed1-db6bee59325c"
+        ],
+        "matched_relevant": [
+          "48353f92-3c92-582e-b8e1-ba40dbf90392",
+          "5f512cdc-6e26-56a8-b8c4-8f7568a560f8",
+          "75508f6d-1800-51d1-bcdd-d98a2db5d14f"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.6,
+          "recall@5": 0.6,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.7227265726449519,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 58.072439998795744
+        }
+      }
+    ],
+    "bm25_only": [
+      {
+        "id": "exact_001_onrestart",
+        "query": "onRestart onStop premier plan activity lifecycle",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "0e7c0442-b6fb-554d-9ebd-a8a81ad2f88a",
+          "e67aeb5c-4e68-5879-8844-c3a6faaf24c0",
+          "f3934830-b559-5b3f-8802-394b7e6bec4a"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "0e7c0442-b6fb-554d-9ebd-a8a81ad2f88a",
+          "c17eb3b8-f23a-51fe-b812-10b5731b8653",
+          "f3934830-b559-5b3f-8802-394b7e6bec4a",
+          "10a02fa2-370c-5046-96a1-77447225f0e6",
+          "f265e09b-ddbe-5315-9242-4a3da49da74b"
+        ],
+        "retrieved_sources": [
+          "Cours 2.pdf",
+          "Cours 2.pdf",
+          "Cours 2.pdf",
+          "Cours 2.pdf",
+          "Cours 2.pdf"
+        ],
+        "retrieved_section_ids": [
+          "19861d53-720f-53da-960f-034fa5c7ed39",
+          "8b5b0e05-96f5-56c2-a11e-70be77938661",
+          "a3caa028-bfea-5e06-a564-47fb5ca87c8c",
+          "e3100970-28e5-595a-adfe-4ee73ef3c653",
+          "5e4ab871-4f56-5c96-bf2f-74095a1a590e"
+        ],
+        "matched_relevant": [
+          "0e7c0442-b6fb-554d-9ebd-a8a81ad2f88a",
+          "f3934830-b559-5b3f-8802-394b7e6bec4a"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.4,
+          "recall@5": 0.6666666666666666,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.7039180890341347,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 0.7921129999886034
+        }
+      },
+      {
+        "id": "exact_002_manifest",
+        "query": "AndroidManifest.xml activity intent-filter NouvelleActivity.class",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "4371b77d-b1b3-5fd6-903c-561015be9bbf",
+          "5654ad3b-e5ce-5317-8fd9-626896c3faa6",
+          "9d650d8a-8ffb-52bc-b48d-7d5d7b986e5c",
+          "c8b632eb-ad63-5fe1-8fda-30ef4f28cac4"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "c8b632eb-ad63-5fe1-8fda-30ef4f28cac4",
+          "4c252bb1-3c21-5897-af10-1fbe09a055c6",
+          "f10bb846-7e10-54c2-bb9d-0316bff84c32",
+          "4371b77d-b1b3-5fd6-903c-561015be9bbf",
+          "9d650d8a-8ffb-52bc-b48d-7d5d7b986e5c"
+        ],
+        "retrieved_sources": [
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 2.pdf",
+          "Cours 3.pdf",
+          "Cours 1.pdf"
+        ],
+        "retrieved_section_ids": [
+          "3006ca17-3b15-5241-800d-15962d79647c",
+          "6897faff-2347-5783-b3a0-393f8744c0a7",
+          "6054cb4d-c962-5a6a-b97f-2b1ad719bab1",
+          "768f73ca-6734-5d9a-86dd-5e9a2ee1c8d5",
+          "98bd84a7-1a8a-52e3-9798-a8d30c16a4b1"
+        ],
+        "matched_relevant": [
+          "4371b77d-b1b3-5fd6-903c-561015be9bbf",
+          "9d650d8a-8ffb-52bc-b48d-7d5d7b986e5c",
+          "c8b632eb-ad63-5fe1-8fda-30ef4f28cac4"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.6,
+          "recall@5": 0.75,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.7095272044910244,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 0.9108350004680688
+        }
+      },
+      {
+        "id": "exact_003_resources",
+        "query": "res/drawable res/layout res/values PNG JPEG XML resources",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "13e7110c-6caf-58a7-834e-2d56028cfd4c"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "13e7110c-6caf-58a7-834e-2d56028cfd4c",
+          "5a4da5c8-fe10-5d0f-b547-0f69867efb83",
+          "f9aa488a-d4d0-57c4-a013-53161513bfc7",
+          "9bc10a68-0929-5ba5-b20d-73ffe6148586",
+          "cd992e05-e4f0-5d06-9e81-4d3f6d61efba"
+        ],
+        "retrieved_sources": [
+          "Cours 3.pdf",
+          "Cours 1.pdf",
+          "Cours 2.pdf",
+          "Cours 3.pdf",
+          "Cours 1.pdf"
+        ],
+        "retrieved_section_ids": [
+          "cf081174-1550-533c-bf0e-65eeb1873f1c",
+          "db0d64df-1c18-5649-8f24-aa39c2ebacd7",
+          "ff59dc99-7eda-54c6-a440-a088cc98897b",
+          "481fa295-ec07-5635-952b-6ca000e76c47",
+          "52bd06fc-b856-50b7-a23e-561585d138ac"
+        ],
+        "matched_relevant": [
+          "13e7110c-6caf-58a7-834e-2d56028cfd4c"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.2,
+          "recall@5": 1.0,
+          "mrr@5": 1.0,
+          "ndcg@5": 1.0,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 0.8520359988324344
+        }
+      },
+      {
+        "id": "exact_004_style",
+        "query": "style.xml @style RedButton GreyLabel android:textColor",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "203ad3b5-3762-51f8-bd1b-fa73bf01fb3f",
+          "9bc10a68-0929-5ba5-b20d-73ffe6148586",
+          "b251e028-091f-50f8-8e73-f6caae2673f9"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "203ad3b5-3762-51f8-bd1b-fa73bf01fb3f",
+          "929ef96f-1d19-5440-8aa5-30fd9793d1d2",
+          "15ce2c78-6261-5337-8c6c-f170c6759b74",
+          "b251e028-091f-50f8-8e73-f6caae2673f9",
+          "fa9ac66d-3098-5e72-bb0f-0ef1fcc0d6b2"
+        ],
+        "retrieved_sources": [
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 3.pdf"
+        ],
+        "retrieved_section_ids": [
+          "3f30e295-e92b-571c-8eba-39b91a76a430",
+          "18184ef1-0105-5ce2-8b85-fe2f5b735495",
+          "51ae42a0-9a4f-543b-93e1-1d46ec505220",
+          "182313f8-94b5-538a-80c0-074c7822a036",
+          "428bead2-e130-5b0e-bb88-0995e1373271"
+        ],
+        "matched_relevant": [
+          "203ad3b5-3762-51f8-bd1b-fa73bf01fb3f",
+          "b251e028-091f-50f8-8e73-f6caae2673f9"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.4,
+          "recall@5": 0.6666666666666666,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.6713860725233041,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 0.9825960005400702
+        }
+      },
+      {
+        "id": "exact_005_sqlite_openhelper",
+        "query": "SQLiteOpenHelper onCreate onUpgrade DBconnexion Personnes.db",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "15dbdb7d-fd83-5d86-b3bd-3363c1e20e90",
+          "1a2b029c-3268-5bc6-945f-19fd264a541f",
+          "1bc8a8b3-6cbb-56ae-b89a-2a28801af5b7",
+          "28ab4a7b-d564-590b-a7ed-610083ff4066",
+          "64516305-fe3e-5f38-aef9-ec77547327ba",
+          "651c993c-0f10-5b96-9b6a-c5dd9ef8af12"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "05f93f16-a240-5274-8de1-8ae5ff73e6c9",
+          "c394f188-4e75-56d7-b852-a69640767393",
+          "5d13218f-8338-53b7-8ace-5cabc23fce36",
+          "e0d8684b-cf28-5c00-8a8f-5c7884972059",
+          "77b0350d-98c5-5a6f-91d8-449df6616b0f"
+        ],
+        "retrieved_sources": [
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf"
+        ],
+        "retrieved_section_ids": [
+          "43b86352-985c-5672-8383-2c1e1925cbf5",
+          "2ed160a0-14f5-5d53-905f-be84f2b634da",
+          "efc3add5-eec7-5ebe-b37b-b867f8023c46",
+          "bd6050d6-f4ad-5c6d-a3e8-d73cd59a8866",
+          "d322946e-5d71-5c34-8557-3548d1842392"
+        ],
+        "matched_relevant": [],
+        "metrics": {
+          "hit_rate@5": 0.0,
+          "precision@5": 0.0,
+          "recall@5": 0.0,
+          "mrr@5": 0.0,
+          "ndcg@5": 0.0,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 0.7329830004891846
+        }
+      },
+      {
+        "id": "exact_006_create_table",
+        "query": "CREATE TABLE IF NOT EXISTS INTEGER PRIMARY KEY TEXT CHECK prix",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "15dbdb7d-fd83-5d86-b3bd-3363c1e20e90",
+          "3705d221-132b-55a4-b737-c6875e0ddfb1",
+          "5d13218f-8338-53b7-8ace-5cabc23fce36",
+          "7de355b0-bd4e-5369-afd1-4077bc7b1aae",
+          "ba5c6d94-0af8-5c4e-b019-4cd7dd3c4cae"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "3705d221-132b-55a4-b737-c6875e0ddfb1",
+          "5d13218f-8338-53b7-8ace-5cabc23fce36",
+          "15dbdb7d-fd83-5d86-b3bd-3363c1e20e90",
+          "7de355b0-bd4e-5369-afd1-4077bc7b1aae",
+          "7a15cc67-0ee8-5935-ae93-3469aa1d199c"
+        ],
+        "retrieved_sources": [
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf"
+        ],
+        "retrieved_section_ids": [
+          "b3a68ebf-c52c-5717-afd7-7a170348b8b2",
+          "efc3add5-eec7-5ebe-b37b-b867f8023c46",
+          "b760c851-8ea6-567c-bb39-af2239ea1133",
+          "53a75239-615c-5e61-a1e1-3edc99e4d0c9",
+          "dd465afd-b7ef-5c00-9754-901319163738"
+        ],
+        "matched_relevant": [
+          "15dbdb7d-fd83-5d86-b3bd-3363c1e20e90",
+          "3705d221-132b-55a4-b737-c6875e0ddfb1",
+          "5d13218f-8338-53b7-8ace-5cabc23fce36",
+          "7de355b0-bd4e-5369-afd1-4077bc7b1aae"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.8,
+          "recall@5": 0.8,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.8687949224876582,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 1.2502049994509434
+        }
+      },
+      {
+        "id": "exact_007_contentvalues",
+        "query": "ContentValues values.put SQLiteDatabase wDB.insert nom_table",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "07808df1-1089-55cf-b816-153c5bdab6ed",
+          "5d60950f-b7ab-5607-86d0-acb5ab42661c",
+          "81599297-b428-5eeb-979f-bade737ce184"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "81599297-b428-5eeb-979f-bade737ce184",
+          "5d60950f-b7ab-5607-86d0-acb5ab42661c",
+          "07808df1-1089-55cf-b816-153c5bdab6ed",
+          "65484e7d-7d07-58ff-bbb7-a21cb7a6fa79",
+          "057ef6aa-cea1-58d5-b320-a71f3b399871"
+        ],
+        "retrieved_sources": [
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf"
+        ],
+        "retrieved_section_ids": [
+          "1a941615-5a62-5b78-9152-391280a778e2",
+          "0ddc252d-9784-51cc-b4d4-bff52012631a",
+          "541334af-b62f-5a50-afb5-5e8533097809",
+          "d984b868-a54a-589d-96a9-0ba90190cf51",
+          "1c4d3e07-53f2-5cb1-88a2-a7502fbd3ded"
+        ],
+        "matched_relevant": [
+          "07808df1-1089-55cf-b816-153c5bdab6ed",
+          "5d60950f-b7ab-5607-86d0-acb5ab42661c",
+          "81599297-b428-5eeb-979f-bade737ce184"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.6,
+          "recall@5": 1.0,
+          "mrr@5": 1.0,
+          "ndcg@5": 1.0,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 0.9351199987577274
+        }
+      },
+      {
+        "id": "exact_008_sharedpreferences",
+        "query": "SharedPreferences PreferenceManager.getDefaultSharedPreferences getPreferences getSharedPreferences",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "48353f92-3c92-582e-b8e1-ba40dbf90392",
+          "5aba136a-967e-554f-bc65-d27d1822c82d",
+          "5f512cdc-6e26-56a8-b8c4-8f7568a560f8",
+          "75508f6d-1800-51d1-bcdd-d98a2db5d14f",
+          "d6c8dcf7-aa5b-5ddf-81c5-8584e7cdd755"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "48353f92-3c92-582e-b8e1-ba40dbf90392",
+          "75508f6d-1800-51d1-bcdd-d98a2db5d14f",
+          "dafe4c40-af5b-555c-b8c3-5b43e1d160ff",
+          "d3d08907-8224-5e15-8fe7-5024e8679c39",
+          "ae2b32cd-9421-52b1-b70e-ce6e7792b134"
+        ],
+        "retrieved_sources": [
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf"
+        ],
+        "retrieved_section_ids": [
+          "6cbb4a0f-0af8-519d-a43b-4236807dc5c6",
+          "f031d0d9-8355-5ed8-a12d-ebfe21a99662",
+          "4c1bb33f-e2e1-51c7-8325-3a2f99b90049",
+          "fffe75db-ea93-5474-9ed1-db6bee59325c",
+          "f33019f2-d1c6-55c3-940a-77103cea155a"
+        ],
+        "matched_relevant": [
+          "48353f92-3c92-582e-b8e1-ba40dbf90392",
+          "75508f6d-1800-51d1-bcdd-d98a2db5d14f"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.4,
+          "recall@5": 0.4,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.5531464700081437,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 0.6191439988469938
+        }
+      }
+    ],
+    "hybrid_rrf": [
+      {
+        "id": "exact_001_onrestart",
+        "query": "onRestart onStop premier plan activity lifecycle",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "0e7c0442-b6fb-554d-9ebd-a8a81ad2f88a",
+          "e67aeb5c-4e68-5879-8844-c3a6faaf24c0",
+          "f3934830-b559-5b3f-8802-394b7e6bec4a"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "0e7c0442-b6fb-554d-9ebd-a8a81ad2f88a",
+          "c17eb3b8-f23a-51fe-b812-10b5731b8653",
+          "a4915b94-a39f-55c1-9471-71561d23548f",
+          "f3934830-b559-5b3f-8802-394b7e6bec4a",
+          "d63a6d78-449c-5ec7-8f05-eb95fe62746c"
+        ],
+        "retrieved_sources": [
+          "Cours 2.pdf",
+          "Cours 2.pdf",
+          "Cours 2.pdf",
+          "Cours 2.pdf",
+          "Cours 2.pdf"
+        ],
+        "retrieved_section_ids": [
+          "19861d53-720f-53da-960f-034fa5c7ed39",
+          "8b5b0e05-96f5-56c2-a11e-70be77938661",
+          "b7bb2a8c-6767-5d23-9463-a0e6eb2362e0",
+          "a3caa028-bfea-5e06-a564-47fb5ca87c8c",
+          "9c9f0469-961c-53cd-8d67-9800e0f9fc98"
+        ],
+        "matched_relevant": [
+          "0e7c0442-b6fb-554d-9ebd-a8a81ad2f88a",
+          "f3934830-b559-5b3f-8802-394b7e6bec4a"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.4,
+          "recall@5": 0.6666666666666666,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.6713860725233041,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 1880.7584539990785
+        }
+      },
+      {
+        "id": "exact_002_manifest",
+        "query": "AndroidManifest.xml activity intent-filter NouvelleActivity.class",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "4371b77d-b1b3-5fd6-903c-561015be9bbf",
+          "5654ad3b-e5ce-5317-8fd9-626896c3faa6",
+          "9d650d8a-8ffb-52bc-b48d-7d5d7b986e5c",
+          "c8b632eb-ad63-5fe1-8fda-30ef4f28cac4"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "4c252bb1-3c21-5897-af10-1fbe09a055c6",
+          "c8b632eb-ad63-5fe1-8fda-30ef4f28cac4",
+          "f10bb846-7e10-54c2-bb9d-0316bff84c32",
+          "4371b77d-b1b3-5fd6-903c-561015be9bbf",
+          "9d650d8a-8ffb-52bc-b48d-7d5d7b986e5c"
+        ],
+        "retrieved_sources": [
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 2.pdf",
+          "Cours 3.pdf",
+          "Cours 1.pdf"
+        ],
+        "retrieved_section_ids": [
+          "6897faff-2347-5783-b3a0-393f8744c0a7",
+          "3006ca17-3b15-5241-800d-15962d79647c",
+          "6054cb4d-c962-5a6a-b97f-2b1ad719bab1",
+          "768f73ca-6734-5d9a-86dd-5e9a2ee1c8d5",
+          "98bd84a7-1a8a-52e3-9798-a8d30c16a4b1"
+        ],
+        "matched_relevant": [
+          "4371b77d-b1b3-5fd6-903c-561015be9bbf",
+          "9d650d8a-8ffb-52bc-b48d-7d5d7b986e5c",
+          "c8b632eb-ad63-5fe1-8fda-30ef4f28cac4"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.6,
+          "recall@5": 0.75,
+          "mrr@5": 0.5,
+          "ndcg@5": 0.5654495432396527,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 89.20990200022061
+        }
+      },
+      {
+        "id": "exact_003_resources",
+        "query": "res/drawable res/layout res/values PNG JPEG XML resources",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "13e7110c-6caf-58a7-834e-2d56028cfd4c"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "13e7110c-6caf-58a7-834e-2d56028cfd4c",
+          "5a4da5c8-fe10-5d0f-b547-0f69867efb83",
+          "09b677cc-e69e-5278-8bde-244ecb101abd",
+          "4bf4470e-9395-5f2b-beec-258789787cf2",
+          "9bc10a68-0929-5ba5-b20d-73ffe6148586"
+        ],
+        "retrieved_sources": [
+          "Cours 3.pdf",
+          "Cours 1.pdf",
+          "Cours 3.pdf",
+          "Cours 1.pdf",
+          "Cours 3.pdf"
+        ],
+        "retrieved_section_ids": [
+          "cf081174-1550-533c-bf0e-65eeb1873f1c",
+          "db0d64df-1c18-5649-8f24-aa39c2ebacd7",
+          "0f0ad29e-0d80-5d51-a645-02eb807b7f3c",
+          "5f6ec4af-5711-5226-b6e2-2ad59d66d4ed",
+          "481fa295-ec07-5635-952b-6ca000e76c47"
+        ],
+        "matched_relevant": [
+          "13e7110c-6caf-58a7-834e-2d56028cfd4c"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.2,
+          "recall@5": 1.0,
+          "mrr@5": 1.0,
+          "ndcg@5": 1.0,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 91.59798399923602
+        }
+      },
+      {
+        "id": "exact_004_style",
+        "query": "style.xml @style RedButton GreyLabel android:textColor",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "203ad3b5-3762-51f8-bd1b-fa73bf01fb3f",
+          "9bc10a68-0929-5ba5-b20d-73ffe6148586",
+          "b251e028-091f-50f8-8e73-f6caae2673f9"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "203ad3b5-3762-51f8-bd1b-fa73bf01fb3f",
+          "15ce2c78-6261-5337-8c6c-f170c6759b74",
+          "929ef96f-1d19-5440-8aa5-30fd9793d1d2",
+          "b251e028-091f-50f8-8e73-f6caae2673f9",
+          "982f6736-6170-5863-93ea-249df4307652"
+        ],
+        "retrieved_sources": [
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 1.pdf"
+        ],
+        "retrieved_section_ids": [
+          "3f30e295-e92b-571c-8eba-39b91a76a430",
+          "51ae42a0-9a4f-543b-93e1-1d46ec505220",
+          "18184ef1-0105-5ce2-8b85-fe2f5b735495",
+          "182313f8-94b5-538a-80c0-074c7822a036",
+          "c9036df2-78ec-54be-84b2-86628ef4ce8c"
+        ],
+        "matched_relevant": [
+          "203ad3b5-3762-51f8-bd1b-fa73bf01fb3f",
+          "b251e028-091f-50f8-8e73-f6caae2673f9"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.4,
+          "recall@5": 0.6666666666666666,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.6713860725233041,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 88.03175200046098
+        }
+      },
+      {
+        "id": "exact_005_sqlite_openhelper",
+        "query": "SQLiteOpenHelper onCreate onUpgrade DBconnexion Personnes.db",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "15dbdb7d-fd83-5d86-b3bd-3363c1e20e90",
+          "1a2b029c-3268-5bc6-945f-19fd264a541f",
+          "1bc8a8b3-6cbb-56ae-b89a-2a28801af5b7",
+          "28ab4a7b-d564-590b-a7ed-610083ff4066",
+          "64516305-fe3e-5f38-aef9-ec77547327ba",
+          "651c993c-0f10-5b96-9b6a-c5dd9ef8af12"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "c394f188-4e75-56d7-b852-a69640767393",
+          "77b0350d-98c5-5a6f-91d8-449df6616b0f",
+          "5d13218f-8338-53b7-8ace-5cabc23fce36",
+          "05f93f16-a240-5274-8de1-8ae5ff73e6c9",
+          "651c993c-0f10-5b96-9b6a-c5dd9ef8af12"
+        ],
+        "retrieved_sources": [
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf"
+        ],
+        "retrieved_section_ids": [
+          "2ed160a0-14f5-5d53-905f-be84f2b634da",
+          "d322946e-5d71-5c34-8557-3548d1842392",
+          "efc3add5-eec7-5ebe-b37b-b867f8023c46",
+          "43b86352-985c-5672-8383-2c1e1925cbf5",
+          "6d723044-13e6-5c44-b2da-b8ec649d5890"
+        ],
+        "matched_relevant": [
+          "651c993c-0f10-5b96-9b6a-c5dd9ef8af12"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.2,
+          "recall@5": 0.16666666666666666,
+          "mrr@5": 0.2,
+          "ndcg@5": 0.13120507751234178,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 51.194962001318345
+        }
+      },
+      {
+        "id": "exact_006_create_table",
+        "query": "CREATE TABLE IF NOT EXISTS INTEGER PRIMARY KEY TEXT CHECK prix",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "15dbdb7d-fd83-5d86-b3bd-3363c1e20e90",
+          "3705d221-132b-55a4-b737-c6875e0ddfb1",
+          "5d13218f-8338-53b7-8ace-5cabc23fce36",
+          "7de355b0-bd4e-5369-afd1-4077bc7b1aae",
+          "ba5c6d94-0af8-5c4e-b019-4cd7dd3c4cae"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "3705d221-132b-55a4-b737-c6875e0ddfb1",
+          "15dbdb7d-fd83-5d86-b3bd-3363c1e20e90",
+          "5d13218f-8338-53b7-8ace-5cabc23fce36",
+          "7a15cc67-0ee8-5935-ae93-3469aa1d199c",
+          "7de355b0-bd4e-5369-afd1-4077bc7b1aae"
+        ],
+        "retrieved_sources": [
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf"
+        ],
+        "retrieved_section_ids": [
+          "b3a68ebf-c52c-5717-afd7-7a170348b8b2",
+          "b760c851-8ea6-567c-bb39-af2239ea1133",
+          "efc3add5-eec7-5ebe-b37b-b867f8023c46",
+          "dd465afd-b7ef-5c00-9754-901319163738",
+          "53a75239-615c-5e61-a1e1-3edc99e4d0c9"
+        ],
+        "matched_relevant": [
+          "15dbdb7d-fd83-5d86-b3bd-3363c1e20e90",
+          "3705d221-132b-55a4-b737-c6875e0ddfb1",
+          "5d13218f-8338-53b7-8ace-5cabc23fce36",
+          "7de355b0-bd4e-5369-afd1-4077bc7b1aae"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.8,
+          "recall@5": 0.8,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.8539316501572937,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 52.346713999213534
+        }
+      },
+      {
+        "id": "exact_007_contentvalues",
+        "query": "ContentValues values.put SQLiteDatabase wDB.insert nom_table",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "07808df1-1089-55cf-b816-153c5bdab6ed",
+          "5d60950f-b7ab-5607-86d0-acb5ab42661c",
+          "81599297-b428-5eeb-979f-bade737ce184"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "81599297-b428-5eeb-979f-bade737ce184",
+          "5d60950f-b7ab-5607-86d0-acb5ab42661c",
+          "07808df1-1089-55cf-b816-153c5bdab6ed",
+          "057ef6aa-cea1-58d5-b320-a71f3b399871",
+          "cdbbf305-52f5-54e0-ab61-047c700edbef"
+        ],
+        "retrieved_sources": [
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf"
+        ],
+        "retrieved_section_ids": [
+          "1a941615-5a62-5b78-9152-391280a778e2",
+          "0ddc252d-9784-51cc-b4d4-bff52012631a",
+          "541334af-b62f-5a50-afb5-5e8533097809",
+          "1c4d3e07-53f2-5cb1-88a2-a7502fbd3ded",
+          "2104bc24-07e8-5827-b275-69350f54dcaf"
+        ],
+        "matched_relevant": [
+          "07808df1-1089-55cf-b816-153c5bdab6ed",
+          "5d60950f-b7ab-5607-86d0-acb5ab42661c",
+          "81599297-b428-5eeb-979f-bade737ce184"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.6,
+          "recall@5": 1.0,
+          "mrr@5": 1.0,
+          "ndcg@5": 1.0,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 47.524337998765986
+        }
+      },
+      {
+        "id": "exact_008_sharedpreferences",
+        "query": "SharedPreferences PreferenceManager.getDefaultSharedPreferences getPreferences getSharedPreferences",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "48353f92-3c92-582e-b8e1-ba40dbf90392",
+          "5aba136a-967e-554f-bc65-d27d1822c82d",
+          "5f512cdc-6e26-56a8-b8c4-8f7568a560f8",
+          "75508f6d-1800-51d1-bcdd-d98a2db5d14f",
+          "d6c8dcf7-aa5b-5ddf-81c5-8584e7cdd755"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "48353f92-3c92-582e-b8e1-ba40dbf90392",
+          "75508f6d-1800-51d1-bcdd-d98a2db5d14f",
+          "dafe4c40-af5b-555c-b8c3-5b43e1d160ff",
+          "5f512cdc-6e26-56a8-b8c4-8f7568a560f8",
+          "d3d08907-8224-5e15-8fe7-5024e8679c39"
+        ],
+        "retrieved_sources": [
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf"
+        ],
+        "retrieved_section_ids": [
+          "6cbb4a0f-0af8-519d-a43b-4236807dc5c6",
+          "f031d0d9-8355-5ed8-a12d-ebfe21a99662",
+          "4c1bb33f-e2e1-51c7-8325-3a2f99b90049",
+          "62c604bd-2529-5d05-b595-791fa26ad2d9",
+          "fffe75db-ea93-5474-9ed1-db6bee59325c"
+        ],
+        "matched_relevant": [
+          "48353f92-3c92-582e-b8e1-ba40dbf90392",
+          "5f512cdc-6e26-56a8-b8c4-8f7568a560f8",
+          "75508f6d-1800-51d1-bcdd-d98a2db5d14f"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.6,
+          "recall@5": 0.6,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.6992148198508501,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 58.69158399764274
+        }
+      }
+    ]
+  }
+}

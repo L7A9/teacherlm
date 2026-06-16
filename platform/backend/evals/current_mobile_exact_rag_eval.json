@@ -1,0 +1,91 @@
+{
+  "conversation_id": "76aa893e-d7c7-41f8-a201-4071338198c7",
+  "cases": [
+    {
+      "id": "exact_001_onrestart",
+      "query": "onRestart onStop premier plan activity lifecycle",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "f3934830-b559-5b3f-8802-394b7e6bec4a",
+        "e67aeb5c-4e68-5879-8844-c3a6faaf24c0",
+        "0e7c0442-b6fb-554d-9ebd-a8a81ad2f88a"
+      ]
+    },
+    {
+      "id": "exact_002_manifest",
+      "query": "AndroidManifest.xml activity intent-filter NouvelleActivity.class",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "5654ad3b-e5ce-5317-8fd9-626896c3faa6",
+        "9d650d8a-8ffb-52bc-b48d-7d5d7b986e5c",
+        "c8b632eb-ad63-5fe1-8fda-30ef4f28cac4",
+        "4371b77d-b1b3-5fd6-903c-561015be9bbf"
+      ]
+    },
+    {
+      "id": "exact_003_resources",
+      "query": "res/drawable res/layout res/values PNG JPEG XML resources",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "13e7110c-6caf-58a7-834e-2d56028cfd4c"
+      ]
+    },
+    {
+      "id": "exact_004_style",
+      "query": "style.xml @style RedButton GreyLabel android:textColor",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "9bc10a68-0929-5ba5-b20d-73ffe6148586",
+        "b251e028-091f-50f8-8e73-f6caae2673f9",
+        "203ad3b5-3762-51f8-bd1b-fa73bf01fb3f"
+      ]
+    },
+    {
+      "id": "exact_005_sqlite_openhelper",
+      "query": "SQLiteOpenHelper onCreate onUpgrade DBconnexion Personnes.db",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "1a2b029c-3268-5bc6-945f-19fd264a541f",
+        "1bc8a8b3-6cbb-56ae-b89a-2a28801af5b7",
+        "651c993c-0f10-5b96-9b6a-c5dd9ef8af12",
+        "64516305-fe3e-5f38-aef9-ec77547327ba",
+        "28ab4a7b-d564-590b-a7ed-610083ff4066",
+        "15dbdb7d-fd83-5d86-b3bd-3363c1e20e90"
+      ]
+    },
+    {
+      "id": "exact_006_create_table",
+      "query": "CREATE TABLE IF NOT EXISTS INTEGER PRIMARY KEY TEXT CHECK prix",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "15dbdb7d-fd83-5d86-b3bd-3363c1e20e90",
+        "ba5c6d94-0af8-5c4e-b019-4cd7dd3c4cae",
+        "3705d221-132b-55a4-b737-c6875e0ddfb1",
+        "7de355b0-bd4e-5369-afd1-4077bc7b1aae",
+        "5d13218f-8338-53b7-8ace-5cabc23fce36"
+      ]
+    },
+    {
+      "id": "exact_007_contentvalues",
+      "query": "ContentValues values.put SQLiteDatabase wDB.insert nom_table",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "81599297-b428-5eeb-979f-bade737ce184",
+        "07808df1-1089-55cf-b816-153c5bdab6ed",
+        "5d60950f-b7ab-5607-86d0-acb5ab42661c"
+      ]
+    },
+    {
+      "id": "exact_008_sharedpreferences",
+      "query": "SharedPreferences PreferenceManager.getDefaultSharedPreferences getPreferences getSharedPreferences",
+      "output_type": "text",
+      "relevant_chunk_ids": [
+        "5aba136a-967e-554f-bc65-d27d1822c82d",
+        "5f512cdc-6e26-56a8-b8c4-8f7568a560f8",
+        "d6c8dcf7-aa5b-5ddf-81c5-8584e7cdd755",
+        "48353f92-3c92-582e-b8e1-ba40dbf90392",
+        "75508f6d-1800-51d1-bcdd-d98a2db5d14f"
+      ]
+    }
+  ]
+}

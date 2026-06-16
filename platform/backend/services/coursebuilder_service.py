@@ -8,6 +8,7 @@ import uuid
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from difflib import SequenceMatcher
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -2152,7 +2153,7 @@ def _intake_lesson_pool(
     matched = [
         chunk
         for chunk in chunks
-        if _title_key(_chunk_subchapter_title(chunk)) == _title_key(lesson.title)
+        if _subchapter_title_matches_lesson(_chunk_subchapter_title(chunk), lesson)
     ]
     if matched:
         return _chunk_pool(matched, _teaching_chunks(chunks) or chunks)
@@ -2220,10 +2221,27 @@ def _chunk_subchapter_titles(chunk: SearchChunkRecord) -> list[str]:
 def _is_reusable_unit_source_chunk(chunk: SearchChunkRecord, lesson: _OutlineLesson) -> bool:
     if _chunk_subchapter_title(chunk):
         return False
-    lesson_key = _title_key(lesson.title)
-    if not lesson_key:
+    return any(_subchapter_title_matches_lesson(title, lesson) for title in _chunk_subchapter_titles(chunk))
+
+
+def _subchapter_title_matches_lesson(title: str, lesson: _OutlineLesson) -> bool:
+    clean_title = _clean_title(title)
+    lesson_title = _clean_title(lesson.title)
+    if not clean_title or not lesson_title:
         return False
-    return any(_title_key(title) == lesson_key for title in _chunk_subchapter_titles(chunk))
+    if _title_key(clean_title) == _title_key(lesson_title):
+        return True
+    if _lesson_titles_equivalent(clean_title, lesson_title):
+        return True
+    for query in lesson.source_queries:
+        clean_query = _clean_title(query)
+        if (
+            clean_query
+            and _lesson_titles_equivalent(clean_query, lesson_title)
+            and _lesson_titles_equivalent(clean_title, clean_query)
+        ):
+            return True
+    return False
 
 
 def _title_supported_chunks(
@@ -2583,14 +2601,12 @@ def _source_structure_from_intake_metadata(
         )
         unit["order"] = min(unit["order"], unit_index)
         for lesson_title in _metadata_subchapter_titles(metadata):
-            lesson_key = _title_key(lesson_title)
             lessons: dict[str, _OutlineLesson] = unit["lessons"]
-            if lesson_key not in lessons and len(lessons) < MAX_LESSONS_PER_CHAPTER:
-                lessons[lesson_key] = _source_lesson(title, lesson_title)
+            _add_source_lesson(lessons, title, lesson_title)
 
     chapters = []
     for unit in sorted(units.values(), key=lambda item: (item["order"], item["title"])):
-        lessons = list(unit["lessons"].values())
+        lessons = _dedupe_outline_lessons(list(unit["lessons"].values()), chapter_title=unit["title"])
         if not lessons:
             lessons = [_source_lesson(unit["title"], unit["title"])]
         chapters.append(
@@ -2696,8 +2712,7 @@ def _source_structure_from_paths(items: list[tuple[list[str], str]]) -> list[_Ou
         if not lesson_title or lesson_title.lower() == chapter_key:
             continue
         lessons: dict[str, _OutlineLesson] = chapter["lessons"]
-        if lesson_title.lower() not in lessons and len(lessons) < MAX_LESSONS_PER_CHAPTER:
-            lessons[lesson_title.lower()] = _source_lesson(chapter_title, lesson_title)
+        _add_source_lesson(lessons, chapter_title, lesson_title)
         if len(chapters) >= MAX_CHAPTERS:
             break
 
@@ -2737,8 +2752,7 @@ def _source_structure_from_toc_lines(lines: list[str]) -> list[_OutlineChapter]:
         if not lesson_title:
             continue
         lessons: dict[str, _OutlineLesson] = chapters[current_key]["lessons"]
-        if lesson_title.lower() not in lessons and len(lessons) < MAX_LESSONS_PER_CHAPTER:
-            lessons[lesson_title.lower()] = _source_lesson(chapters[current_key]["title"], lesson_title)
+        _add_source_lesson(lessons, chapters[current_key]["title"], lesson_title)
 
     return _materialize_source_chapters(chapters)
 
@@ -2836,7 +2850,7 @@ def _looks_like_file_or_document_title(value: str) -> bool:
 def _materialize_source_chapters(chapters: dict[str, dict[str, Any]]) -> list[_OutlineChapter]:
     out: list[_OutlineChapter] = []
     for chapter in list(chapters.values())[:MAX_CHAPTERS]:
-        lessons = list(chapter["lessons"].values())
+        lessons = _dedupe_outline_lessons(list(chapter["lessons"].values()), chapter_title=chapter["title"])
         if not lessons:
             lessons = [_source_lesson(chapter["title"], chapter["title"])]
         out.append(
@@ -2856,6 +2870,23 @@ def _source_lesson(chapter_title: str, lesson_title: str) -> _OutlineLesson:
         learning_objectives=[f"Understand {lesson_title}"],
         source_queries=[chapter_title, lesson_title],
     )
+
+
+def _add_source_lesson(
+    lessons: dict[str, _OutlineLesson],
+    chapter_title: str,
+    lesson_title: str,
+) -> None:
+    clean_title = _clean_title(lesson_title)
+    if not clean_title:
+        return
+    candidate = _source_lesson(chapter_title, clean_title)
+    for key, existing in list(lessons.items()):
+        if _lesson_titles_equivalent(existing.title, clean_title, context_title=chapter_title):
+            lessons[key] = _merge_outline_lesson(existing, candidate)
+            return
+    if len(lessons) < MAX_LESSONS_PER_CHAPTER:
+        lessons[_title_key(clean_title) or clean_title.lower()] = candidate
 
 
 def _clean_structure_title(value: str, *, strip_page_number: bool = False) -> str:
@@ -2990,6 +3021,7 @@ def _merge_source_chapter_titles(
                     or source_lesson.objective_ids,
                 )
             )
+        lessons = _dedupe_outline_lessons(lessons, chapter_title=chapter_title)
         merged.append(
             _OutlineChapter(
                 title=chapter_title,
@@ -3308,6 +3340,188 @@ def _dedupe(values: Any) -> list[str]:
     return out
 
 
+def _dedupe_outline_lessons(
+    lessons: list[_OutlineLesson],
+    *,
+    chapter_title: str = "",
+) -> list[_OutlineLesson]:
+    out: list[_OutlineLesson] = []
+    for lesson in lessons:
+        title = _clean_title(lesson.title)
+        if not title or _looks_like_markup(title):
+            continue
+        candidate = lesson.model_copy(update={"title": title})
+        duplicate_index = next(
+            (
+                index
+                for index, existing in enumerate(out)
+                if _lesson_titles_equivalent(existing.title, title, context_title=chapter_title)
+            ),
+            None,
+        )
+        if duplicate_index is None:
+            out.append(candidate)
+            continue
+        out[duplicate_index] = _merge_outline_lesson(out[duplicate_index], candidate)
+    return out[:MAX_LESSONS_PER_CHAPTER]
+
+
+def _merge_outline_lesson(existing: _OutlineLesson, duplicate: _OutlineLesson) -> _OutlineLesson:
+    return existing.model_copy(
+        update={
+            "learning_objectives": _clean_list(
+                [*existing.learning_objectives, *duplicate.learning_objectives]
+            ),
+            "source_queries": _clean_list(
+                [
+                    *existing.source_queries,
+                    duplicate.title,
+                    *duplicate.source_queries,
+                ]
+            ),
+            "objective_ids": _clean_list([*existing.objective_ids, *duplicate.objective_ids]),
+        }
+    )
+
+
+def _lesson_titles_equivalent(left: str, right: str, *, context_title: str = "") -> bool:
+    left_key = _title_key(left)
+    right_key = _title_key(right)
+    if not left_key or not right_key:
+        return False
+    if left_key == right_key:
+        return True
+
+    left_terms = _lesson_title_terms(left, context_title=context_title)
+    right_terms = _lesson_title_terms(right, context_title=context_title)
+    if not left_terms or not right_terms:
+        return False
+
+    left_set = set(left_terms)
+    right_set = set(right_terms)
+    if left_set == right_set:
+        return True
+
+    shared = len(left_set & right_set)
+    min_size = min(len(left_set), len(right_set))
+    max_size = max(len(left_set), len(right_set))
+    if min_size >= 3 and shared / min_size >= 0.85 and shared / max_size >= 0.75:
+        return True
+
+    ordered_left = " ".join(left_terms)
+    ordered_right = " ".join(right_terms)
+    similarity = SequenceMatcher(a=ordered_left, b=ordered_right).ratio()
+    return min_size >= 3 and shared / min_size >= 0.75 and similarity >= 0.88
+
+
+def _lesson_title_terms(value: str, *, context_title: str = "") -> list[str]:
+    terms = _canonical_title_terms(value)
+    if not context_title or len(terms) < 3:
+        return terms
+    context_terms = set(_canonical_title_terms(context_title))
+    filtered = [term for term in terms if term not in context_terms]
+    return filtered if len(filtered) >= 2 else terms
+
+
+def _canonical_title_terms(value: str) -> list[str]:
+    stopwords = {
+        "a",
+        "an",
+        "and",
+        "au",
+        "aux",
+        "avec",
+        "chapter",
+        "core",
+        "course",
+        "cours",
+        "d",
+        "de",
+        "des",
+        "du",
+        "et",
+        "for",
+        "from",
+        "in",
+        "into",
+        "l",
+        "la",
+        "le",
+        "les",
+        "lesson",
+        "main",
+        "module",
+        "of",
+        "on",
+        "ou",
+        "primary",
+        "section",
+        "the",
+        "to",
+        "un",
+        "une",
+        "with",
+    }
+    synonyms = {
+        "aim": "objective",
+        "aims": "objective",
+        "basic": "foundation",
+        "basics": "foundation",
+        "but": "objective",
+        "buts": "objective",
+        "definition": "definition",
+        "definitions": "definition",
+        "define": "definition",
+        "finalite": "objective",
+        "finalites": "objective",
+        "fondamental": "foundation",
+        "fondamentaux": "foundation",
+        "foundation": "foundation",
+        "foundations": "foundation",
+        "fundamental": "foundation",
+        "fundamentals": "foundation",
+        "goal": "objective",
+        "goals": "objective",
+        "intro": "introduction",
+        "introductory": "introduction",
+        "objective": "objective",
+        "objectives": "objective",
+        "objectif": "objective",
+        "objectifs": "objective",
+        "purpose": "objective",
+        "purposes": "objective",
+        "recommandation": "recommendation",
+        "recommandations": "recommendation",
+        "recommendations": "recommendation",
+        "recommender": "recommendation",
+        "systeme": "system",
+        "systemes": "system",
+        "systems": "system",
+    }
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in re.findall(r"[a-z0-9]+", _fold_for_match(value), flags=re.UNICODE):
+        if raw in stopwords or raw.isdigit() or len(raw) < 3:
+            continue
+        term = _canonical_title_term(raw, synonyms)
+        if term in stopwords or len(term) < 3 or term in seen:
+            continue
+        seen.add(term)
+        out.append(term)
+    return out
+
+
+def _canonical_title_term(raw: str, synonyms: dict[str, str]) -> str:
+    if raw in synonyms:
+        return synonyms[raw]
+    singular = raw
+    if len(raw) > 4 and raw.endswith("ies"):
+        singular = raw[:-3] + "y"
+    elif len(raw) > 4 and raw.endswith("s") and not raw.endswith(("ss", "is", "us")):
+        singular = raw[:-1]
+    return synonyms.get(singular, singular)
+
+
 def _chunk_context(chunks: list[SearchChunkRecord], *, max_chars: int) -> str:
     parts: list[str] = []
     used = 0
@@ -3350,19 +3564,23 @@ def _fallback_outline(chunks: list[SearchChunkRecord]) -> _CourseOutline:
                 break
         if not lesson_titles:
             lesson_titles = [title]
+        lessons = _dedupe_outline_lessons(
+            [
+                _OutlineLesson(
+                    title=lesson_title,
+                    learning_objectives=[f"Understand {lesson_title}"],
+                    source_queries=[lesson_title],
+                )
+                for lesson_title in lesson_titles
+            ],
+            chapter_title=title,
+        )
         chapters.append(
             _OutlineChapter(
                 title=title,
                 description=_first_sentence(group[0].text),
                 source_queries=[title],
-                lessons=[
-                    _OutlineLesson(
-                        title=lesson_title,
-                        learning_objectives=[f"Understand {lesson_title}"],
-                        source_queries=[lesson_title],
-                    )
-                    for lesson_title in lesson_titles
-                ],
+                lessons=lessons,
             )
         )
     course_title = _clean_title(chapters[0].title if chapters else "Generated Course")
@@ -3386,11 +3604,14 @@ def _usable_chapters(outline: _CourseOutline, chunks: list[SearchChunkRecord]) -
 
 
 def _usable_lessons(chapter: _OutlineChapter, chunks: list[SearchChunkRecord]) -> list[_OutlineLesson]:
-    lessons = [
-        lesson
-        for lesson in chapter.lessons
-        if _clean_title(lesson.title) and not _looks_like_markup(lesson.title)
-    ][:MAX_LESSONS_PER_CHAPTER]
+    lessons = _dedupe_outline_lessons(
+        [
+            lesson
+            for lesson in chapter.lessons
+            if _clean_title(lesson.title) and not _looks_like_markup(lesson.title)
+        ],
+        chapter_title=chapter.title,
+    )
     if lessons:
         return lessons
     return [
@@ -3578,7 +3799,7 @@ def _lesson_chunk_score(
     score = 0.0
     if _title_key(_chunk_unit_title(chunk)) == _title_key(chapter.title):
         score += 6.0
-    if _title_key(_chunk_subchapter_title(chunk)) == _title_key(lesson.title):
+    if _subchapter_title_matches_lesson(_chunk_subchapter_title(chunk), lesson):
         score += 8.0
     score += sum(1.0 for term in terms if term in haystack)
     score += min(3.0, _word_count(chunk.text) / 90)

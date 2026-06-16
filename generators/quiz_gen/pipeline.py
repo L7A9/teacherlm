@@ -20,6 +20,7 @@ from .schemas import (
     MCQ,
     Question,
     QuestionKind,
+    QuestionSlot,
     QuizOutput,
     QuizPlan,
     TrueFalse,
@@ -32,6 +33,7 @@ from .services.llm_service import LLMService, build_system_prompt, get_llm_servi
 from .services.quality_validator import (
     bloom_distribution,
     deduplicate_questions,
+    is_valid,
     validate_questions,
 )
 from .services.question_generator import generate_questions
@@ -46,10 +48,10 @@ _FRONTEND_KIND_ALIASES: dict[str, QuestionKind] = {
     "true_false": "true_false",
     "truefalse": "true_false",
     "tf": "true_false",
-    "fill_blank": "fill_blank",
-    "fill_in_the_blank": "fill_blank",
-    "short_answer": "fill_blank",
 }
+
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+|\n+")
+_WORD_RE = re.compile(r"[A-Za-z0-9]+")
 
 
 def _sse(event: str, data: dict) -> str:
@@ -83,7 +85,9 @@ def _resolve_allowed_kinds(options: dict) -> list[QuestionKind] | None:
         kind = _FRONTEND_KIND_ALIASES.get(key)
         if kind and kind not in kinds:
             kinds.append(kind)
-    return kinds or None
+    if kinds:
+        return kinds[:1]
+    return ["mcq"]
 
 
 def _resolve_title(options: dict, learner_concepts: list[str]) -> str:
@@ -182,7 +186,7 @@ async def _build_intro(
         return "Let's test what you know — quick check on what we've been working on."
 
 
-def _top_up_with_grounded_true_false(
+def _top_up_with_grounded_questions(
     *,
     questions: list[Question],
     plan: QuizPlan,
@@ -193,98 +197,171 @@ def _top_up_with_grounded_true_false(
     if len(questions) >= target_count:
         return questions
 
-    by_id = {chunk.chunk_id: chunk for chunk in chunks}
-    covered_questions = {q.question.strip().casefold() for q in questions}
-    covered_concepts = {q.concept.strip().casefold() for q in questions if q.concept}
+    chunks_by_id = {chunk.chunk_id: chunk for chunk in chunks}
+    seen_questions = {_question_key(question.question) for question in questions}
     out = list(questions)
 
     for slot in plan.slots:
         if len(out) >= target_count:
             break
-        concept_key = slot.concept.strip().casefold()
-        if concept_key in covered_concepts:
-            continue
 
-        chunk = next(
-            (
-                by_id[cid]
-                for cid in concept_to_chunk_ids.get(slot.concept, [])
-                if cid in by_id
-            ),
-            None,
-        )
-        if chunk is None:
-            chunk = chunks[0] if chunks else None
+        chunk = _chunk_for_slot(slot, concept_to_chunk_ids, chunks_by_id, chunks)
         if chunk is None:
             continue
 
-        heading = str(chunk.metadata.get("heading_path") or chunk.source or "the course material")
-        concept = _fallback_concept(slot.concept, chunk)
-        question_text = f"The course material covers {concept} in the section {heading}."
-        signature = question_text.strip().casefold()
-        if signature in covered_questions:
+        fallback = _fallback_question_for_slot(slot, chunk, chunks)
+        if fallback is None:
             continue
-        covered_questions.add(signature)
-        covered_concepts.add(concept_key)
-        out.append(
-            TrueFalse(
-                bloom_level=slot.bloom_level,
-                question=question_text,
-                answer=True,
-                explanation=f"Yes. The retrieved source section is {heading}.",
-                concept=concept,
-                source_chunk_id=chunk.chunk_id,
-            )
-        )
 
-    for slot in plan.slots:
-        if len(out) >= target_count:
-            break
-        chunk = next(
-            (
-                by_id[cid]
-                for cid in concept_to_chunk_ids.get(slot.concept, [])
-                if cid in by_id
-            ),
-            None,
-        )
-        if chunk is None:
+        key = _question_key(fallback.question)
+        if key in seen_questions:
             continue
-        source = chunk.source or "the uploaded course material"
-        concept = _fallback_concept(slot.concept, chunk)
-        question_text = f"The source {source} includes material related to {concept}."
-        signature = question_text.strip().casefold()
-        if signature in covered_questions:
+        if not is_valid(fallback, chunks_by_id):
             continue
-        covered_questions.add(signature)
-        out.append(
-            TrueFalse(
-                bloom_level=slot.bloom_level,
-                question=question_text,
-                answer=True,
-                explanation=f"Yes. This question is grounded in the retrieved source {source}.",
-                concept=concept,
-                source_chunk_id=chunk.chunk_id,
-            )
-        )
+
+        seen_questions.add(key)
+        out.append(fallback)
 
     return out
 
 
-def _fallback_concept(slot_concept: str, chunk: Chunk) -> str:
-    source_text = f"{chunk.text} {chunk.metadata.get('heading_path', '')}".casefold()
-    if slot_concept.casefold() in source_text:
-        return slot_concept
-    heading = str(chunk.metadata.get("section_title") or chunk.metadata.get("heading_path") or "").strip()
-    key_concepts = chunk.metadata.get("key_concepts") or []
-    if isinstance(key_concepts, list):
-        for concept in key_concepts:
-            label = _clean_concept_label(str(concept))
-            if label and label.casefold() in source_text:
-                return label
-    if heading:
-        return _clean_concept_label(heading.split(">")[-1])
-    return _clean_concept_label(slot_concept)
+def _chunk_for_slot(
+    slot: QuestionSlot,
+    concept_to_chunk_ids: dict[str, list[str]],
+    chunks_by_id: dict[str, Chunk],
+    chunks: list[Chunk],
+) -> Chunk | None:
+    for chunk_id in concept_to_chunk_ids.get(slot.concept, []):
+        if chunk_id in chunks_by_id:
+            return chunks_by_id[chunk_id]
+    return chunks[0] if chunks else None
+
+
+def _fallback_question_for_slot(
+    slot: QuestionSlot,
+    chunk: Chunk,
+    chunks: list[Chunk],
+) -> Question | None:
+    if slot.kind == "mcq":
+        mcq = _fallback_mcq(slot, chunk, chunks)
+        if mcq is not None:
+            return mcq
+    return _fallback_true_false(slot, chunk)
+
+
+def _fallback_mcq(
+    slot: QuestionSlot,
+    chunk: Chunk,
+    chunks: list[Chunk],
+) -> MCQ | None:
+    correct = _best_statement(chunk, slot.concept)
+    if correct is None:
+        return None
+
+    distractors = _distractor_statements(
+        chunks,
+        source_chunk_id=chunk.chunk_id,
+        correct=correct,
+    )
+    if len(distractors) < 3:
+        return None
+
+    concept = _clean_concept_label(slot.concept)
+    return MCQ(
+        bloom_level=slot.bloom_level,
+        question=f"Which statement best describes {concept}?",
+        options=[correct, *distractors[:3]],
+        correct_index=0,
+        explanation=f"Right - that statement matches the lesson's explanation of {concept}.",
+        concept=concept,
+        source_chunk_id=chunk.chunk_id,
+    )
+
+
+def _fallback_true_false(slot: QuestionSlot, chunk: Chunk) -> TrueFalse | None:
+    statement = _best_statement(chunk, slot.concept)
+    if statement is None:
+        return None
+
+    concept = _clean_concept_label(slot.concept)
+    return TrueFalse(
+        bloom_level=slot.bloom_level,
+        question=statement,
+        answer=True,
+        explanation="The lesson states this directly, so the statement is true.",
+        concept=concept,
+        source_chunk_id=chunk.chunk_id,
+    )
+
+
+def _best_statement(chunk: Chunk, concept: str) -> str | None:
+    candidates = _statement_candidates(chunk)
+    if not candidates:
+        return None
+
+    terms = [term for term in _WORD_RE.findall(concept.casefold()) if len(term) > 3]
+    if not terms:
+        return candidates[0]
+
+    return max(
+        candidates,
+        key=lambda statement: sum(term in statement.casefold() for term in terms),
+    )
+
+
+def _distractor_statements(
+    chunks: list[Chunk],
+    *,
+    source_chunk_id: str,
+    correct: str,
+) -> list[str]:
+    out: list[str] = []
+    seen = {_question_key(correct)}
+    ordered_chunks = [
+        *[chunk for chunk in chunks if chunk.chunk_id != source_chunk_id],
+        *[chunk for chunk in chunks if chunk.chunk_id == source_chunk_id],
+    ]
+    for chunk in ordered_chunks:
+        for statement in _statement_candidates(chunk):
+            key = _question_key(statement)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(statement)
+            if len(out) >= 3:
+                return out
+    return out
+
+
+def _statement_candidates(chunk: Chunk) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for piece in _SENTENCE_SPLIT_RE.split(chunk.text or ""):
+        statement = _clean_statement(piece)
+        if not statement:
+            continue
+        key = _question_key(statement)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(statement)
+    return out
+
+
+def _clean_statement(value: str) -> str:
+    text = " ".join(str(value or "").split()).strip(" -*#:;")
+    text = re.sub(r"^\d+(?:\.\d+)*\s+", "", text).strip()
+    if text.endswith("?") or len(text) < 24:
+        return ""
+    if len(text) > 180:
+        text = text[:177].rsplit(" ", 1)[0].rstrip(",;:")
+    if not text.endswith((".", "!")):
+        text = f"{text}."
+    return text
+
+
+def _question_key(value: str) -> str:
+    return " ".join(_WORD_RE.findall(str(value or "").casefold()))
 
 
 async def run(inp: GeneratorInput) -> AsyncIterator[str]:
@@ -359,7 +436,7 @@ async def run(inp: GeneratorInput) -> AsyncIterator[str]:
     questions, duplicates = deduplicate_questions(validated)
     dropped.extend(duplicates)
     before_top_up = len(questions)
-    questions = _top_up_with_grounded_true_false(
+    questions = _top_up_with_grounded_questions(
         questions=questions,
         plan=plan,
         concept_to_chunk_ids=concept_to_chunk_ids,
@@ -378,6 +455,29 @@ async def run(inp: GeneratorInput) -> AsyncIterator[str]:
             "top_up": top_up_count,
         },
     )
+
+    if not questions:
+        empty_response = (
+            "I found your sources, but I couldn't make quiz questions that passed "
+            "the quality checks. Try selecting more source material, then generate again."
+        )
+        yield _sse("token", {"delta": empty_response})
+        yield _sse(
+            "done",
+            GeneratorOutput(
+                response=empty_response,
+                generator_id=settings.generator_id,
+                output_type=settings.output_type,
+                sources=inp.context_chunks,
+                metadata={
+                    "reason": "no_questions_after_validation",
+                    "plan": plan.model_dump(),
+                    "dropped_questions": dropped,
+                    "top_up_questions": top_up_count,
+                },
+            ).model_dump(),
+        )
+        return
 
     intro_message = await _build_intro(
         llm=llm,

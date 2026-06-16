@@ -1,0 +1,2041 @@
+{
+  "conversation_id": "76aa893e-d7c7-41f8-a201-4071338198c7",
+  "eval_file": "evals/current_mobile_rag_eval.json",
+  "source_file_ids": null,
+  "case_count": 13,
+  "corpus_chunk_count": 433,
+  "k_values": [
+    5
+  ],
+  "candidate_k": 80,
+  "variants": {
+    "semantic_only": "Dense vector search in Qdrant using the configured embedding model.",
+    "bm25_only": "Lexical BM25 search over the same PostgreSQL chunk corpus.",
+    "hybrid_rrf": "Dense candidates and BM25 candidates fused with RRF using k=60."
+  },
+  "summary": {
+    "semantic_only": {
+      "case_count": 13,
+      "metrics": {
+        "hit_rate@5": 1.0,
+        "precision@5": 0.43076923076923074,
+        "recall@5": 0.7141025641025641,
+        "mrr@5": 0.9230769230769231,
+        "ndcg@5": 0.723410722428986,
+        "section_recall@5": 0.0,
+        "citation_precision": 0.0,
+        "latency_ms": 218.15469461552522
+      },
+      "failed_cases": []
+    },
+    "bm25_only": {
+      "case_count": 13,
+      "metrics": {
+        "hit_rate@5": 0.8461538461538461,
+        "precision@5": 0.27692307692307694,
+        "recall@5": 0.5064102564102564,
+        "mrr@5": 0.7051282051282051,
+        "ndcg@5": 0.5188048312376442,
+        "section_recall@5": 0.0,
+        "citation_precision": 0.0,
+        "latency_ms": 1.2073239234338802
+      },
+      "failed_cases": [
+        {
+          "id": "android_002_activity_definition",
+          "query": "Explain what an Activity is in Android and how it relates to the user interface.",
+          "expected": [
+            "559329ec-319e-5e3d-8055-6e4d2510b8f4",
+            "df31b075-67a8-5dbd-aff4-fd75d54e6e49"
+          ],
+          "expected_sections": [],
+          "retrieved": [
+            "f3934830-b559-5b3f-8802-394b7e6bec4a",
+            "0b4432b9-f9c4-5a16-ba2f-83b7bc4cc00b",
+            "4c252bb1-3c21-5897-af10-1fbe09a055c6",
+            "9f43cb6e-0e3a-5424-aa92-552cff8efa40",
+            "429b1ef0-1fd8-50c1-9237-6e26b2cede0e"
+          ]
+        },
+        {
+          "id": "sqlite_004_sharedpreferences_exact",
+          "query": "What are SharedPreferences and which access methods are described?",
+          "expected": [
+            "48353f92-3c92-582e-b8e1-ba40dbf90392",
+            "5aba136a-967e-554f-bc65-d27d1822c82d",
+            "5f512cdc-6e26-56a8-b8c4-8f7568a560f8",
+            "75508f6d-1800-51d1-bcdd-d98a2db5d14f",
+            "d6c8dcf7-aa5b-5ddf-81c5-8584e7cdd755"
+          ],
+          "expected_sections": [],
+          "retrieved": [
+            "538053eb-2ce3-5868-b936-e2b54b14c2d6",
+            "8b6da3fd-82b8-5dfd-af46-ed9236d36021",
+            "0b4432b9-f9c4-5a16-ba2f-83b7bc4cc00b",
+            "198b910b-eea4-5aa7-bf5c-65e127df1b82",
+            "5caa5c12-6547-5e35-8e56-b7dcee5402ce"
+          ]
+        }
+      ]
+    },
+    "hybrid_rrf": {
+      "case_count": 13,
+      "metrics": {
+        "hit_rate@5": 1.0,
+        "precision@5": 0.4153846153846154,
+        "recall@5": 0.6987179487179488,
+        "mrr@5": 0.8333333333333334,
+        "ndcg@5": 0.7022094374886277,
+        "section_recall@5": 0.0,
+        "citation_precision": 0.0,
+        "latency_ms": 219.3620185389591
+      },
+      "failed_cases": []
+    }
+  },
+  "comparison": [
+    {
+      "variant": "semantic_only",
+      "label": "Semantic only",
+      "recall@5": 0.7141,
+      "mrr@5": 0.9231,
+      "ndcg@5": 0.7234
+    },
+    {
+      "variant": "bm25_only",
+      "label": "BM25 only",
+      "recall@5": 0.5064,
+      "mrr@5": 0.7051,
+      "ndcg@5": 0.5188
+    },
+    {
+      "variant": "hybrid_rrf",
+      "label": "Hybrid RRF",
+      "recall@5": 0.6987,
+      "mrr@5": 0.8333,
+      "ndcg@5": 0.7022
+    }
+  ],
+  "mermaid": "```mermaid\nxychart-beta\n    title \"TeacherLM RAG Retrieval Comparison\"\n    x-axis [\"Semantic only\", \"BM25 only\", \"Hybrid RRF\"]\n    y-axis \"Score\" 0 --> 1\n    bar \"recall@5\" [0.714, 0.506, 0.699]\n    bar \"mrr@5\" [0.923, 0.705, 0.833]\n    bar \"ndcg@5\" [0.723, 0.519, 0.702]\n```",
+  "cases": {
+    "semantic_only": [
+      {
+        "id": "mobile_001_smartphone_definition",
+        "query": "What is a smartphone and what features make it different from a basic mobile phone?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "b991d09e-d25a-599d-b4c7-9027bfc7e724",
+          "cbf31be8-02eb-59c8-b8a6-dcf5340ed4b5"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "cbf31be8-02eb-59c8-b8a6-dcf5340ed4b5",
+          "73c3f42d-375c-5085-b5a0-6325515abc15",
+          "6caf1ece-4f88-5862-bb7e-eebf70ba45c5",
+          "ff1548fa-b632-59f9-9119-4ccf2dd4e85f",
+          "ef69478d-6a7c-5001-ac97-4011a546020e"
+        ],
+        "retrieved_sources": [
+          "Cours 1.pdf",
+          "Cours 1.pdf",
+          "Cours 2.pdf",
+          "Cours 1.pdf",
+          "Cours 1.pdf"
+        ],
+        "retrieved_section_ids": [
+          "194c7ff3-dd91-5fc6-9ff6-d34ef047fe6f",
+          "ffce2d26-a661-54ed-80ee-b7575d2c7827",
+          "0b320b1f-963e-5125-a5fe-f482992f111d",
+          "29156543-2b62-5f9c-a493-d99bfe4904a1",
+          "18c57a73-2c8e-5da6-aed9-23e06eda1fd4"
+        ],
+        "matched_relevant": [
+          "cbf31be8-02eb-59c8-b8a6-dcf5340ed4b5"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.2,
+          "recall@5": 0.5,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.6131471927654584,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 2212.474985000881
+        }
+      },
+      {
+        "id": "mobile_002_native_vs_hybrid",
+        "query": "Compare native mobile development with hybrid mobile applications.",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "4f8b2efc-f869-570c-8150-28d8ff83b121",
+          "64e4987b-241b-5ccb-aab2-f3b21b8613fb",
+          "91620d96-47cd-5514-90f7-2eb5ed8b8616",
+          "e5beb431-9123-5dbb-af13-0c50adda288e",
+          "f7205c42-5d05-5acf-a0e5-d84ea65aabfc"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "64e4987b-241b-5ccb-aab2-f3b21b8613fb",
+          "7e14c5e5-1a30-5cf5-9df8-534dee0638ea",
+          "3afe6262-a5a9-560a-9adf-606730353732",
+          "d79a55a3-b1c9-5daf-b2c9-a77e4e10508a",
+          "e5beb431-9123-5dbb-af13-0c50adda288e"
+        ],
+        "retrieved_sources": [
+          "Cours 1.pdf",
+          "Cours 1.pdf",
+          "Cours 1.pdf",
+          "Cours 1.pdf",
+          "Cours 1.pdf"
+        ],
+        "retrieved_section_ids": [
+          "a3d8cf42-6dfd-50c9-a219-e41d6ac69104",
+          "df61d755-d3a4-57d5-a4d1-38341847ff1a",
+          "f2fa4fba-c1f4-57a3-a73b-85a11785c196",
+          "afb73116-6775-567b-8a86-49577d79711f",
+          "46553663-53cc-5f7d-b100-2157985d4bf1"
+        ],
+        "matched_relevant": [
+          "64e4987b-241b-5ccb-aab2-f3b21b8613fb",
+          "e5beb431-9123-5dbb-af13-0c50adda288e"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.4,
+          "recall@5": 0.4,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.4703652827859579,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 52.810058999966714
+        }
+      },
+      {
+        "id": "android_001_main_components",
+        "query": "What are the main components of an Android application?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "230795b3-cfe5-5def-9767-63dd2e7faa1a"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "230795b3-cfe5-5def-9767-63dd2e7faa1a",
+          "5654ad3b-e5ce-5317-8fd9-626896c3faa6",
+          "ff1548fa-b632-59f9-9119-4ccf2dd4e85f",
+          "00dd4f8e-9bfe-5b9c-b96e-564660e346e0",
+          "4ef18e49-6afa-54c7-8509-d9200f593d4b"
+        ],
+        "retrieved_sources": [
+          "Cours 2.pdf",
+          "Cours 1.pdf",
+          "Cours 1.pdf",
+          "Cours 1.pdf",
+          "Cours 1.pdf"
+        ],
+        "retrieved_section_ids": [
+          "d24fcb18-ef3b-57ef-ad6f-c02463c93c39",
+          "eed56dc0-a3b6-5d9b-b4f8-874e0131babf",
+          "29156543-2b62-5f9c-a493-d99bfe4904a1",
+          "3e025dca-7dd4-5555-8ac5-8ad87686e252",
+          "c948a31f-9578-504e-bd8c-7227d31294e6"
+        ],
+        "matched_relevant": [
+          "230795b3-cfe5-5def-9767-63dd2e7faa1a"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.2,
+          "recall@5": 1.0,
+          "mrr@5": 1.0,
+          "ndcg@5": 1.0,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 92.6367250012845
+        }
+      },
+      {
+        "id": "android_002_activity_definition",
+        "query": "Explain what an Activity is in Android and how it relates to the user interface.",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "559329ec-319e-5e3d-8055-6e4d2510b8f4",
+          "df31b075-67a8-5dbd-aff4-fd75d54e6e49"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "db5ce4f4-56fc-550f-836b-28bdf5cf11e2",
+          "559329ec-319e-5e3d-8055-6e4d2510b8f4",
+          "c8b632eb-ad63-5fe1-8fda-30ef4f28cac4",
+          "cff838c1-eb77-5497-9ba2-588d873a3638",
+          "c56f2978-2a9d-52fd-b905-b26da44ee582"
+        ],
+        "retrieved_sources": [
+          "Cours 2.pdf",
+          "Cours 2.pdf",
+          "Cours 3.pdf",
+          "Cours 2.pdf",
+          "Cours 1.pdf"
+        ],
+        "retrieved_section_ids": [
+          "ea9695ef-325f-58fc-92a8-a10bf3df4ac0",
+          "0f2d0426-842a-5d79-87ae-4bb3157e84af",
+          "3006ca17-3b15-5241-800d-15962d79647c",
+          "a096d4ce-ad7c-5b0e-89c2-e49f3a2e0817",
+          "c6b7426f-a96b-5daa-b8fc-d6cdf876e26e"
+        ],
+        "matched_relevant": [
+          "559329ec-319e-5e3d-8055-6e4d2510b8f4"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.2,
+          "recall@5": 0.5,
+          "mrr@5": 0.5,
+          "ndcg@5": 0.38685280723454163,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 51.50237800080504
+        }
+      },
+      {
+        "id": "android_003_onrestart_exact",
+        "query": "When is onRestart called in the Android activity lifecycle?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "0e7c0442-b6fb-554d-9ebd-a8a81ad2f88a",
+          "e67aeb5c-4e68-5879-8844-c3a6faaf24c0",
+          "f3934830-b559-5b3f-8802-394b7e6bec4a"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "e67aeb5c-4e68-5879-8844-c3a6faaf24c0",
+          "1a6ed08a-4668-5ed7-b261-69a88efcb48c",
+          "d63a6d78-449c-5ec7-8f05-eb95fe62746c",
+          "0e7c0442-b6fb-554d-9ebd-a8a81ad2f88a",
+          "a4915b94-a39f-55c1-9471-71561d23548f"
+        ],
+        "retrieved_sources": [
+          "Cours 2.pdf",
+          "Cours 2.pdf",
+          "Cours 2.pdf",
+          "Cours 2.pdf",
+          "Cours 2.pdf"
+        ],
+        "retrieved_section_ids": [
+          "d665ad0b-7101-5ad6-bd1b-2bdf82d74f02",
+          "45f2ff93-97d1-54a3-8da9-f8bfa122807e",
+          "9c9f0469-961c-53cd-8d67-9800e0f9fc98",
+          "19861d53-720f-53da-960f-034fa5c7ed39",
+          "b7bb2a8c-6767-5d23-9463-a0e6eb2362e0"
+        ],
+        "matched_relevant": [
+          "0e7c0442-b6fb-554d-9ebd-a8a81ad2f88a",
+          "e67aeb5c-4e68-5879-8844-c3a6faaf24c0"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.4,
+          "recall@5": 0.6666666666666666,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.6713860725233041,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 49.80896499910159
+        }
+      },
+      {
+        "id": "android_004_intents",
+        "query": "How do Intents allow communication between Android activities?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "4371b77d-b1b3-5fd6-903c-561015be9bbf",
+          "c8b632eb-ad63-5fe1-8fda-30ef4f28cac4",
+          "cac83950-717d-5d91-a70a-526a62ba13b9",
+          "f6406ff7-c8a0-5c10-b37c-7e39345265c4"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "f6406ff7-c8a0-5c10-b37c-7e39345265c4",
+          "cac83950-717d-5d91-a70a-526a62ba13b9",
+          "4371b77d-b1b3-5fd6-903c-561015be9bbf",
+          "b5c59711-cb71-5219-ba14-f9912d2069ed",
+          "db5ce4f4-56fc-550f-836b-28bdf5cf11e2"
+        ],
+        "retrieved_sources": [
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 2.pdf",
+          "Cours 2.pdf"
+        ],
+        "retrieved_section_ids": [
+          "b082436c-c6eb-5ae3-9948-3894434028ae",
+          "daffe28c-cff4-5b02-9259-7de91714fd31",
+          "768f73ca-6734-5d9a-86dd-5e9a2ee1c8d5",
+          "a4e84ae5-f178-5d3a-9b9e-13cf3520a2b4",
+          "ea9695ef-325f-58fc-92a8-a10bf3df4ac0"
+        ],
+        "matched_relevant": [
+          "4371b77d-b1b3-5fd6-903c-561015be9bbf",
+          "cac83950-717d-5d91-a70a-526a62ba13b9",
+          "f6406ff7-c8a0-5c10-b37c-7e39345265c4"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.6,
+          "recall@5": 0.75,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.8318724637288826,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 47.92860800080234
+        }
+      },
+      {
+        "id": "android_005_manifest_exact",
+        "query": "What is AndroidManifest.xml used for and how is a new activity declared?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "5654ad3b-e5ce-5317-8fd9-626896c3faa6",
+          "9d650d8a-8ffb-52bc-b48d-7d5d7b986e5c",
+          "c8b632eb-ad63-5fe1-8fda-30ef4f28cac4"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "9d650d8a-8ffb-52bc-b48d-7d5d7b986e5c",
+          "f10bb846-7e10-54c2-bb9d-0316bff84c32",
+          "c8b632eb-ad63-5fe1-8fda-30ef4f28cac4",
+          "5654ad3b-e5ce-5317-8fd9-626896c3faa6",
+          "4c252bb1-3c21-5897-af10-1fbe09a055c6"
+        ],
+        "retrieved_sources": [
+          "Cours 1.pdf",
+          "Cours 2.pdf",
+          "Cours 3.pdf",
+          "Cours 1.pdf",
+          "Cours 3.pdf"
+        ],
+        "retrieved_section_ids": [
+          "98bd84a7-1a8a-52e3-9798-a8d30c16a4b1",
+          "6054cb4d-c962-5a6a-b97f-2b1ad719bab1",
+          "3006ca17-3b15-5241-800d-15962d79647c",
+          "eed56dc0-a3b6-5d9b-b4f8-874e0131babf",
+          "6897faff-2347-5783-b3a0-393f8744c0a7"
+        ],
+        "matched_relevant": [
+          "5654ad3b-e5ce-5317-8fd9-626896c3faa6",
+          "9d650d8a-8ffb-52bc-b48d-7d5d7b986e5c",
+          "c8b632eb-ad63-5fe1-8fda-30ef4f28cac4"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.6,
+          "recall@5": 1.0,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.9060254355346823,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 55.175800998767954
+        }
+      },
+      {
+        "id": "android_006_resources_exact",
+        "query": "What are res/drawable and res/layout resources in Android?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "13e7110c-6caf-58a7-834e-2d56028cfd4c"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "13e7110c-6caf-58a7-834e-2d56028cfd4c",
+          "5a4da5c8-fe10-5d0f-b547-0f69867efb83",
+          "09b677cc-e69e-5278-8bde-244ecb101abd",
+          "cd992e05-e4f0-5d06-9e81-4d3f6d61efba",
+          "4bf4470e-9395-5f2b-beec-258789787cf2"
+        ],
+        "retrieved_sources": [
+          "Cours 3.pdf",
+          "Cours 1.pdf",
+          "Cours 3.pdf",
+          "Cours 1.pdf",
+          "Cours 1.pdf"
+        ],
+        "retrieved_section_ids": [
+          "cf081174-1550-533c-bf0e-65eeb1873f1c",
+          "db0d64df-1c18-5649-8f24-aa39c2ebacd7",
+          "0f0ad29e-0d80-5d51-a645-02eb807b7f3c",
+          "52bd06fc-b856-50b7-a23e-561585d138ac",
+          "5f6ec4af-5711-5226-b6e2-2ad59d66d4ed"
+        ],
+        "matched_relevant": [
+          "13e7110c-6caf-58a7-834e-2d56028cfd4c"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.2,
+          "recall@5": 1.0,
+          "mrr@5": 1.0,
+          "ndcg@5": 1.0,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 46.005939999304246
+        }
+      },
+      {
+        "id": "android_007_style_xml_exact",
+        "query": "How is style.xml used with @style in Android layouts?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "203ad3b5-3762-51f8-bd1b-fa73bf01fb3f",
+          "9bc10a68-0929-5ba5-b20d-73ffe6148586",
+          "b251e028-091f-50f8-8e73-f6caae2673f9"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "fb7a3fee-9811-5d2d-8da2-94d063503571",
+          "9bc10a68-0929-5ba5-b20d-73ffe6148586",
+          "b251e028-091f-50f8-8e73-f6caae2673f9",
+          "6c73ae6a-0f26-5138-8695-d1ef19ba0bf3",
+          "44a85a8d-c058-5118-8e9f-f28988d18f00"
+        ],
+        "retrieved_sources": [
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 2.pdf",
+          "Cours 2.pdf"
+        ],
+        "retrieved_section_ids": [
+          "38be587d-1c44-59d6-b6ed-b25d7d2b3db5",
+          "481fa295-ec07-5635-952b-6ca000e76c47",
+          "182313f8-94b5-538a-80c0-074c7822a036",
+          "b952620c-33be-5298-9dd7-c5c894ba2353",
+          "6381a079-ba3a-5e6e-b025-0bd7fecef10f"
+        ],
+        "matched_relevant": [
+          "9bc10a68-0929-5ba5-b20d-73ffe6148586",
+          "b251e028-091f-50f8-8e73-f6caae2673f9"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.4,
+          "recall@5": 0.6666666666666666,
+          "mrr@5": 0.5,
+          "ndcg@5": 0.5307212739772434,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 42.26397099955648
+        }
+      },
+      {
+        "id": "sqlite_001_openhelper_exact",
+        "query": "Why does Android use SQLiteOpenHelper and what methods must be implemented?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "1a2b029c-3268-5bc6-945f-19fd264a541f",
+          "1bc8a8b3-6cbb-56ae-b89a-2a28801af5b7",
+          "28ab4a7b-d564-590b-a7ed-610083ff4066",
+          "64516305-fe3e-5f38-aef9-ec77547327ba",
+          "651c993c-0f10-5b96-9b6a-c5dd9ef8af12"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "651c993c-0f10-5b96-9b6a-c5dd9ef8af12",
+          "c364f139-1511-5225-baa4-73e03833aeea",
+          "1a2b029c-3268-5bc6-945f-19fd264a541f",
+          "28ab4a7b-d564-590b-a7ed-610083ff4066",
+          "1bc8a8b3-6cbb-56ae-b89a-2a28801af5b7"
+        ],
+        "retrieved_sources": [
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf"
+        ],
+        "retrieved_section_ids": [
+          "6d723044-13e6-5c44-b2da-b8ec649d5890",
+          "292b3fac-87d1-54aa-b576-a2be87cfc5d9",
+          "0b0df260-63e4-52f0-bbe8-ef77b6593ffa",
+          "87270de3-e654-508b-9546-582d189c5524",
+          "5162311a-4035-5679-b0b2-68c18f8eeda6"
+        ],
+        "matched_relevant": [
+          "1a2b029c-3268-5bc6-945f-19fd264a541f",
+          "1bc8a8b3-6cbb-56ae-b89a-2a28801af5b7",
+          "28ab4a7b-d564-590b-a7ed-610083ff4066",
+          "651c993c-0f10-5b96-9b6a-c5dd9ef8af12"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.8,
+          "recall@5": 0.8,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.7860137352654724,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 48.953278999761096
+        }
+      },
+      {
+        "id": "sqlite_002_create_table_exact",
+        "query": "Show the CREATE TABLE syntax used by SQLite in the Android course.",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "15dbdb7d-fd83-5d86-b3bd-3363c1e20e90",
+          "3705d221-132b-55a4-b737-c6875e0ddfb1",
+          "5d13218f-8338-53b7-8ace-5cabc23fce36",
+          "7de355b0-bd4e-5369-afd1-4077bc7b1aae",
+          "ba5c6d94-0af8-5c4e-b019-4cd7dd3c4cae"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "5d13218f-8338-53b7-8ace-5cabc23fce36",
+          "15dbdb7d-fd83-5d86-b3bd-3363c1e20e90",
+          "1a2b029c-3268-5bc6-945f-19fd264a541f",
+          "6b489aae-9574-511e-ae8f-0253b947b446",
+          "c394f188-4e75-56d7-b852-a69640767393"
+        ],
+        "retrieved_sources": [
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf"
+        ],
+        "retrieved_section_ids": [
+          "efc3add5-eec7-5ebe-b37b-b867f8023c46",
+          "b760c851-8ea6-567c-bb39-af2239ea1133",
+          "0b0df260-63e4-52f0-bbe8-ef77b6593ffa",
+          "1b6d4de0-db26-53dc-bc2b-f68051dd4b1f",
+          "2ed160a0-14f5-5d53-905f-be84f2b634da"
+        ],
+        "matched_relevant": [
+          "15dbdb7d-fd83-5d86-b3bd-3363c1e20e90",
+          "5d13218f-8338-53b7-8ace-5cabc23fce36"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.4,
+          "recall@5": 0.4,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.5531464700081437,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 47.022067999932915
+        }
+      },
+      {
+        "id": "sqlite_003_contentvalues_exact",
+        "query": "How are ContentValues used to insert data with SQLiteDatabase insert?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "07808df1-1089-55cf-b816-153c5bdab6ed",
+          "5d60950f-b7ab-5607-86d0-acb5ab42661c",
+          "81599297-b428-5eeb-979f-bade737ce184"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "81599297-b428-5eeb-979f-bade737ce184",
+          "5d60950f-b7ab-5607-86d0-acb5ab42661c",
+          "07808df1-1089-55cf-b816-153c5bdab6ed",
+          "c364f139-1511-5225-baa4-73e03833aeea",
+          "300adefa-84a7-5834-b58f-e4c296aaeccb"
+        ],
+        "retrieved_sources": [
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf"
+        ],
+        "retrieved_section_ids": [
+          "1a941615-5a62-5b78-9152-391280a778e2",
+          "0ddc252d-9784-51cc-b4d4-bff52012631a",
+          "541334af-b62f-5a50-afb5-5e8533097809",
+          "292b3fac-87d1-54aa-b576-a2be87cfc5d9",
+          "cc009209-a45b-5c4c-b53a-9d74241b99cb"
+        ],
+        "matched_relevant": [
+          "07808df1-1089-55cf-b816-153c5bdab6ed",
+          "5d60950f-b7ab-5607-86d0-acb5ab42661c",
+          "81599297-b428-5eeb-979f-bade737ce184"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.6,
+          "recall@5": 1.0,
+          "mrr@5": 1.0,
+          "ndcg@5": 1.0,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 42.61981200033915
+        }
+      },
+      {
+        "id": "sqlite_004_sharedpreferences_exact",
+        "query": "What are SharedPreferences and which access methods are described?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "48353f92-3c92-582e-b8e1-ba40dbf90392",
+          "5aba136a-967e-554f-bc65-d27d1822c82d",
+          "5f512cdc-6e26-56a8-b8c4-8f7568a560f8",
+          "75508f6d-1800-51d1-bcdd-d98a2db5d14f",
+          "d6c8dcf7-aa5b-5ddf-81c5-8584e7cdd755"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "5f512cdc-6e26-56a8-b8c4-8f7568a560f8",
+          "8b6da3fd-82b8-5dfd-af46-ed9236d36021",
+          "d6c8dcf7-aa5b-5ddf-81c5-8584e7cdd755",
+          "48353f92-3c92-582e-b8e1-ba40dbf90392",
+          "08d17b59-31c0-5fb3-9b0a-c13244fb518c"
+        ],
+        "retrieved_sources": [
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf"
+        ],
+        "retrieved_section_ids": [
+          "62c604bd-2529-5d05-b595-791fa26ad2d9",
+          "46dae021-3d83-5d76-a8f2-3cd9d1cd172f",
+          "605644cc-3e8f-5116-8289-0ab13f6342eb",
+          "6cbb4a0f-0af8-519d-a43b-4236807dc5c6",
+          "e1de6626-b709-512d-bb70-083a3512d991"
+        ],
+        "matched_relevant": [
+          "48353f92-3c92-582e-b8e1-ba40dbf90392",
+          "5f512cdc-6e26-56a8-b8c4-8f7568a560f8",
+          "d6c8dcf7-aa5b-5ddf-81c5-8584e7cdd755"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.6,
+          "recall@5": 0.6,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.6548086577531307,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 46.80843900132459
+        }
+      }
+    ],
+    "bm25_only": [
+      {
+        "id": "mobile_001_smartphone_definition",
+        "query": "What is a smartphone and what features make it different from a basic mobile phone?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "b991d09e-d25a-599d-b4c7-9027bfc7e724",
+          "cbf31be8-02eb-59c8-b8a6-dcf5340ed4b5"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "cbf31be8-02eb-59c8-b8a6-dcf5340ed4b5",
+          "89dba944-1f39-56e6-81ec-8252a82ba8d5",
+          "8d4cfec9-aaaa-511f-8c5a-b445ae567c05",
+          "9bd7eeed-16f9-52b5-82f2-5ab73a52f153",
+          "6bef4f6b-f722-5548-90d3-e23400aa11cd"
+        ],
+        "retrieved_sources": [
+          "Cours 1.pdf",
+          "Cours 1.pdf",
+          "Cours 1.pdf",
+          "Cours 1.pdf",
+          "Cours 1.pdf"
+        ],
+        "retrieved_section_ids": [
+          "194c7ff3-dd91-5fc6-9ff6-d34ef047fe6f",
+          "40377431-5376-55b8-95b6-db32da7d90fc",
+          "2aedd0cd-889f-57ad-b4cf-03036d7d3761",
+          "1f79650f-2f79-582b-acdd-3d6c5c920f50",
+          "a2aaa475-47d7-5382-af89-feed4201696d"
+        ],
+        "matched_relevant": [
+          "cbf31be8-02eb-59c8-b8a6-dcf5340ed4b5"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.2,
+          "recall@5": 0.5,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.6131471927654584,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 1.4249030009523267
+        }
+      },
+      {
+        "id": "mobile_002_native_vs_hybrid",
+        "query": "Compare native mobile development with hybrid mobile applications.",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "4f8b2efc-f869-570c-8150-28d8ff83b121",
+          "64e4987b-241b-5ccb-aab2-f3b21b8613fb",
+          "91620d96-47cd-5514-90f7-2eb5ed8b8616",
+          "e5beb431-9123-5dbb-af13-0c50adda288e",
+          "f7205c42-5d05-5acf-a0e5-d84ea65aabfc"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "3afe6262-a5a9-560a-9adf-606730353732",
+          "d979c075-62c9-5254-a5da-abeb9080ef7d",
+          "e5beb431-9123-5dbb-af13-0c50adda288e",
+          "4f8b2efc-f869-570c-8150-28d8ff83b121",
+          "7e14c5e5-1a30-5cf5-9df8-534dee0638ea"
+        ],
+        "retrieved_sources": [
+          "Cours 1.pdf",
+          "Cours 1.pdf",
+          "Cours 1.pdf",
+          "Cours 1.pdf",
+          "Cours 1.pdf"
+        ],
+        "retrieved_section_ids": [
+          "f2fa4fba-c1f4-57a3-a73b-85a11785c196",
+          "caab3798-7c23-5edc-bbb7-58286edc9c5c",
+          "46553663-53cc-5f7d-b100-2157985d4bf1",
+          "5b6d7166-0d19-58ce-869a-38c5fa3ee2be",
+          "df61d755-d3a4-57d5-a4d1-38341847ff1a"
+        ],
+        "matched_relevant": [
+          "4f8b2efc-f869-570c-8150-28d8ff83b121",
+          "e5beb431-9123-5dbb-af13-0c50adda288e"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.4,
+          "recall@5": 0.4,
+          "mrr@5": 0.3333333333333333,
+          "ndcg@5": 0.3156484524795145,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 0.9755440005392302
+        }
+      },
+      {
+        "id": "android_001_main_components",
+        "query": "What are the main components of an Android application?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "230795b3-cfe5-5def-9767-63dd2e7faa1a"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "230795b3-cfe5-5def-9767-63dd2e7faa1a",
+          "4ef18e49-6afa-54c7-8509-d9200f593d4b",
+          "0b4432b9-f9c4-5a16-ba2f-83b7bc4cc00b",
+          "92e0e2d2-9a07-5ef8-b72b-0a75cc4d2a94",
+          "5f9ed878-7fda-57f8-b4a7-b3aec16127aa"
+        ],
+        "retrieved_sources": [
+          "Cours 2.pdf",
+          "Cours 1.pdf",
+          "Cours 4.pdf",
+          "Cours 1.pdf",
+          "Cours 4.pdf"
+        ],
+        "retrieved_section_ids": [
+          "d24fcb18-ef3b-57ef-ad6f-c02463c93c39",
+          "c948a31f-9578-504e-bd8c-7227d31294e6",
+          "1f0ccb06-9f07-5bf8-8688-30544dcbe98f",
+          "47a93f67-dbf1-5482-913c-31f5b0ac7f93",
+          "9ab987ae-5831-5fb5-aceb-add74d4e92ff"
+        ],
+        "matched_relevant": [
+          "230795b3-cfe5-5def-9767-63dd2e7faa1a"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.2,
+          "recall@5": 1.0,
+          "mrr@5": 1.0,
+          "ndcg@5": 1.0,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 1.1086499998782529
+        }
+      },
+      {
+        "id": "android_002_activity_definition",
+        "query": "Explain what an Activity is in Android and how it relates to the user interface.",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "559329ec-319e-5e3d-8055-6e4d2510b8f4",
+          "df31b075-67a8-5dbd-aff4-fd75d54e6e49"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "f3934830-b559-5b3f-8802-394b7e6bec4a",
+          "0b4432b9-f9c4-5a16-ba2f-83b7bc4cc00b",
+          "4c252bb1-3c21-5897-af10-1fbe09a055c6",
+          "9f43cb6e-0e3a-5424-aa92-552cff8efa40",
+          "429b1ef0-1fd8-50c1-9237-6e26b2cede0e"
+        ],
+        "retrieved_sources": [
+          "Cours 2.pdf",
+          "Cours 4.pdf",
+          "Cours 3.pdf",
+          "Cours 4.pdf",
+          "Cours 3.pdf"
+        ],
+        "retrieved_section_ids": [
+          "a3caa028-bfea-5e06-a564-47fb5ca87c8c",
+          "1f0ccb06-9f07-5bf8-8688-30544dcbe98f",
+          "6897faff-2347-5783-b3a0-393f8744c0a7",
+          "13925e7c-85cb-59b2-9432-1f1fa62f683f",
+          "9e6e742c-fec3-5b25-bdee-82bab725b4ea"
+        ],
+        "matched_relevant": [],
+        "metrics": {
+          "hit_rate@5": 0.0,
+          "precision@5": 0.0,
+          "recall@5": 0.0,
+          "mrr@5": 0.0,
+          "ndcg@5": 0.0,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 1.6937830005190335
+        }
+      },
+      {
+        "id": "android_003_onrestart_exact",
+        "query": "When is onRestart called in the Android activity lifecycle?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "0e7c0442-b6fb-554d-9ebd-a8a81ad2f88a",
+          "e67aeb5c-4e68-5879-8844-c3a6faaf24c0",
+          "f3934830-b559-5b3f-8802-394b7e6bec4a"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "f3934830-b559-5b3f-8802-394b7e6bec4a",
+          "a266539f-4455-5090-942b-6b1c39d43379",
+          "10a02fa2-370c-5046-96a1-77447225f0e6",
+          "fbb7cb62-27fd-56bf-b781-02fe59f78251",
+          "1a6ed08a-4668-5ed7-b261-69a88efcb48c"
+        ],
+        "retrieved_sources": [
+          "Cours 2.pdf",
+          "Cours 2.pdf",
+          "Cours 2.pdf",
+          "Cours 2.pdf",
+          "Cours 2.pdf"
+        ],
+        "retrieved_section_ids": [
+          "a3caa028-bfea-5e06-a564-47fb5ca87c8c",
+          "4d872e4f-19a4-50b0-a95f-29138c3a4436",
+          "e3100970-28e5-595a-adfe-4ee73ef3c653",
+          "c7f917eb-4044-5b7f-853c-f537f9e4e884",
+          "45f2ff93-97d1-54a3-8da9-f8bfa122807e"
+        ],
+        "matched_relevant": [
+          "f3934830-b559-5b3f-8802-394b7e6bec4a"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.2,
+          "recall@5": 0.3333333333333333,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.46927872602275644,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 1.0577089997241274
+        }
+      },
+      {
+        "id": "android_004_intents",
+        "query": "How do Intents allow communication between Android activities?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "4371b77d-b1b3-5fd6-903c-561015be9bbf",
+          "c8b632eb-ad63-5fe1-8fda-30ef4f28cac4",
+          "cac83950-717d-5d91-a70a-526a62ba13b9",
+          "f6406ff7-c8a0-5c10-b37c-7e39345265c4"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "4371b77d-b1b3-5fd6-903c-561015be9bbf",
+          "b5c59711-cb71-5219-ba14-f9912d2069ed",
+          "cac83950-717d-5d91-a70a-526a62ba13b9",
+          "f6406ff7-c8a0-5c10-b37c-7e39345265c4",
+          "b284246b-dcb2-5436-b5e6-d2ac81171c43"
+        ],
+        "retrieved_sources": [
+          "Cours 3.pdf",
+          "Cours 2.pdf",
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 3.pdf"
+        ],
+        "retrieved_section_ids": [
+          "768f73ca-6734-5d9a-86dd-5e9a2ee1c8d5",
+          "a4e84ae5-f178-5d3a-9b9e-13cf3520a2b4",
+          "daffe28c-cff4-5b02-9259-7de91714fd31",
+          "b082436c-c6eb-5ae3-9948-3894434028ae",
+          "1a086978-ebf4-5f75-bf13-49f7b1ad446a"
+        ],
+        "matched_relevant": [
+          "4371b77d-b1b3-5fd6-903c-561015be9bbf",
+          "cac83950-717d-5d91-a70a-526a62ba13b9",
+          "f6406ff7-c8a0-5c10-b37c-7e39345265c4"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.6,
+          "recall@5": 0.75,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.75369761125927,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 1.2215149999974528
+        }
+      },
+      {
+        "id": "android_005_manifest_exact",
+        "query": "What is AndroidManifest.xml used for and how is a new activity declared?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "5654ad3b-e5ce-5317-8fd9-626896c3faa6",
+          "9d650d8a-8ffb-52bc-b48d-7d5d7b986e5c",
+          "c8b632eb-ad63-5fe1-8fda-30ef4f28cac4"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "4c252bb1-3c21-5897-af10-1fbe09a055c6",
+          "c8b632eb-ad63-5fe1-8fda-30ef4f28cac4",
+          "5d60950f-b7ab-5607-86d0-acb5ab42661c",
+          "9d650d8a-8ffb-52bc-b48d-7d5d7b986e5c",
+          "429b1ef0-1fd8-50c1-9237-6e26b2cede0e"
+        ],
+        "retrieved_sources": [
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 4.pdf",
+          "Cours 1.pdf",
+          "Cours 3.pdf"
+        ],
+        "retrieved_section_ids": [
+          "6897faff-2347-5783-b3a0-393f8744c0a7",
+          "3006ca17-3b15-5241-800d-15962d79647c",
+          "0ddc252d-9784-51cc-b4d4-bff52012631a",
+          "98bd84a7-1a8a-52e3-9798-a8d30c16a4b1",
+          "9e6e742c-fec3-5b25-bdee-82bab725b4ea"
+        ],
+        "matched_relevant": [
+          "9d650d8a-8ffb-52bc-b48d-7d5d7b986e5c",
+          "c8b632eb-ad63-5fe1-8fda-30ef4f28cac4"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.4,
+          "recall@5": 0.6666666666666666,
+          "mrr@5": 0.5,
+          "ndcg@5": 0.49818925746641285,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 1.6365550000045914
+        }
+      },
+      {
+        "id": "android_006_resources_exact",
+        "query": "What are res/drawable and res/layout resources in Android?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "13e7110c-6caf-58a7-834e-2d56028cfd4c"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "13e7110c-6caf-58a7-834e-2d56028cfd4c",
+          "5a4da5c8-fe10-5d0f-b547-0f69867efb83",
+          "cd992e05-e4f0-5d06-9e81-4d3f6d61efba",
+          "4bf4470e-9395-5f2b-beec-258789787cf2",
+          "05f93f16-a240-5274-8de1-8ae5ff73e6c9"
+        ],
+        "retrieved_sources": [
+          "Cours 3.pdf",
+          "Cours 1.pdf",
+          "Cours 1.pdf",
+          "Cours 1.pdf",
+          "Cours 4.pdf"
+        ],
+        "retrieved_section_ids": [
+          "cf081174-1550-533c-bf0e-65eeb1873f1c",
+          "db0d64df-1c18-5649-8f24-aa39c2ebacd7",
+          "52bd06fc-b856-50b7-a23e-561585d138ac",
+          "5f6ec4af-5711-5226-b6e2-2ad59d66d4ed",
+          "43b86352-985c-5672-8383-2c1e1925cbf5"
+        ],
+        "matched_relevant": [
+          "13e7110c-6caf-58a7-834e-2d56028cfd4c"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.2,
+          "recall@5": 1.0,
+          "mrr@5": 1.0,
+          "ndcg@5": 1.0,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 1.0845779997907812
+        }
+      },
+      {
+        "id": "android_007_style_xml_exact",
+        "query": "How is style.xml used with @style in Android layouts?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "203ad3b5-3762-51f8-bd1b-fa73bf01fb3f",
+          "9bc10a68-0929-5ba5-b20d-73ffe6148586",
+          "b251e028-091f-50f8-8e73-f6caae2673f9"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "9bc10a68-0929-5ba5-b20d-73ffe6148586",
+          "929ef96f-1d19-5440-8aa5-30fd9793d1d2",
+          "5999b203-ad68-5d1e-aff2-bf1d16559716",
+          "15ce2c78-6261-5337-8c6c-f170c6759b74",
+          "b251e028-091f-50f8-8e73-f6caae2673f9"
+        ],
+        "retrieved_sources": [
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 3.pdf"
+        ],
+        "retrieved_section_ids": [
+          "481fa295-ec07-5635-952b-6ca000e76c47",
+          "18184ef1-0105-5ce2-8b85-fe2f5b735495",
+          "03631585-90f0-5951-bb17-e1cb60a8bbab",
+          "51ae42a0-9a4f-543b-93e1-1d46ec505220",
+          "182313f8-94b5-538a-80c0-074c7822a036"
+        ],
+        "matched_relevant": [
+          "9bc10a68-0929-5ba5-b20d-73ffe6148586",
+          "b251e028-091f-50f8-8e73-f6caae2673f9"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.4,
+          "recall@5": 0.6666666666666666,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.6508205185601091,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 1.4515580005536322
+        }
+      },
+      {
+        "id": "sqlite_001_openhelper_exact",
+        "query": "Why does Android use SQLiteOpenHelper and what methods must be implemented?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "1a2b029c-3268-5bc6-945f-19fd264a541f",
+          "1bc8a8b3-6cbb-56ae-b89a-2a28801af5b7",
+          "28ab4a7b-d564-590b-a7ed-610083ff4066",
+          "64516305-fe3e-5f38-aef9-ec77547327ba",
+          "651c993c-0f10-5b96-9b6a-c5dd9ef8af12"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "c364f139-1511-5225-baa4-73e03833aeea",
+          "30385a3e-b998-557b-ad2d-13bc0a98c084",
+          "651c993c-0f10-5b96-9b6a-c5dd9ef8af12",
+          "9f43cb6e-0e3a-5424-aa92-552cff8efa40",
+          "e96d45f4-6ff6-5196-a976-cb5b8a28468e"
+        ],
+        "retrieved_sources": [
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 3.pdf"
+        ],
+        "retrieved_section_ids": [
+          "292b3fac-87d1-54aa-b576-a2be87cfc5d9",
+          "427c512f-e6d7-53a0-965d-4fbfaf21455e",
+          "6d723044-13e6-5c44-b2da-b8ec649d5890",
+          "13925e7c-85cb-59b2-9432-1f1fa62f683f",
+          "29a574b1-b919-5981-b915-75df226d11f7"
+        ],
+        "matched_relevant": [
+          "651c993c-0f10-5b96-9b6a-c5dd9ef8af12"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.2,
+          "recall@5": 0.2,
+          "mrr@5": 0.3333333333333333,
+          "ndcg@5": 0.16958010263680806,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 1.0663890006981092
+        }
+      },
+      {
+        "id": "sqlite_002_create_table_exact",
+        "query": "Show the CREATE TABLE syntax used by SQLite in the Android course.",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "15dbdb7d-fd83-5d86-b3bd-3363c1e20e90",
+          "3705d221-132b-55a4-b737-c6875e0ddfb1",
+          "5d13218f-8338-53b7-8ace-5cabc23fce36",
+          "7de355b0-bd4e-5369-afd1-4077bc7b1aae",
+          "ba5c6d94-0af8-5c4e-b019-4cd7dd3c4cae"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "7de355b0-bd4e-5369-afd1-4077bc7b1aae",
+          "129191cd-e9a8-5d97-a03e-3d79d57e36bf",
+          "3705d221-132b-55a4-b737-c6875e0ddfb1",
+          "eacf74bd-9bdc-5a8e-8162-3a731e8d87cc",
+          "6b489aae-9574-511e-ae8f-0253b947b446"
+        ],
+        "retrieved_sources": [
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf"
+        ],
+        "retrieved_section_ids": [
+          "53a75239-615c-5e61-a1e1-3edc99e4d0c9",
+          "c6473ad6-0160-54c8-8171-14bbe78c7b54",
+          "b3a68ebf-c52c-5717-afd7-7a170348b8b2",
+          "39323600-17ba-5b2e-b5d7-6cb25b97ffaf",
+          "1b6d4de0-db26-53dc-bc2b-f68051dd4b1f"
+        ],
+        "matched_relevant": [
+          "3705d221-132b-55a4-b737-c6875e0ddfb1",
+          "7de355b0-bd4e-5369-afd1-4077bc7b1aae"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.4,
+          "recall@5": 0.4,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.5087403079104241,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 1.070591000825516
+        }
+      },
+      {
+        "id": "sqlite_003_contentvalues_exact",
+        "query": "How are ContentValues used to insert data with SQLiteDatabase insert?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "07808df1-1089-55cf-b816-153c5bdab6ed",
+          "5d60950f-b7ab-5607-86d0-acb5ab42661c",
+          "81599297-b428-5eeb-979f-bade737ce184"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "81599297-b428-5eeb-979f-bade737ce184",
+          "5d60950f-b7ab-5607-86d0-acb5ab42661c",
+          "300adefa-84a7-5834-b58f-e4c296aaeccb",
+          "c364f139-1511-5225-baa4-73e03833aeea",
+          "0b4432b9-f9c4-5a16-ba2f-83b7bc4cc00b"
+        ],
+        "retrieved_sources": [
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf"
+        ],
+        "retrieved_section_ids": [
+          "1a941615-5a62-5b78-9152-391280a778e2",
+          "0ddc252d-9784-51cc-b4d4-bff52012631a",
+          "cc009209-a45b-5c4c-b53a-9d74241b99cb",
+          "292b3fac-87d1-54aa-b576-a2be87cfc5d9",
+          "1f0ccb06-9f07-5bf8-8688-30544dcbe98f"
+        ],
+        "matched_relevant": [
+          "5d60950f-b7ab-5607-86d0-acb5ab42661c",
+          "81599297-b428-5eeb-979f-bade737ce184"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.4,
+          "recall@5": 0.6666666666666666,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.7653606369886217,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 0.9663910004746867
+        }
+      },
+      {
+        "id": "sqlite_004_sharedpreferences_exact",
+        "query": "What are SharedPreferences and which access methods are described?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "48353f92-3c92-582e-b8e1-ba40dbf90392",
+          "5aba136a-967e-554f-bc65-d27d1822c82d",
+          "5f512cdc-6e26-56a8-b8c4-8f7568a560f8",
+          "75508f6d-1800-51d1-bcdd-d98a2db5d14f",
+          "d6c8dcf7-aa5b-5ddf-81c5-8584e7cdd755"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "538053eb-2ce3-5868-b936-e2b54b14c2d6",
+          "8b6da3fd-82b8-5dfd-af46-ed9236d36021",
+          "0b4432b9-f9c4-5a16-ba2f-83b7bc4cc00b",
+          "198b910b-eea4-5aa7-bf5c-65e127df1b82",
+          "5caa5c12-6547-5e35-8e56-b7dcee5402ce"
+        ],
+        "retrieved_sources": [
+          "Cours 2.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 3.pdf",
+          "Cours 3.pdf"
+        ],
+        "retrieved_section_ids": [
+          "e886df5e-f111-56f1-86fa-280a1395dab8",
+          "46dae021-3d83-5d76-a8f2-3cd9d1cd172f",
+          "1f0ccb06-9f07-5bf8-8688-30544dcbe98f",
+          "9af1e88d-88e6-539b-abb5-aff2622a0b69",
+          "514673e1-c6b1-59d5-8be2-754191157c1e"
+        ],
+        "matched_relevant": [],
+        "metrics": {
+          "hit_rate@5": 0.0,
+          "precision@5": 0.0,
+          "recall@5": 0.0,
+          "mrr@5": 0.0,
+          "ndcg@5": 0.0,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 0.9370450006827014
+        }
+      }
+    ],
+    "hybrid_rrf": [
+      {
+        "id": "mobile_001_smartphone_definition",
+        "query": "What is a smartphone and what features make it different from a basic mobile phone?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "b991d09e-d25a-599d-b4c7-9027bfc7e724",
+          "cbf31be8-02eb-59c8-b8a6-dcf5340ed4b5"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "cbf31be8-02eb-59c8-b8a6-dcf5340ed4b5",
+          "6bef4f6b-f722-5548-90d3-e23400aa11cd",
+          "6caf1ece-4f88-5862-bb7e-eebf70ba45c5",
+          "87519b3e-64ec-51ab-8055-e1a2555cf532",
+          "0dcdd77e-c8bd-5286-bf9f-a2ad13a6c179"
+        ],
+        "retrieved_sources": [
+          "Cours 1.pdf",
+          "Cours 1.pdf",
+          "Cours 2.pdf",
+          "Cours 1.pdf",
+          "Cours 1.pdf"
+        ],
+        "retrieved_section_ids": [
+          "194c7ff3-dd91-5fc6-9ff6-d34ef047fe6f",
+          "a2aaa475-47d7-5382-af89-feed4201696d",
+          "0b320b1f-963e-5125-a5fe-f482992f111d",
+          "439610c9-0c65-50c2-8b18-eb194b2525e9",
+          "ae34fd2d-9eac-5da8-b6e5-f652a324405f"
+        ],
+        "matched_relevant": [
+          "cbf31be8-02eb-59c8-b8a6-dcf5340ed4b5"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.2,
+          "recall@5": 0.5,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.6131471927654584,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 2213.8998880018335
+        }
+      },
+      {
+        "id": "mobile_002_native_vs_hybrid",
+        "query": "Compare native mobile development with hybrid mobile applications.",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "4f8b2efc-f869-570c-8150-28d8ff83b121",
+          "64e4987b-241b-5ccb-aab2-f3b21b8613fb",
+          "91620d96-47cd-5514-90f7-2eb5ed8b8616",
+          "e5beb431-9123-5dbb-af13-0c50adda288e",
+          "f7205c42-5d05-5acf-a0e5-d84ea65aabfc"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "3afe6262-a5a9-560a-9adf-606730353732",
+          "7e14c5e5-1a30-5cf5-9df8-534dee0638ea",
+          "e5beb431-9123-5dbb-af13-0c50adda288e",
+          "d979c075-62c9-5254-a5da-abeb9080ef7d",
+          "d79a55a3-b1c9-5daf-b2c9-a77e4e10508a"
+        ],
+        "retrieved_sources": [
+          "Cours 1.pdf",
+          "Cours 1.pdf",
+          "Cours 1.pdf",
+          "Cours 1.pdf",
+          "Cours 1.pdf"
+        ],
+        "retrieved_section_ids": [
+          "f2fa4fba-c1f4-57a3-a73b-85a11785c196",
+          "df61d755-d3a4-57d5-a4d1-38341847ff1a",
+          "46553663-53cc-5f7d-b100-2157985d4bf1",
+          "caab3798-7c23-5edc-bbb7-58286edc9c5c",
+          "afb73116-6775-567b-8a86-49577d79711f"
+        ],
+        "matched_relevant": [
+          "e5beb431-9123-5dbb-af13-0c50adda288e"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.2,
+          "recall@5": 0.2,
+          "mrr@5": 0.3333333333333333,
+          "ndcg@5": 0.16958010263680806,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 53.785603000505944
+        }
+      },
+      {
+        "id": "android_001_main_components",
+        "query": "What are the main components of an Android application?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "230795b3-cfe5-5def-9767-63dd2e7faa1a"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "230795b3-cfe5-5def-9767-63dd2e7faa1a",
+          "4ef18e49-6afa-54c7-8509-d9200f593d4b",
+          "31eab9cb-c04c-526e-b90c-b183609420cb",
+          "5654ad3b-e5ce-5317-8fd9-626896c3faa6",
+          "92e0e2d2-9a07-5ef8-b72b-0a75cc4d2a94"
+        ],
+        "retrieved_sources": [
+          "Cours 2.pdf",
+          "Cours 1.pdf",
+          "Cours 1.pdf",
+          "Cours 1.pdf",
+          "Cours 1.pdf"
+        ],
+        "retrieved_section_ids": [
+          "d24fcb18-ef3b-57ef-ad6f-c02463c93c39",
+          "c948a31f-9578-504e-bd8c-7227d31294e6",
+          "b3b8cbf5-6a39-5c8c-8f88-86de4cd8a743",
+          "eed56dc0-a3b6-5d9b-b4f8-874e0131babf",
+          "47a93f67-dbf1-5482-913c-31f5b0ac7f93"
+        ],
+        "matched_relevant": [
+          "230795b3-cfe5-5def-9767-63dd2e7faa1a"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.2,
+          "recall@5": 1.0,
+          "mrr@5": 1.0,
+          "ndcg@5": 1.0,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 93.74537500116276
+        }
+      },
+      {
+        "id": "android_002_activity_definition",
+        "query": "Explain what an Activity is in Android and how it relates to the user interface.",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "559329ec-319e-5e3d-8055-6e4d2510b8f4",
+          "df31b075-67a8-5dbd-aff4-fd75d54e6e49"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "559329ec-319e-5e3d-8055-6e4d2510b8f4",
+          "4c252bb1-3c21-5897-af10-1fbe09a055c6",
+          "cff838c1-eb77-5497-9ba2-588d873a3638",
+          "538053eb-2ce3-5868-b936-e2b54b14c2d6",
+          "198b910b-eea4-5aa7-bf5c-65e127df1b82"
+        ],
+        "retrieved_sources": [
+          "Cours 2.pdf",
+          "Cours 3.pdf",
+          "Cours 2.pdf",
+          "Cours 2.pdf",
+          "Cours 3.pdf"
+        ],
+        "retrieved_section_ids": [
+          "0f2d0426-842a-5d79-87ae-4bb3157e84af",
+          "6897faff-2347-5783-b3a0-393f8744c0a7",
+          "a096d4ce-ad7c-5b0e-89c2-e49f3a2e0817",
+          "e886df5e-f111-56f1-86fa-280a1395dab8",
+          "9af1e88d-88e6-539b-abb5-aff2622a0b69"
+        ],
+        "matched_relevant": [
+          "559329ec-319e-5e3d-8055-6e4d2510b8f4"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.2,
+          "recall@5": 0.5,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.6131471927654584,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 53.19616100132407
+        }
+      },
+      {
+        "id": "android_003_onrestart_exact",
+        "query": "When is onRestart called in the Android activity lifecycle?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "0e7c0442-b6fb-554d-9ebd-a8a81ad2f88a",
+          "e67aeb5c-4e68-5879-8844-c3a6faaf24c0",
+          "f3934830-b559-5b3f-8802-394b7e6bec4a"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "1a6ed08a-4668-5ed7-b261-69a88efcb48c",
+          "f3934830-b559-5b3f-8802-394b7e6bec4a",
+          "10a02fa2-370c-5046-96a1-77447225f0e6",
+          "0e7c0442-b6fb-554d-9ebd-a8a81ad2f88a",
+          "fbb7cb62-27fd-56bf-b781-02fe59f78251"
+        ],
+        "retrieved_sources": [
+          "Cours 2.pdf",
+          "Cours 2.pdf",
+          "Cours 2.pdf",
+          "Cours 2.pdf",
+          "Cours 2.pdf"
+        ],
+        "retrieved_section_ids": [
+          "45f2ff93-97d1-54a3-8da9-f8bfa122807e",
+          "a3caa028-bfea-5e06-a564-47fb5ca87c8c",
+          "e3100970-28e5-595a-adfe-4ee73ef3c653",
+          "19861d53-720f-53da-960f-034fa5c7ed39",
+          "c7f917eb-4044-5b7f-853c-f537f9e4e884"
+        ],
+        "matched_relevant": [
+          "0e7c0442-b6fb-554d-9ebd-a8a81ad2f88a",
+          "f3934830-b559-5b3f-8802-394b7e6bec4a"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.4,
+          "recall@5": 0.6666666666666666,
+          "mrr@5": 0.5,
+          "ndcg@5": 0.49818925746641285,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 50.86667399882572
+        }
+      },
+      {
+        "id": "android_004_intents",
+        "query": "How do Intents allow communication between Android activities?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "4371b77d-b1b3-5fd6-903c-561015be9bbf",
+          "c8b632eb-ad63-5fe1-8fda-30ef4f28cac4",
+          "cac83950-717d-5d91-a70a-526a62ba13b9",
+          "f6406ff7-c8a0-5c10-b37c-7e39345265c4"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "4371b77d-b1b3-5fd6-903c-561015be9bbf",
+          "f6406ff7-c8a0-5c10-b37c-7e39345265c4",
+          "cac83950-717d-5d91-a70a-526a62ba13b9",
+          "b5c59711-cb71-5219-ba14-f9912d2069ed",
+          "b284246b-dcb2-5436-b5e6-d2ac81171c43"
+        ],
+        "retrieved_sources": [
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 2.pdf",
+          "Cours 3.pdf"
+        ],
+        "retrieved_section_ids": [
+          "768f73ca-6734-5d9a-86dd-5e9a2ee1c8d5",
+          "b082436c-c6eb-5ae3-9948-3894434028ae",
+          "daffe28c-cff4-5b02-9259-7de91714fd31",
+          "a4e84ae5-f178-5d3a-9b9e-13cf3520a2b4",
+          "1a086978-ebf4-5f75-bf13-49f7b1ad446a"
+        ],
+        "matched_relevant": [
+          "4371b77d-b1b3-5fd6-903c-561015be9bbf",
+          "cac83950-717d-5d91-a70a-526a62ba13b9",
+          "f6406ff7-c8a0-5c10-b37c-7e39345265c4"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.6,
+          "recall@5": 0.75,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.8318724637288826,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 49.150123000799795
+        }
+      },
+      {
+        "id": "android_005_manifest_exact",
+        "query": "What is AndroidManifest.xml used for and how is a new activity declared?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "5654ad3b-e5ce-5317-8fd9-626896c3faa6",
+          "9d650d8a-8ffb-52bc-b48d-7d5d7b986e5c",
+          "c8b632eb-ad63-5fe1-8fda-30ef4f28cac4"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "9d650d8a-8ffb-52bc-b48d-7d5d7b986e5c",
+          "c8b632eb-ad63-5fe1-8fda-30ef4f28cac4",
+          "4c252bb1-3c21-5897-af10-1fbe09a055c6",
+          "4371b77d-b1b3-5fd6-903c-561015be9bbf",
+          "5654ad3b-e5ce-5317-8fd9-626896c3faa6"
+        ],
+        "retrieved_sources": [
+          "Cours 1.pdf",
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 1.pdf"
+        ],
+        "retrieved_section_ids": [
+          "98bd84a7-1a8a-52e3-9798-a8d30c16a4b1",
+          "3006ca17-3b15-5241-800d-15962d79647c",
+          "6897faff-2347-5783-b3a0-393f8744c0a7",
+          "768f73ca-6734-5d9a-86dd-5e9a2ee1c8d5",
+          "eed56dc0-a3b6-5d9b-b4f8-874e0131babf"
+        ],
+        "matched_relevant": [
+          "5654ad3b-e5ce-5317-8fd9-626896c3faa6",
+          "9d650d8a-8ffb-52bc-b48d-7d5d7b986e5c",
+          "c8b632eb-ad63-5fe1-8fda-30ef4f28cac4"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.6,
+          "recall@5": 1.0,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.9469024295259745,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 56.812355998772546
+        }
+      },
+      {
+        "id": "android_006_resources_exact",
+        "query": "What are res/drawable and res/layout resources in Android?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "13e7110c-6caf-58a7-834e-2d56028cfd4c"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "13e7110c-6caf-58a7-834e-2d56028cfd4c",
+          "5a4da5c8-fe10-5d0f-b547-0f69867efb83",
+          "cd992e05-e4f0-5d06-9e81-4d3f6d61efba",
+          "4bf4470e-9395-5f2b-beec-258789787cf2",
+          "09b677cc-e69e-5278-8bde-244ecb101abd"
+        ],
+        "retrieved_sources": [
+          "Cours 3.pdf",
+          "Cours 1.pdf",
+          "Cours 1.pdf",
+          "Cours 1.pdf",
+          "Cours 3.pdf"
+        ],
+        "retrieved_section_ids": [
+          "cf081174-1550-533c-bf0e-65eeb1873f1c",
+          "db0d64df-1c18-5649-8f24-aa39c2ebacd7",
+          "52bd06fc-b856-50b7-a23e-561585d138ac",
+          "5f6ec4af-5711-5226-b6e2-2ad59d66d4ed",
+          "0f0ad29e-0d80-5d51-a645-02eb807b7f3c"
+        ],
+        "matched_relevant": [
+          "13e7110c-6caf-58a7-834e-2d56028cfd4c"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.2,
+          "recall@5": 1.0,
+          "mrr@5": 1.0,
+          "ndcg@5": 1.0,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 47.09051799909503
+        }
+      },
+      {
+        "id": "android_007_style_xml_exact",
+        "query": "How is style.xml used with @style in Android layouts?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "203ad3b5-3762-51f8-bd1b-fa73bf01fb3f",
+          "9bc10a68-0929-5ba5-b20d-73ffe6148586",
+          "b251e028-091f-50f8-8e73-f6caae2673f9"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "9bc10a68-0929-5ba5-b20d-73ffe6148586",
+          "b251e028-091f-50f8-8e73-f6caae2673f9",
+          "929ef96f-1d19-5440-8aa5-30fd9793d1d2",
+          "fb7a3fee-9811-5d2d-8da2-94d063503571",
+          "5999b203-ad68-5d1e-aff2-bf1d16559716"
+        ],
+        "retrieved_sources": [
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 3.pdf",
+          "Cours 3.pdf"
+        ],
+        "retrieved_section_ids": [
+          "481fa295-ec07-5635-952b-6ca000e76c47",
+          "182313f8-94b5-538a-80c0-074c7822a036",
+          "18184ef1-0105-5ce2-8b85-fe2f5b735495",
+          "38be587d-1c44-59d6-b6ed-b25d7d2b3db5",
+          "03631585-90f0-5951-bb17-e1cb60a8bbab"
+        ],
+        "matched_relevant": [
+          "9bc10a68-0929-5ba5-b20d-73ffe6148586",
+          "b251e028-091f-50f8-8e73-f6caae2673f9"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.4,
+          "recall@5": 0.6666666666666666,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.7653606369886217,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 43.71552900011011
+        }
+      },
+      {
+        "id": "sqlite_001_openhelper_exact",
+        "query": "Why does Android use SQLiteOpenHelper and what methods must be implemented?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "1a2b029c-3268-5bc6-945f-19fd264a541f",
+          "1bc8a8b3-6cbb-56ae-b89a-2a28801af5b7",
+          "28ab4a7b-d564-590b-a7ed-610083ff4066",
+          "64516305-fe3e-5f38-aef9-ec77547327ba",
+          "651c993c-0f10-5b96-9b6a-c5dd9ef8af12"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "c364f139-1511-5225-baa4-73e03833aeea",
+          "651c993c-0f10-5b96-9b6a-c5dd9ef8af12",
+          "1a2b029c-3268-5bc6-945f-19fd264a541f",
+          "28ab4a7b-d564-590b-a7ed-610083ff4066",
+          "64516305-fe3e-5f38-aef9-ec77547327ba"
+        ],
+        "retrieved_sources": [
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf"
+        ],
+        "retrieved_section_ids": [
+          "292b3fac-87d1-54aa-b576-a2be87cfc5d9",
+          "6d723044-13e6-5c44-b2da-b8ec649d5890",
+          "0b0df260-63e4-52f0-bbe8-ef77b6593ffa",
+          "87270de3-e654-508b-9546-582d189c5524",
+          "cbf18605-f478-5573-b0a3-4aec92281dce"
+        ],
+        "matched_relevant": [
+          "1a2b029c-3268-5bc6-945f-19fd264a541f",
+          "28ab4a7b-d564-590b-a7ed-610083ff4066",
+          "64516305-fe3e-5f38-aef9-ec77547327ba",
+          "651c993c-0f10-5b96-9b6a-c5dd9ef8af12"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.8,
+          "recall@5": 0.8,
+          "mrr@5": 0.5,
+          "ndcg@5": 0.6608397947263839,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 50.019668000459205
+        }
+      },
+      {
+        "id": "sqlite_002_create_table_exact",
+        "query": "Show the CREATE TABLE syntax used by SQLite in the Android course.",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "15dbdb7d-fd83-5d86-b3bd-3363c1e20e90",
+          "3705d221-132b-55a4-b737-c6875e0ddfb1",
+          "5d13218f-8338-53b7-8ace-5cabc23fce36",
+          "7de355b0-bd4e-5369-afd1-4077bc7b1aae",
+          "ba5c6d94-0af8-5c4e-b019-4cd7dd3c4cae"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "7de355b0-bd4e-5369-afd1-4077bc7b1aae",
+          "5d13218f-8338-53b7-8ace-5cabc23fce36",
+          "6b489aae-9574-511e-ae8f-0253b947b446",
+          "129191cd-e9a8-5d97-a03e-3d79d57e36bf",
+          "66df7470-0a95-5842-86e1-9729510d04d9"
+        ],
+        "retrieved_sources": [
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf"
+        ],
+        "retrieved_section_ids": [
+          "53a75239-615c-5e61-a1e1-3edc99e4d0c9",
+          "efc3add5-eec7-5ebe-b37b-b867f8023c46",
+          "1b6d4de0-db26-53dc-bc2b-f68051dd4b1f",
+          "c6473ad6-0160-54c8-8171-14bbe78c7b54",
+          "dc04087b-dd3c-55e5-87eb-bdc3510c8128"
+        ],
+        "matched_relevant": [
+          "5d13218f-8338-53b7-8ace-5cabc23fce36",
+          "7de355b0-bd4e-5369-afd1-4077bc7b1aae"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.4,
+          "recall@5": 0.4,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.5531464700081437,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 48.09265900075843
+        }
+      },
+      {
+        "id": "sqlite_003_contentvalues_exact",
+        "query": "How are ContentValues used to insert data with SQLiteDatabase insert?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "07808df1-1089-55cf-b816-153c5bdab6ed",
+          "5d60950f-b7ab-5607-86d0-acb5ab42661c",
+          "81599297-b428-5eeb-979f-bade737ce184"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "81599297-b428-5eeb-979f-bade737ce184",
+          "5d60950f-b7ab-5607-86d0-acb5ab42661c",
+          "300adefa-84a7-5834-b58f-e4c296aaeccb",
+          "c364f139-1511-5225-baa4-73e03833aeea",
+          "07808df1-1089-55cf-b816-153c5bdab6ed"
+        ],
+        "retrieved_sources": [
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf"
+        ],
+        "retrieved_section_ids": [
+          "1a941615-5a62-5b78-9152-391280a778e2",
+          "0ddc252d-9784-51cc-b4d4-bff52012631a",
+          "cc009209-a45b-5c4c-b53a-9d74241b99cb",
+          "292b3fac-87d1-54aa-b576-a2be87cfc5d9",
+          "541334af-b62f-5a50-afb5-5e8533097809"
+        ],
+        "matched_relevant": [
+          "07808df1-1089-55cf-b816-153c5bdab6ed",
+          "5d60950f-b7ab-5607-86d0-acb5ab42661c",
+          "81599297-b428-5eeb-979f-bade737ce184"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.6,
+          "recall@5": 1.0,
+          "mrr@5": 1.0,
+          "ndcg@5": 0.9469024295259745,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 43.58620300081384
+        }
+      },
+      {
+        "id": "sqlite_004_sharedpreferences_exact",
+        "query": "What are SharedPreferences and which access methods are described?",
+        "mode": null,
+        "output_type": "text",
+        "relevant_chunk_ids": [
+          "48353f92-3c92-582e-b8e1-ba40dbf90392",
+          "5aba136a-967e-554f-bc65-d27d1822c82d",
+          "5f512cdc-6e26-56a8-b8c4-8f7568a560f8",
+          "75508f6d-1800-51d1-bcdd-d98a2db5d14f",
+          "d6c8dcf7-aa5b-5ddf-81c5-8584e7cdd755"
+        ],
+        "relevant_section_ids": [],
+        "expected_source_document": null,
+        "answer_facts": [],
+        "retrieved_ids": [
+          "8b6da3fd-82b8-5dfd-af46-ed9236d36021",
+          "48353f92-3c92-582e-b8e1-ba40dbf90392",
+          "d6c8dcf7-aa5b-5ddf-81c5-8584e7cdd755",
+          "5f512cdc-6e26-56a8-b8c4-8f7568a560f8",
+          "ae2b32cd-9421-52b1-b70e-ce6e7792b134"
+        ],
+        "retrieved_sources": [
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf",
+          "Cours 4.pdf"
+        ],
+        "retrieved_section_ids": [
+          "46dae021-3d83-5d76-a8f2-3cd9d1cd172f",
+          "6cbb4a0f-0af8-519d-a43b-4236807dc5c6",
+          "605644cc-3e8f-5116-8289-0ab13f6342eb",
+          "62c604bd-2529-5d05-b595-791fa26ad2d9",
+          "f33019f2-d1c6-55c3-940a-77103cea155a"
+        ],
+        "matched_relevant": [
+          "48353f92-3c92-582e-b8e1-ba40dbf90392",
+          "5f512cdc-6e26-56a8-b8c4-8f7568a560f8",
+          "d6c8dcf7-aa5b-5ddf-81c5-8584e7cdd755"
+        ],
+        "metrics": {
+          "hit_rate@5": 1.0,
+          "precision@5": 0.6,
+          "recall@5": 0.6,
+          "mrr@5": 0.5,
+          "ndcg@5": 0.5296347172140421,
+          "section_recall@5": 0.0,
+          "citation_precision": 0.0,
+          "latency_ms": 47.74548400200729
+        }
+      }
+    ]
+  }
+}

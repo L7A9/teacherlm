@@ -40,7 +40,7 @@ const TITLES: Record<OutputType, string> = {
 
 const DESCRIPTIONS: Record<OutputType, string> = {
   text: "Type a question and your teacher will answer it.",
-  quiz: "Pick how many questions, difficulty, and which types to include.",
+  quiz: "Pick how many questions, difficulty, and one quiz type.",
   report: "Choose a format and how deep the write-up should go.",
   presentation: "Choose a length and style for your slide deck.",
   chart: "Pick a diagram style — the teacher will extract the relationships.",
@@ -356,14 +356,13 @@ const FIELDS_BY_TYPE: Record<OutputType, FieldSpec[]> = {
       ],
     },
     {
-      kind: "multiselect",
+      kind: "select",
       name: "question_types",
-      label: "Question types",
-      default: ["multiple_choice"],
+      label: "Quiz type",
+      default: "multiple_choice",
       options: [
         { value: "multiple_choice", label: "Multiple choice" },
         { value: "true_false", label: "True / false" },
-        { value: "short_answer", label: "Short answer" },
       ],
     },
   ],

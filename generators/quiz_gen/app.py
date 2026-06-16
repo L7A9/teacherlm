@@ -25,7 +25,7 @@ async def info() -> dict:
         "retrieval_mode": "coverage_broad",
         "streams": True,
         "capabilities": {
-            "question_kinds": ["mcq", "true_false", "fill_blank"],
+            "question_kinds": ["mcq", "true_false"],
             "bloom_levels": ["remember", "understand", "apply", "analyze"],
             "adapts_to_learner_state": True,
             "uses_distractor_engine": True,

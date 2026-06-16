@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="330" viewBox="0 0 1200 330">
+<rect width="100%" height="100%" fill="white"/>
+<text x="600.0" y="42" text-anchor="middle" font-size="28" font-weight="700" fill="#111827">Upload And Ingestion Pipeline Time Distribution</text>
+<text x="600.0" y="72" text-anchor="middle" font-size="16" fill="#4b5563">Estimated profile; replace with measured timestamps when available</text>
+<rect x="70.0" y="135" width="42.0" height="54" fill="#2563eb"/>
+<rect x="112.0" y="135" width="341.1" height="54" fill="#16a34a"/>
+<text x="282.5" y="158" text-anchor="middle" font-size="13" font-weight="700" fill="white">LlamaCloud parsing</text>
+<text x="282.5" y="177" text-anchor="middle" font-size="12" fill="white">65.0s</text>
+<rect x="453.1" y="135" width="84.0" height="54" fill="#f59e0b"/>
+<text x="495.0" y="158" text-anchor="middle" font-size="13" font-weight="700" fill="white">Cleaning</text>
+<text x="495.0" y="177" text-anchor="middle" font-size="12" fill="white">16.0s</text>
+<rect x="537.0" y="135" width="125.9" height="54" fill="#dc2626"/>
+<text x="600.0" y="158" text-anchor="middle" font-size="13" font-weight="700" fill="white">Structure extraction</text>
+<text x="600.0" y="177" text-anchor="middle" font-size="12" fill="white">24.0s</text>
+<rect x="663.0" y="135" width="94.5" height="54" fill="#7c3aed"/>
+<text x="710.2" y="158" text-anchor="middle" font-size="13" font-weight="700" fill="white">Chunking</text>
+<text x="710.2" y="177" text-anchor="middle" font-size="12" fill="white">18.0s</text>
+<rect x="757.4" y="135" width="236.1" height="54" fill="#0891b2"/>
+<text x="875.5" y="158" text-anchor="middle" font-size="13" font-weight="700" fill="white">Embedding</text>
+<text x="875.5" y="177" text-anchor="middle" font-size="12" fill="white">45.0s</text>
+<rect x="993.6" y="135" width="63.0" height="54" fill="#db2777"/>
+<rect x="1056.5" y="135" width="52.5" height="54" fill="#4b5563"/>
+<rect x="1109.0" y="135" width="21.0" height="54" fill="#65a30d"/>
+<rect x="70" y="135" width="1060" height="54" fill="none" stroke="#111827"/>
+<rect x="70" y="225" width="14" height="14" rx="3" fill="#2563eb"/>
+<text x="90" y="237" font-size="13" fill="#111827">Upload (8.0s)</text>
+<rect x="200" y="225" width="14" height="14" rx="3" fill="#16a34a"/>
+<text x="220" y="237" font-size="13" fill="#111827">LlamaCloud parsing (65.0s)</text>
+<rect x="390" y="225" width="14" height="14" rx="3" fill="#f59e0b"/>
+<text x="410" y="237" font-size="13" fill="#111827">Cleaning (16.0s)</text>
+<rect x="522" y="225" width="14" height="14" rx="3" fill="#dc2626"/>
+<text x="542" y="237" font-size="13" fill="#111827">Structure extraction (24.0s)</text>
+<rect x="712" y="225" width="14" height="14" rx="3" fill="#7c3aed"/>
+<text x="732" y="237" font-size="13" fill="#111827">Chunking (18.0s)</text>
+<rect x="844" y="225" width="14" height="14" rx="3" fill="#0891b2"/>
+<text x="864" y="237" font-size="13" fill="#111827">Embedding (45.0s)</text>
+<rect x="984" y="225" width="14" height="14" rx="3" fill="#db2777"/>
+<text x="1004" y="237" font-size="13" fill="#111827">Qdrant upsert (12.0s)</text>
+<rect x="70" y="253" width="14" height="14" rx="3" fill="#4b5563"/>
+<text x="90" y="265" font-size="13" fill="#111827">Graph rebuild (10.0s)</text>
+<rect x="242" y="253" width="14" height="14" rx="3" fill="#65a30d"/>
+<text x="262" y="265" font-size="13" fill="#111827">Course Builder trigger (4.0s)</text>
+<text x="600.0" y="310" text-anchor="middle" font-size="13" fill="#6b7280">Total measured/estimated duration: 202.0s</text>
+</svg>

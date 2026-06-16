@@ -29,14 +29,14 @@ RUN pip install -e /app/packages/teacherlm_core
 COPY platform/backend/requirements.txt /app/platform/backend/requirements.txt
 RUN pip install -r /app/platform/backend/requirements.txt
 
-# Bake the default embedding and reranker models into the backend image so first
-# upload/search does not block on a Hugging Face download. Keep the cache inside
-# the image; do not mount over these paths at runtime or the baked files will be
-# hidden.
+# Optionally bake embedding and reranker models into the backend image. This is
+# disabled by default for local builds because Hugging Face downloads can be
+# slow or unavailable; set the PREFETCH_* build args to true for deployment
+# images that should avoid first-request model downloads.
 ARG EMBEDDING_MODEL=intfloat/multilingual-e5-large
-ARG PREFETCH_EMBEDDING_MODEL=true
+ARG PREFETCH_EMBEDDING_MODEL=false
 ARG RETRIEVAL_RERANKER_MODEL=BAAI/bge-reranker-base
-ARG PREFETCH_RERANKER_MODEL=true
+ARG PREFETCH_RERANKER_MODEL=false
 ENV EMBEDDING_MODEL=${EMBEDDING_MODEL} \
     RETRIEVAL_RERANKER_MODEL=${RETRIEVAL_RERANKER_MODEL} \
     HF_HOME=/app/.cache/hf \

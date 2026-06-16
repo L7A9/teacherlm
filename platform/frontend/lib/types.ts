@@ -91,6 +91,7 @@ export interface Artifact {
   type: string;
   url: string;
   filename?: string | null;
+  key?: string | null;
 }
 
 export interface SourceRef {
