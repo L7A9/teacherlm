@@ -18,6 +18,7 @@ def _client(monkeypatch, tmp_path):
     from local_api.config import get_settings
     from local_api.db import get_store
     from local_api.main import create_app
+    import local_api.services.generators as generators_module
     import local_api.services.ingestion as ingestion_module
     import local_api.services.knowledge_graph as graph_module
     import local_api.services.retrieval as retrieval_module
@@ -37,6 +38,12 @@ def _client(monkeypatch, tmp_path):
     vector_module._vector_service = None
     graph_module._knowledge_graph_service = None
     retrieval_module._retrieval_service = None
+    generators_module._generator_service = None
+
+    async def offline_generator_llm(*_args, **_kwargs):
+        raise RuntimeError("LLM disabled in API smoke tests")
+
+    monkeypatch.setattr(generators_module, "complete_text", offline_generator_llm)
     store.initialize()
     return TestClient(create_app())
 
@@ -427,7 +434,7 @@ A good podcast follows a narrative arc: introduction, key points, examples, and 
     mindmap_done = _done_event(
         client.post(
             f"/api/conversations/{conversation['id']}/generate",
-            json={"output_type": "mindmap", "prompt": "Generate mindmap", "source_file_ids": [], "options": {}},
+            json={"output_type": "mindmap", "prompt": "Generate mindmap", "source_file_ids": [file_id], "options": {}},
         ).text
     )
     assert mindmap_done["output_type"] == "mindmap"
@@ -447,6 +454,275 @@ A good podcast follows a narrative arc: introduction, key points, examples, and 
     assert podcast_done["metadata"]["podcast"]["tts_skipped"] is True
 
 
+def test_mindmap_rebuilds_from_all_selected_file_chunks(monkeypatch, tmp_path) -> None:
+    client = _client(monkeypatch, tmp_path)
+    conversation = client.post("/api/conversations", json={"title": "Mind map full context"}).json()
+    first = client.post(
+        f"/api/conversations/{conversation['id']}/files",
+        files={
+            "upload": (
+                "first.md",
+                b"""# Search Foundations
+
+## Dense Retrieval
+Dense retrieval represents meaning with vectors.
+
+## Sparse Retrieval
+Sparse retrieval uses exact lexical evidence.
+
+## Fusion
+Reciprocal rank fusion combines ranked result lists.
+""",
+                "text/markdown",
+            )
+        },
+    ).json()
+    second = client.post(
+        f"/api/conversations/{conversation['id']}/files",
+        files={
+            "upload": (
+                "second.md",
+                b"""# Evaluation
+
+## Precision
+Precision measures relevant retrieved items.
+
+## Recall
+Recall measures how many relevant items were found.
+""",
+                "text/markdown",
+            )
+        },
+    ).json()
+
+    from local_api.db import get_store
+    from local_api.services.retrieval import get_retrieval_service
+
+    retrieval_settings = client.patch(
+        "/api/settings/retrieval",
+        json={"retrieval_graph_enabled": False},
+    ).json()
+    assert retrieval_settings["retrieval_graph_enabled"] is False
+
+    selected_rows = get_store().list_chunks(conversation["id"], source_file_ids=[first["id"]])
+    assert len(selected_rows) >= 3
+    selected_context = asyncio.run(
+        get_retrieval_service().retrieve_for(
+            conversation_id=conversation["id"],
+            user_message="Generate mindmap",
+            output_type="mindmap",
+            source_file_ids=[first["id"]],
+        )
+    )
+    full_context = [chunk for chunk in selected_context if chunk.metadata.get("mindmap_full_context") is True]
+    graph_context = [
+        chunk for chunk in selected_context if chunk.metadata.get("context_type") == "mindmap_graph_context"
+    ]
+    assert [chunk.chunk_id for chunk in full_context] == [row["id"] for row in selected_rows]
+    assert {chunk.metadata.get("source_file_id") for chunk in full_context} == {first["id"]}
+    assert second["id"] not in {chunk.metadata.get("source_file_id") for chunk in full_context}
+    assert graph_context
+    assert graph_context[0].metadata["retrieval_via"] == "knowledge_graph"
+    assert graph_context[0].metadata["retrieval_mode"] == "graph_search"
+    assert graph_context[0].metadata["graph_complete"] is True
+    assert graph_context[0].metadata["graph_node_count"] > 0
+    assert graph_context[0].metadata["source_file_ids"] == [first["id"]]
+    assert set(graph_context[0].metadata["source_chunk_ids"]) == {row["id"] for row in selected_rows}
+    assert {"course", "file", "section", "chunk"} <= {
+        node["node_type"] for node in graph_context[0].metadata["graph_nodes"]
+    }
+    assert any(edge["relation_type"] == "part_of" for edge in graph_context[0].metadata["graph_edges"])
+    assert second["id"] not in {
+        str(node.get("metadata", {}).get("source_file_id") or "")
+        for node in graph_context[0].metadata["graph_nodes"]
+    }
+
+    empty_scope_error = _error_event(
+        client.post(
+            f"/api/conversations/{conversation['id']}/generate",
+            json={"output_type": "mindmap", "prompt": "Generate mindmap", "source_file_ids": [], "options": {}},
+        ).text
+    )
+    assert "Select at least one ready source file" in empty_scope_error["message"]
+
+    request = {
+        "output_type": "mindmap",
+        "prompt": "Generate mindmap",
+        "source_file_ids": [first["id"]],
+        "options": {},
+    }
+    first_run = _done_event(client.post(f"/api/conversations/{conversation['id']}/generate", json=request).text)
+    second_run = _done_event(client.post(f"/api/conversations/{conversation['id']}/generate", json=request).text)
+    assert first_run["metadata"]["generation_mode"] == "full_rebuild"
+    assert first_run["metadata"]["source_chunk_count"] == len(selected_rows)
+    assert first_run["metadata"]["source_file_count"] == 1
+    assert first_run["metadata"]["source_file_ids"] == [first["id"]]
+    assert first_run["metadata"]["rebuild_from_scratch"] is True
+    assert first_run["metadata"]["generation_run_id"]
+    assert first_run["metadata"]["generation_run_id"] != second_run["metadata"]["generation_run_id"]
+    assert first_run["metadata"]["graph_search_used"] is True
+    assert first_run["metadata"]["graph_search"]["complete"] is True
+    assert first_run["metadata"]["graph_node_count"] > 0
+    assert first_run["metadata"]["central_topic"] == "Search Foundations"
+    assert {"Dense Retrieval", "Sparse Retrieval", "Fusion"} <= set(first_run["metadata"]["main_branches"])
+    assert first_run["artifacts"][0]["key"] != second_run["artifacts"][0]["key"]
+
+
+def test_mindmap_graph_context_enriches_chunk_hierarchy() -> None:
+    from teacherlm_core.schemas.chunk import Chunk
+    from local_api.services.generators import _build_mindmap
+
+    source_chunks = [
+        Chunk(
+            text=text,
+            source="search.md",
+            score=1.0,
+            chunk_id=chunk_id,
+            metadata={
+                "heading_path_list": ["Search Foundations", heading],
+                "mindmap_full_context": True,
+            },
+        )
+        for chunk_id, heading, text in [
+            ("dense", "Dense Retrieval", "Dense retrieval compares vector representations."),
+            ("sparse", "Sparse Retrieval", "Sparse retrieval matches lexical evidence."),
+            ("fusion", "Fusion", "Fusion combines ranked retrieval results."),
+        ]
+    ]
+    graph_context = Chunk(
+        text="Knowledge graph context",
+        source="knowledge_graph",
+        score=1.0,
+        chunk_id="mindmap-graph:test",
+        metadata={
+            "context_type": "mindmap_graph_context",
+            "graph_nodes": [
+                {
+                    "id": "vector-similarity",
+                    "label": "Vector Similarity",
+                    "node_type": "concept",
+                    "description": "Compares dense vector representations.",
+                    "source_chunk_ids": ["dense"],
+                },
+                {
+                    "id": "sparse-retrieval",
+                    "label": "Sparse Retrieval",
+                    "node_type": "concept",
+                    "description": "",
+                    "source_chunk_ids": ["sparse"],
+                },
+            ],
+            "graph_edges": [
+                {
+                    "source_node_id": "vector-similarity",
+                    "target_node_id": "sparse-retrieval",
+                    "relation_type": "contrasts_with",
+                    "confidence": 0.95,
+                }
+            ],
+            "graph_node_count": 2,
+            "graph_edge_count": 1,
+        },
+    )
+
+    mindmap = _build_mindmap([*source_chunks, graph_context], "Generate mindmap", {})
+    markdown = json.dumps(mindmap)
+    assert "Vector Similarity" in markdown
+    assert "Contrasts with: Sparse Retrieval" in markdown
+
+
+def test_mindmap_fresh_rebuild_calls_structured_model_every_time(monkeypatch) -> None:
+    from teacherlm_core.llm.providers import LLMProviderConfig
+    from teacherlm_core.schemas import GeneratorInput, LearnerState
+    import local_api.services.generators as generators_module
+
+    provider = LLMProviderConfig(
+        provider_id="provider-test",
+        display_name="Test provider",
+        provider_type="ollama",
+        model_name="test-model",
+    )
+    monkeypatch.setattr(
+        generators_module,
+        "get_settings_service",
+        lambda: types.SimpleNamespace(get_default_chat_provider_config=lambda: provider),
+    )
+    calls: list[dict] = []
+
+    async def fake_complete_text(_provider, messages, *, json_schema=None, temperature=0.2):
+        calls.append({"messages": messages, "json_schema": json_schema, "temperature": temperature})
+        run_number = len(calls)
+        return json.dumps(
+            {
+                "central_topic": "Conceptual Retrieval Map" if run_number == 1 else "Applied Retrieval Map",
+                "branches": [
+                    {
+                        "text": "Dense Retrieval",
+                        "children": [
+                            {"text": "Vector Similarity", "children": []},
+                            {"text": "Semantic Matching", "children": []},
+                        ],
+                    },
+                    {
+                        "text": "Sparse Retrieval",
+                        "children": [
+                            {"text": "Lexical Evidence", "children": []},
+                            {"text": "Exact Terms", "children": []},
+                        ],
+                    },
+                    {
+                        "text": "Fusion",
+                        "children": [
+                            {"text": "Ranked Lists", "children": []},
+                            {"text": "Combined Results", "children": []},
+                        ],
+                    },
+                ],
+            }
+        )
+
+    monkeypatch.setattr(generators_module, "complete_text", fake_complete_text)
+    chunks = [
+        generators_module.Chunk(
+            text=text,
+            source="search.md",
+            score=1.0,
+            chunk_id=chunk_id,
+            metadata={
+                "heading_path_list": ["Search Foundations", heading],
+                "mindmap_full_context": True,
+            },
+        )
+        for chunk_id, heading, text in [
+            ("dense", "Dense Retrieval", "Dense retrieval uses vector similarity and semantic matching."),
+            ("sparse", "Sparse Retrieval", "Sparse retrieval uses lexical evidence and exact terms."),
+            ("fusion", "Fusion", "Fusion combines ranked result lists."),
+        ]
+    ]
+
+    def payload(run_id: str) -> GeneratorInput:
+        return GeneratorInput(
+            conversation_id="conversation-test",
+            user_message="Generate mindmap",
+            context_chunks=chunks,
+            learner_state=LearnerState(conversation_id="conversation-test"),
+            chat_history=[],
+            options={"generation_run_id": run_id, "max_nodes": 40},
+        )
+
+    first, first_meta = asyncio.run(generators_module._build_fresh_mindmap(payload("run-one")))
+    second, second_meta = asyncio.run(generators_module._build_fresh_mindmap(payload("run-two")))
+
+    assert len(calls) == 2
+    assert calls[0]["json_schema"]
+    assert calls[0]["temperature"] == 0.7
+    assert "run-one" in calls[0]["messages"][-1].content
+    assert "run-two" in calls[1]["messages"][-1].content
+    assert first["central_topic"] != second["central_topic"]
+    assert first_meta["backend"] == "llm_structured_fresh_rebuild"
+    assert second_meta["backend"] == "llm_structured_fresh_rebuild"
+
+
 def _done_event(raw_sse: str) -> dict:
     for block in raw_sse.split("\n\n"):
         lines = block.splitlines()
@@ -455,3 +731,13 @@ def _done_event(raw_sse: str) -> dict:
         data_line = next(line for line in lines if line.startswith("data: "))
         return json.loads(data_line.removeprefix("data: "))
     raise AssertionError(f"no done event in SSE:\n{raw_sse}")
+
+
+def _error_event(raw_sse: str) -> dict:
+    for block in raw_sse.split("\n\n"):
+        lines = block.splitlines()
+        if "event: error" not in lines:
+            continue
+        data_line = next(line for line in lines if line.startswith("data: "))
+        return json.loads(data_line.removeprefix("data: "))
+    raise AssertionError(f"no error event in SSE:\n{raw_sse}")

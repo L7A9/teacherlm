@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from teacherlm_core.schemas import GeneratorInput, GeneratorOutput
 
-from local_api.db import get_store
+from local_api.db import get_store, new_id
 from local_api.routers._sse import sse
 from local_api.schemas import GenerateRequest
 from local_api.services.generators import get_generator_service
@@ -25,6 +25,35 @@ async def generate(conversation_id: str, payload: GenerateRequest) -> StreamingR
 
 async def _generate_stream(conversation_id: str, payload: GenerateRequest) -> AsyncIterator[str]:
     prompt = payload.prompt or f"Generate {payload.output_type}"
+    source_file_ids = list(dict.fromkeys(payload.source_file_ids))
+    generation_options = dict(payload.options)
+    if payload.output_type == "mindmap":
+        if not source_file_ids:
+            yield sse("error", {"message": "Select at least one ready source file before rebuilding the mind map."})
+            return
+        ready_file_ids = {
+            str(row["id"])
+            for row in get_store().list_files(conversation_id)
+            if str(row.get("status") or "") == "ready"
+        }
+        invalid_file_ids = [file_id for file_id in source_file_ids if file_id not in ready_file_ids]
+        if invalid_file_ids:
+            yield sse(
+                "error",
+                {
+                    "message": "The mind map can only be rebuilt from ready files checked in this conversation.",
+                    "invalid_source_file_ids": invalid_file_ids,
+                },
+            )
+            return
+        generation_options.update(
+            {
+                "generation_mode": "full_rebuild",
+                "generation_run_id": new_id("mindmap_run"),
+                "rebuild_from_scratch": True,
+                "source_file_ids_snapshot": source_file_ids,
+            }
+        )
     get_store().add_message(conversation_id, "user", prompt, output_type=payload.output_type)
     try:
         manifest = get_generator_service().manifest_for_output(payload.output_type)
@@ -35,19 +64,20 @@ async def _generate_stream(conversation_id: str, payload: GenerateRequest) -> As
         conversation_id=conversation_id,
         user_message=prompt,
         output_type=payload.output_type,
-        source_file_ids=payload.source_file_ids,
-        options=payload.options,
+        source_file_ids=source_file_ids,
+        options=generation_options,
     )
+    chat_history = [] if payload.output_type == "mindmap" else [
+        {"role": row["role"], "content": row["content"]}
+        for row in get_store().list_messages(conversation_id)[-12:]
+    ]
     generator_input = GeneratorInput(
         conversation_id=conversation_id,
         user_message=prompt,
         context_chunks=context_chunks,
         learner_state=get_learner_service().load(conversation_id),
-        chat_history=[
-            {"role": row["role"], "content": row["content"]}
-            for row in get_store().list_messages(conversation_id)[-12:]
-        ],
-        options=payload.options,
+        chat_history=chat_history,
+        options=generation_options,
     )
     final: GeneratorOutput | None = None
     try:

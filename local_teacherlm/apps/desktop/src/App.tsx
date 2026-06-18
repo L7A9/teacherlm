@@ -453,6 +453,8 @@ export default function App() {
 
   async function runGenerator(outputType: string, options: Record<string, unknown> = {}) {
     if (!conversation || busy) return;
+    const sourceFileIds = [...selectedFiles];
+    if (outputType === "mindmap" && sourceFileIds.length === 0) return;
     setBusy(true);
     setDraft("");
     const prompt = input.trim() || `Generate ${outputType}`;
@@ -462,7 +464,7 @@ export default function App() {
       optimisticMessage(conversation.id, "user", prompt, outputType),
     ]);
     try {
-      await streamGenerate(conversation.id, outputType, prompt, selectedFiles, handleStreamEvent, options);
+      await streamGenerate(conversation.id, outputType, prompt, sourceFileIds, handleStreamEvent, options);
       await loadConversation(conversation.id);
     } finally {
       setBusy(false);

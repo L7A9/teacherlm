@@ -190,6 +190,111 @@ class KnowledgeGraphService:
             related_chunks.extend(str(item) for item in node.get("source_chunk_ids") or [])
         return [item for item in _dedupe(related_chunks) if item not in wanted][:limit]
 
+    def mindmap_context_chunks(
+        self,
+        conversation_id: str,
+        *,
+        source_file_ids: list[str] | None = None,
+    ) -> list[Chunk]:
+        """Return the complete source-scoped graph for a fresh mind-map rebuild."""
+        graph = self.get_graph(conversation_id)
+        if not graph["nodes"]:
+            graph = self.rebuild_graph(conversation_id)
+
+        chunk_rows = get_store().list_chunks(conversation_id, source_file_ids=source_file_ids or None)
+        if not chunk_rows:
+            return []
+        allowed_chunk_ids = {str(row["id"]) for row in chunk_rows}
+        allowed_file_ids = {str(row["source_file_id"]) for row in chunk_rows if row.get("source_file_id")}
+        scoped_nodes = [
+            node
+            for node in graph["nodes"]
+            if _node_is_in_source_scope(node, allowed_chunk_ids, allowed_file_ids, bool(source_file_ids))
+        ]
+        scoped_node_ids = {str(node["id"]) for node in scoped_nodes}
+        scoped_edges = [
+            edge
+            for edge in graph["edges"]
+            if edge["source_node_id"] in scoped_node_ids and edge["target_node_id"] in scoped_node_ids
+        ]
+        scoped_nodes.sort(key=lambda node: (str(node.get("node_type") or ""), str(node.get("label") or "").casefold()))
+        scoped_edges.sort(key=lambda edge: (str(edge.get("relation_type") or ""), str(edge.get("id") or "")))
+
+        node_payload = [
+            {
+                "id": str(node["id"]),
+                "label": str(node.get("label") or ""),
+                "node_type": str(node.get("node_type") or "concept"),
+                "description": str(node.get("description") or ""),
+                "ref_id": node.get("ref_id"),
+                "source_chunk_ids": [
+                    str(chunk_id)
+                    for chunk_id in node.get("source_chunk_ids") or []
+                    if str(chunk_id) in allowed_chunk_ids
+                ],
+                "metadata": dict(node.get("metadata") or {}),
+            }
+            for node in scoped_nodes
+            if str(node.get("label") or "").strip()
+        ]
+        node_by_id = {node["id"]: node for node in node_payload}
+        edge_payload = [
+            {
+                "source_node_id": str(edge["source_node_id"]),
+                "target_node_id": str(edge["target_node_id"]),
+                "source_label": node_by_id[str(edge["source_node_id"])]["label"],
+                "target_label": node_by_id[str(edge["target_node_id"])]["label"],
+                "relation_type": str(edge.get("relation_type") or "supports"),
+                "confidence": float(edge.get("confidence") or 0.0),
+                "source_chunk_ids": [
+                    str(chunk_id)
+                    for chunk_id in edge.get("source_chunk_ids") or []
+                    if str(chunk_id) in allowed_chunk_ids
+                ],
+                "metadata": dict(edge.get("metadata") or {}),
+            }
+            for edge in scoped_edges
+            if str(edge["source_node_id"]) in node_by_id and str(edge["target_node_id"]) in node_by_id
+        ]
+        if not node_payload:
+            return []
+
+        lines = ["Complete knowledge graph for the selected source files:"]
+        lines.extend(
+            f"- [{node['node_type']}] {node['label']}"
+            + (f": {node['description']}" if node["description"] else "")
+            for node in node_payload
+        )
+        if edge_payload:
+            lines.append("Knowledge graph relationships:")
+            lines.extend(
+                f"- {edge['source_label']} --{edge['relation_type']}--> {edge['target_label']}"
+                for edge in edge_payload
+            )
+        scope_key = ",".join(sorted(allowed_file_ids)) or "all"
+        scope_hash = hashlib.sha1(scope_key.encode("utf-8")).hexdigest()[:12]
+        return [
+            Chunk(
+                text="\n".join(lines),
+                source="knowledge_graph",
+                score=1.0,
+                chunk_id=f"mindmap-graph:{conversation_id}:{scope_hash}",
+                metadata={
+                    "context_type": "mindmap_graph_context",
+                    "retrieval_via": "knowledge_graph",
+                    "retrieval_mode": "graph_search",
+                    "graph_search_strategy": "complete_source_scoped_course_graph",
+                    "graph_complete": True,
+                    "graph_nodes": node_payload,
+                    "graph_edges": edge_payload,
+                    "graph_node_count": len(node_payload),
+                    "graph_edge_count": len(edge_payload),
+                    "source_file_ids": sorted(allowed_file_ids),
+                    "source_chunk_ids": sorted(allowed_chunk_ids),
+                },
+            )
+        ]
+
     def _fallback_graph(self, conversation_id: str) -> tuple[list[NodeDraft], list[EdgeDraft]]:
         nodes: dict[tuple[str, str], NodeDraft] = {}
         edges: list[EdgeDraft] = []
@@ -663,6 +768,33 @@ def _is_low_information_text(text: str) -> bool:
         return True
     alpha = sum(1 for char in compact if char.isalpha())
     return alpha < 8 and len(compact) < 80
+
+
+def _node_is_in_source_scope(
+    node: dict[str, Any],
+    allowed_chunk_ids: set[str],
+    allowed_file_ids: set[str],
+    source_filter_active: bool,
+) -> bool:
+    if not source_filter_active:
+        return True
+    if node.get("node_type") == "course":
+        return True
+    metadata = node.get("metadata") or {}
+    node_chunk_ids = {str(item) for item in node.get("source_chunk_ids") or []}
+    if node_chunk_ids & allowed_chunk_ids:
+        return True
+    if node.get("node_type") == "chunk" and str(node.get("ref_id") or "") in allowed_chunk_ids:
+        return True
+    if node.get("node_type") == "file" and str(node.get("ref_id") or "") in allowed_file_ids:
+        return True
+    raw_metadata_file_ids = metadata.get("source_file_ids") or []
+    if isinstance(raw_metadata_file_ids, str):
+        raw_metadata_file_ids = [raw_metadata_file_ids]
+    metadata_file_ids = {str(item) for item in raw_metadata_file_ids if item}
+    if metadata.get("source_file_id"):
+        metadata_file_ids.add(str(metadata["source_file_id"]))
+    return bool(metadata_file_ids & allowed_file_ids)
 
 
 def _clean_label(text: str) -> str:
