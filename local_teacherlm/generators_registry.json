@@ -1,0 +1,96 @@
+{
+  "generators": [
+    {
+      "generator_id": "teacher_gen",
+      "display_name": "Teacher",
+      "contract_version": "1.0.0",
+      "output_type": "text",
+      "enabled": true,
+      "transport": "local_inprocess",
+      "endpoint": "inprocess:teacher_gen",
+      "retrieval_mode": "semantic_topk",
+      "artifact_types": [],
+      "permissions": {
+        "read_context": true,
+        "read_learner_state": true,
+        "write_artifacts": false,
+        "network": false
+      },
+      "capabilities": ["streaming", "grounded_generation", "learner_updates"],
+      "is_chat_default": true
+    },
+    {
+      "generator_id": "quiz_gen",
+      "display_name": "Quiz",
+      "contract_version": "1.0.0",
+      "output_type": "quiz",
+      "enabled": true,
+      "transport": "local_inprocess",
+      "endpoint": "inprocess:quiz_gen",
+      "retrieval_mode": "coverage_broad",
+      "artifact_types": ["json"],
+      "permissions": {
+        "read_context": true,
+        "read_learner_state": true,
+        "write_artifacts": true,
+        "network": false
+      },
+      "capabilities": ["streaming", "grounded_generation", "artifact_output"]
+    },
+    {
+      "generator_id": "mindmap_gen",
+      "display_name": "Mind Map",
+      "contract_version": "1.0.0",
+      "output_type": "mindmap",
+      "enabled": true,
+      "transport": "local_inprocess",
+      "endpoint": "inprocess:mindmap_gen",
+      "retrieval_mode": "topic_clusters",
+      "artifact_types": ["json", "html"],
+      "permissions": {
+        "read_context": true,
+        "read_learner_state": true,
+        "write_artifacts": true,
+        "network": false
+      },
+      "capabilities": ["streaming", "grounded_generation", "artifact_output"]
+    },
+    {
+      "generator_id": "podcast_gen",
+      "display_name": "Podcast",
+      "contract_version": "1.0.0",
+      "output_type": "podcast",
+      "enabled": true,
+      "transport": "local_inprocess",
+      "endpoint": "inprocess:podcast_gen",
+      "retrieval_mode": "narrative_arc",
+      "artifact_types": ["transcript", "mp3"],
+      "permissions": {
+        "read_context": true,
+        "read_learner_state": true,
+        "write_artifacts": true,
+        "network": false
+      },
+      "capabilities": ["streaming", "grounded_generation", "artifact_output"]
+    },
+    {
+      "generator_id": "presentation_gen",
+      "display_name": "Presentation",
+      "contract_version": "1.0.0",
+      "output_type": "presentation",
+      "enabled": false,
+      "transport": "mcp_stdio",
+      "endpoint": "stdio:presentation-agent",
+      "retrieval_mode": "topic_clusters",
+      "artifact_types": ["pptx", "pdf"],
+      "permissions": {
+        "read_context": true,
+        "read_learner_state": true,
+        "write_artifacts": true,
+        "network": false
+      },
+      "capabilities": ["grounded_generation", "artifact_output"]
+    }
+  ]
+}
+

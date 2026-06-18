@@ -1,0 +1,2 @@
+"""Local TeacherLM FastAPI sidecar."""
+

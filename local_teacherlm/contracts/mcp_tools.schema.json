@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://teacherlm.local/contracts/mcp_tools.schema.json",
+  "title": "TeacherLM MCP Tool Contracts",
+  "type": "object",
+  "properties": {
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "description", "input_schema"],
+        "properties": {
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "input_schema": { "type": "object" },
+          "permissions": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  },
+  "required": ["tools"],
+  "additionalProperties": false
+}
+

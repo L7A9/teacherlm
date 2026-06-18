@@ -1,0 +1,23 @@
+-e ../teacherlm_core
+fastapi>=0.135
+uvicorn[standard]>=0.32
+sse-starlette>=2.1
+python-multipart>=0.0.18
+pydantic>=2.12
+pydantic-settings>=2.7
+cryptography>=43.0
+rank-bm25>=0.2.2
+fastembed>=0.4
+ollama>=0.4
+openai>=1.55
+anthropic>=0.39
+llama-cloud>=1.0
+httpx>=0.28
+numpy>=2.1
+beautifulsoup4>=4.12
+pypdf>=5.0
+python-docx>=1.1
+python-pptx>=1.0
+aiofiles>=24.1
+pytest>=8.3
+
