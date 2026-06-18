@@ -77,7 +77,7 @@ const markdownComponents: Components = {
 const markdownRemarkPlugins: PluggableList = [remarkGfm, remarkMath];
 const markdownRehypePlugins: PluggableList = [[rehypeKatex, { strict: false, throwOnError: false }]];
 
-export function AssistantMarkdown({ content }: { content: string }) {
+export function AssistantMarkdown({ content, className = "" }: { content: string; className?: string }) {
   const normalized = normalizeDisplayMath(
     normalizeLeakedLatexMatrices(
       degradeMalformedTables(
@@ -87,7 +87,7 @@ export function AssistantMarkdown({ content }: { content: string }) {
   );
 
   return (
-    <div className="prose prose-slate max-w-none dark:prose-invert">
+    <div className={`prose prose-slate max-w-none dark:prose-invert ${className}`.trim()}>
       <ReactMarkdown
         remarkPlugins={markdownRemarkPlugins}
         rehypePlugins={markdownRehypePlugins}

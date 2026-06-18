@@ -145,6 +145,17 @@ async function streamPost(path: string, payload: unknown, onEvent: (event: Strea
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let streamError: string | null = null;
+  const emit = (event: StreamEvent | null) => {
+    if (!event) return;
+    onEvent(event);
+    if (event.event === "error") {
+      streamError =
+        typeof event.data === "object" && event.data && "message" in event.data
+          ? String(event.data.message)
+          : "Generation failed";
+    }
+  };
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -152,12 +163,11 @@ async function streamPost(path: string, payload: unknown, onEvent: (event: Strea
     const blocks = buffer.split("\n\n");
     buffer = blocks.pop() ?? "";
     for (const block of blocks) {
-      const parsed = parseSseBlock(block);
-      if (parsed) onEvent(parsed);
+      emit(parseSseBlock(block));
     }
   }
-  const parsed = parseSseBlock(buffer);
-  if (parsed) onEvent(parsed);
+  emit(parseSseBlock(buffer));
+  if (streamError) throw new Error(streamError);
 }
 
 function parseSseBlock(block: string): StreamEvent | null {

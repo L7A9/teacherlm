@@ -295,6 +295,37 @@ class KnowledgeGraphService:
             )
         ]
 
+    def quiz_context_chunks(
+        self,
+        conversation_id: str,
+        *,
+        source_file_ids: list[str] | None = None,
+    ) -> list[Chunk]:
+        """Return the complete source-scoped graph as fresh quiz-planning context."""
+        contexts = self.mindmap_context_chunks(
+            conversation_id,
+            source_file_ids=source_file_ids,
+        )
+        quiz_contexts: list[Chunk] = []
+        for context in contexts:
+            metadata = dict(context.metadata)
+            metadata.update(
+                {
+                    "context_type": "quiz_graph_context",
+                    "quiz_full_context": True,
+                    "graph_search_strategy": "complete_source_scoped_quiz_graph",
+                }
+            )
+            quiz_contexts.append(
+                context.model_copy(
+                    update={
+                        "chunk_id": context.chunk_id.replace("mindmap-graph:", "quiz-graph:", 1),
+                        "metadata": metadata,
+                    }
+                )
+            )
+        return quiz_contexts
+
     def _fallback_graph(self, conversation_id: str) -> tuple[list[NodeDraft], list[EdgeDraft]]:
         nodes: dict[tuple[str, str], NodeDraft] = {}
         edges: list[EdgeDraft] = []

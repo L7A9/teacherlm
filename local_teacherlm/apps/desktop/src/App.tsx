@@ -437,9 +437,11 @@ export default function App() {
     try {
       await streamChat(conversation.id, message, selectedFiles, handleStreamEvent);
       await loadConversation(conversation.id);
+      setDraft("");
+    } catch (error) {
+      setDraft(error instanceof Error ? error.message : "Chat failed");
     } finally {
       setBusy(false);
-      setDraft("");
     }
   }
 
@@ -456,7 +458,11 @@ export default function App() {
     const sourceFileIds = [...selectedFiles];
     if (outputType === "mindmap" && sourceFileIds.length === 0) return;
     setBusy(true);
-    setDraft("");
+    setDraft(
+      outputType === "quiz"
+        ? "Generating a fresh quiz from all selected chunks and their knowledge graph…"
+        : "",
+    );
     const prompt = input.trim() || `Generate ${outputType}`;
     setInput("");
     setMessages((current) => [
@@ -466,9 +472,11 @@ export default function App() {
     try {
       await streamGenerate(conversation.id, outputType, prompt, sourceFileIds, handleStreamEvent, options);
       await loadConversation(conversation.id);
+      setDraft("");
+    } catch (error) {
+      setDraft(error instanceof Error ? error.message : `${outputType} generation failed`);
     } finally {
       setBusy(false);
-      setDraft("");
     }
   }
 
@@ -484,6 +492,14 @@ export default function App() {
   }
 
   function handleStreamEvent(event: StreamEvent) {
+    if (event.event === "progress" && typeof event.data === "object" && event.data && "stage" in event.data) {
+      const stage = String(event.data.stage);
+      if (stage === "sending_full_context_to_llm") {
+        setDraft("The model is generating your quiz from the selected files. This can take about a minute…");
+      } else if (stage === "llm_quiz_validated") {
+        setDraft("Quiz generated—validating answers and sources…");
+      }
+    }
     if (event.event === "token" && typeof event.data === "string") {
       setDraft(event.data);
     }
@@ -2459,6 +2475,8 @@ function ArtifactRenderer({
 type QuizArtifactPayload = {
   title?: string;
   intro_message?: string;
+  generation_run_id?: string;
+  generation_mode?: string;
   questions?: Array<{
     id?: string;
     type?: string;
@@ -2475,12 +2493,32 @@ type QuizArtifactPayload = {
 
 function QuizArtifactPreview({ payload }: { payload: QuizArtifactPayload }) {
   const questions = Array.isArray(payload.questions) ? payload.questions : [];
+  const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [submitted, setSubmitted] = useState(false);
+  const questionKey = (question: NonNullable<QuizArtifactPayload["questions"]>[number], index: number) =>
+    question.id || `question-${index}`;
+  const answeredCount = questions.filter((question, index) => answers[questionKey(question, index)] !== undefined).length;
+  const allAnswered = questions.length > 0 && answeredCount === questions.length;
+  const correctCount = questions.reduce((score, question, index) => {
+    const correctIndex = quizCorrectOptionIndex(question);
+    return score + (correctIndex !== null && answers[questionKey(question, index)] === correctIndex ? 1 : 0);
+  }, 0);
+  const scorePercent = questions.length ? Math.round((correctCount / questions.length) * 100) : 0;
+
+  useEffect(() => {
+    setAnswers({});
+    setSubmitted(false);
+  }, [payload.generation_run_id]);
 
   return (
     <div className="flex flex-col gap-4">
       <div>
         <h3 className="text-lg font-semibold">{payload.title || "Quiz"}</h3>
-        {payload.intro_message && <p className="mt-2 text-sm leading-6 text-muted-foreground">{payload.intro_message}</p>}
+        {payload.intro_message && (
+          <div className="mt-2 text-muted-foreground">
+            <QuizMarkdown content={payload.intro_message} />
+          </div>
+        )}
       </div>
 
       {Object.keys(payload.bloom_distribution ?? {}).length > 0 && (
@@ -2493,33 +2531,152 @@ function QuizArtifactPreview({ payload }: { payload: QuizArtifactPayload }) {
         </div>
       )}
 
+      {submitted && (
+        <section className="rounded-lg border border-primary/35 bg-primary/10 p-4 text-center">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Final score</p>
+          <p className="mt-1 text-3xl font-bold text-foreground">
+            {correctCount}/{questions.length}
+          </p>
+          <p className="mt-1 text-sm font-medium text-primary">{scorePercent}%</p>
+        </section>
+      )}
+
       <div className="flex flex-col gap-3">
-        {questions.map((question, index) => (
-          <article key={question.id ?? index} className="rounded-md border border-border bg-background/50 p-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="primary">Question {index + 1}</Badge>
-              {question.bloom_level && <Badge variant="muted">{question.bloom_level}</Badge>}
-              {question.concept && <Badge variant="muted">{question.concept}</Badge>}
-            </div>
-            <p className="mt-3 text-sm font-medium leading-6">{question.question || "Question"}</p>
-            {Array.isArray(question.options) && question.options.length > 0 && (
-              <ol className="mt-3 flex list-decimal flex-col gap-2 pl-5 text-sm text-muted-foreground">
-                {question.options.map((option, optionIndex) => (
-                  <li key={`${index}-${optionIndex}`} className={cn(optionIndex === question.correct_index && "font-medium text-foreground")}>
-                    {option}
-                  </li>
-                ))}
-              </ol>
-            )}
-            {typeof question.answer === "boolean" && (
-              <p className="mt-3 text-sm text-muted-foreground">Answer: {question.answer ? "True" : "False"}</p>
-            )}
-            {question.explanation && <p className="mt-3 text-xs leading-5 text-muted-foreground">{question.explanation}</p>}
-          </article>
-        ))}
+        {questions.map((question, index) => {
+          const key = questionKey(question, index);
+          const options = quizQuestionOptions(question);
+          const selectedIndex = answers[key];
+          const correctIndex = quizCorrectOptionIndex(question);
+          const isCorrect = submitted && correctIndex !== null && selectedIndex === correctIndex;
+          return (
+            <article
+              key={key}
+              className={cn(
+                "rounded-md border bg-background/50 p-3 transition-colors",
+                !submitted && "border-border",
+                submitted && isCorrect && "border-[hsl(var(--success))]/50 bg-[hsl(var(--success))]/5",
+                submitted && !isCorrect && "border-[hsl(var(--danger))]/50 bg-[hsl(var(--danger))]/5",
+              )}
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="primary">Question {index + 1}</Badge>
+                {question.bloom_level && <Badge variant="muted">{question.bloom_level}</Badge>}
+                {question.concept && <Badge variant="muted">{question.concept}</Badge>}
+                {submitted && <Badge variant={isCorrect ? "success" : "danger"}>{isCorrect ? "Correct" : "Incorrect"}</Badge>}
+              </div>
+              <div className="mt-3 font-medium text-foreground">
+                <QuizMarkdown content={question.question || "Question"} />
+              </div>
+              <div className="mt-3 flex flex-col gap-2">
+                {options.map((option, optionIndex) => {
+                  const selected = selectedIndex === optionIndex;
+                  const correct = correctIndex === optionIndex;
+                  return (
+                    <label
+                      key={`${key}-${optionIndex}`}
+                      className={cn(
+                        "flex cursor-pointer items-start gap-3 rounded-md border border-border px-3 py-2.5 text-sm leading-5 transition-colors",
+                        !submitted && selected && "border-primary/60 bg-primary/10 text-foreground",
+                        !submitted && !selected && "hover:border-primary/35 hover:bg-primary/5",
+                        submitted && correct && "border-[hsl(var(--success))]/60 bg-[hsl(var(--success))]/10 text-foreground",
+                        submitted && selected && !correct && "border-[hsl(var(--danger))]/60 bg-[hsl(var(--danger))]/10 text-foreground",
+                        submitted && "cursor-default",
+                      )}
+                    >
+                      <input
+                        type="radio"
+                        name={`quiz-${payload.generation_run_id || "artifact"}-${key}`}
+                        value={optionIndex}
+                        checked={selected}
+                        disabled={submitted}
+                        onChange={() => setAnswers((current) => ({ ...current, [key]: optionIndex }))}
+                        className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <QuizMarkdown content={option} />
+                      </span>
+                      {submitted && correct && <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--success))]" />}
+                      {submitted && selected && !correct && <X className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--danger))]" />}
+                    </label>
+                  );
+                })}
+              </div>
+              {submitted && !isCorrect && correctIndex !== null && options[correctIndex] && (
+                <div className="mt-3 text-sm font-medium text-[hsl(var(--success))]">
+                  <span>Correct answer:</span>
+                  <QuizMarkdown content={options[correctIndex]} />
+                </div>
+              )}
+              {submitted && question.explanation && (
+                <div className="mt-2 text-xs leading-5 text-muted-foreground">
+                  <QuizMarkdown content={question.explanation} />
+                </div>
+              )}
+            </article>
+          );
+        })}
       </div>
+
+      {questions.length > 0 && (
+        <section className="sticky bottom-0 rounded-lg border border-border bg-surface/95 p-4 shadow-lg backdrop-blur">
+          {!submitted ? (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0 flex-1">
+                <div className="mb-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                  <span>Answered {answeredCount} of {questions.length}</span>
+                  {!allAnswered && <span>Answer every question to submit.</span>}
+                </div>
+                <ProgressBar percent={(answeredCount / questions.length) * 100} />
+              </div>
+              <Button type="button" disabled={!allAnswered} onClick={() => setSubmitted(true)} className="sm:ml-4">
+                Submit quiz
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm font-medium">
+                Score: {correctCount}/{questions.length} ({scorePercent}%)
+              </p>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setAnswers({});
+                  setSubmitted(false);
+                }}
+              >
+                <RotateCcw className="h-4 w-4" />
+                Try again
+              </Button>
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
+}
+
+function QuizMarkdown({ content }: { content: string }) {
+  return (
+    <AssistantMarkdown
+      content={content}
+      className="!max-w-none !text-sm [&_.katex-display]:!my-2 [&_.katex-display]:!py-1 [&_p]:!mb-0 [&_p]:!leading-6"
+    />
+  );
+}
+
+function quizQuestionOptions(question: NonNullable<QuizArtifactPayload["questions"]>[number]): string[] {
+  if (Array.isArray(question.options) && question.options.length > 0) return question.options;
+  if (typeof question.answer === "boolean") return ["True", "False"];
+  return [];
+}
+
+function quizCorrectOptionIndex(question: NonNullable<QuizArtifactPayload["questions"]>[number]): number | null {
+  if (typeof question.correct_index === "number" && Number.isInteger(question.correct_index)) {
+    return question.correct_index;
+  }
+  if (typeof question.answer === "boolean") return question.answer ? 0 : 1;
+  return null;
 }
 
 function TextArtifactBoundary({
