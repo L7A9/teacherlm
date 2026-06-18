@@ -1,0 +1,173 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 240 18% 92%;
+  --foreground: 240 10% 12%;
+  --surface: 240 18% 97%;
+  --surface-foreground: 240 10% 12%;
+  --muted: 240 13% 88%;
+  --muted-foreground: 240 5% 34%;
+  --border: 240 9% 70%;
+  --ring: 252 80% 60%;
+  --primary: 252 80% 60%;
+  --primary-foreground: 0 0% 100%;
+  --accent: 188 85% 45%;
+  --accent-foreground: 0 0% 100%;
+  --success: 150 60% 45%;
+  --warning: 38 90% 55%;
+  --danger: 0 75% 55%;
+  --radius: 0.625rem;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Geist Mono", ui-monospace, monospace;
+}
+
+.dark {
+  --background: 240 10% 6%;
+  --foreground: 240 10% 96%;
+  --surface: 240 10% 10%;
+  --surface-foreground: 240 10% 96%;
+  --muted: 240 6% 16%;
+  --muted-foreground: 240 5% 65%;
+  --border: 240 6% 20%;
+  --ring: 252 80% 65%;
+  --primary: 252 80% 65%;
+  --primary-foreground: 240 10% 6%;
+  --accent: 188 85% 55%;
+  --accent-foreground: 240 10% 6%;
+  --success: 150 55% 55%;
+  --warning: 38 90% 60%;
+  --danger: 0 75% 60%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+  }
+
+  html {
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply min-h-screen antialiased;
+    margin: 0;
+    -webkit-tap-highlight-color: transparent;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  button {
+    border: 0;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.35);
+  }
+
+  ::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.28);
+    border: 2px solid transparent;
+    border-radius: 9999px;
+    background-clip: padding-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.45);
+    background-clip: padding-box;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .app-chrome {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  .app-pane {
+    background: hsl(var(--background) / 0.95);
+  }
+
+  @supports (backdrop-filter: blur(12px)) or (-webkit-backdrop-filter: blur(12px)) {
+    .app-pane {
+      background: hsl(var(--background) / 0.86);
+      -webkit-backdrop-filter: blur(12px);
+      backdrop-filter: blur(12px);
+    }
+  }
+
+  .content-selectable {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  .course-markdown .prose {
+    max-width: none;
+    font-size: 0.75rem;
+    line-height: 1.35rem;
+  }
+
+  .course-markdown .prose :where(p, ul, ol, blockquote, table) {
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+  }
+
+  .course-markdown .prose :where(h1, h2, h3, h4, h5, h6) {
+    margin-top: 0.5rem;
+    margin-bottom: 0.35rem;
+    font-size: 0.8rem;
+    line-height: 1.2rem;
+  }
+
+  .prose .katex-display,
+  .course-markdown .katex-display {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 0.25rem;
+  }
+}
+
+@layer utilities {
+  .preserve-3d {
+    transform-style: preserve-3d;
+  }
+}

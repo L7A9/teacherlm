@@ -3,6 +3,38 @@
 This folder is the handoff point for building TeacherLM as a local installable
 desktop application for students.
 
+## Implementation Snapshot
+
+This folder now contains the first local rewrite scaffold:
+
+- `apps/desktop`: Vite React workspace UI for sources, chat, generators,
+  progress, artifacts, and provider/parser settings.
+- `python/local_api`: FastAPI sidecar bound to `127.0.0.1`, backed by SQLite and
+  local artifact/object folders.
+- `python/teacherlm_core`: shared Pydantic V2 generator contracts, learner
+  state, retrieval primitives, RRF, HyDE prompt handling, and provider wrappers.
+- `rust/tauri_shell`: Tauri shell scaffold that starts the Python sidecar.
+- `contracts`: JSON schemas for generator and MCP-facing contracts.
+- `mcp`: course-memory tool contract skeleton for connected generators.
+
+Developer quick start:
+
+```powershell
+cd C:\Users\melha_eay78bj\Desktop\teacherlm\local_teacherlm
+python -m pip install -r python\local_api\requirements.txt
+.\scripts\dev_api.ps1
+```
+
+In another terminal:
+
+```powershell
+cd C:\Users\melha_eay78bj\Desktop\teacherlm\local_teacherlm\apps\desktop
+npm.cmd install
+npm.cmd run dev
+```
+
+The Tauri installer path requires Rust/Cargo plus platform webview build tools.
+
 The goal is not to make a thin wrapper around the current Docker platform. The
 goal is to rebuild the same product as a local-first desktop app where student
 files, indexes, learner state, conversations, artifacts, and settings live on

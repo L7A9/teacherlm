@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://teacherlm.local/contracts/generator.schema.json",
+  "title": "TeacherLM Generator Contract",
+  "type": "object",
+  "$defs": {
+    "Chunk": {
+      "type": "object",
+      "required": ["text", "source", "score", "chunk_id"],
+      "properties": {
+        "text": { "type": "string" },
+        "source": { "type": "string" },
+        "score": { "type": "number" },
+        "chunk_id": { "type": "string" },
+        "metadata": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "LearnerState": {
+      "type": "object",
+      "required": ["conversation_id"],
+      "properties": {
+        "conversation_id": { "type": "string" },
+        "understood_concepts": { "type": "array", "items": { "type": "string" } },
+        "struggling_concepts": { "type": "array", "items": { "type": "string" } },
+        "mastery_scores": {
+          "type": "object",
+          "additionalProperties": { "type": "number" }
+        },
+        "session_turns": { "type": "integer" },
+        "turns_since_progress": { "type": "integer" },
+        "known_concepts": { "type": "array", "items": { "type": "object" } },
+        "concept_progress": { "type": "array", "items": { "type": "object" } },
+        "learning_phases": { "type": "array", "items": { "type": "object" } },
+        "objective_progress": { "type": "array", "items": { "type": "object" } },
+        "phase_progress": { "type": "array", "items": { "type": "object" } },
+        "remediation_paths": { "type": "array", "items": { "type": "object" } }
+      },
+      "additionalProperties": true
+    },
+    "GeneratorInput": {
+      "type": "object",
+      "required": [
+        "conversation_id",
+        "user_message",
+        "context_chunks",
+        "learner_state",
+        "chat_history"
+      ],
+      "properties": {
+        "conversation_id": { "type": "string" },
+        "user_message": { "type": "string" },
+        "context_chunks": { "type": "array", "items": { "$ref": "#/$defs/Chunk" } },
+        "learner_state": { "$ref": "#/$defs/LearnerState" },
+        "chat_history": { "type": "array", "items": { "type": "object" } },
+        "options": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "GeneratorArtifact": {
+      "type": "object",
+      "required": ["type", "url", "filename"],
+      "properties": {
+        "type": { "type": "string" },
+        "url": { "type": "string" },
+        "filename": { "type": "string" },
+        "key": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "LearnerUpdates": {
+      "type": "object",
+      "properties": {
+        "concepts_covered": { "type": "array", "items": { "type": "string" } },
+        "concepts_demonstrated": { "type": "array", "items": { "type": "string" } },
+        "concepts_struggled": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "GeneratorOutput": {
+      "type": "object",
+      "required": ["response", "generator_id", "output_type"],
+      "properties": {
+        "response": { "type": "string" },
+        "generator_id": { "type": "string" },
+        "output_type": {
+          "enum": ["text", "quiz", "report", "presentation", "chart", "podcast", "mindmap"]
+        },
+        "artifacts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/GeneratorArtifact" }
+        },
+        "sources": { "type": "array", "items": { "$ref": "#/$defs/Chunk" } },
+        "learner_updates": { "$ref": "#/$defs/LearnerUpdates" },
+        "metadata": { "type": "object" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/GeneratorInput" },
+    { "$ref": "#/$defs/GeneratorOutput" }
+  ]
+}
+
