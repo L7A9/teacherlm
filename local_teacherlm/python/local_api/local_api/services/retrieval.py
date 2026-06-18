@@ -51,7 +51,33 @@ class RetrievalService:
         settings = get_settings_service().effective_retrieval_settings()
         options = options or {}
         rows = get_store().list_chunks(conversation_id, source_file_ids=source_file_ids or None)
-        chunks = [_row_to_chunk(row) for row in rows if not _is_low_information_text(row.get("text", ""))]
+        all_chunks = [_row_to_chunk(row) for row in rows]
+        if output_type == "mindmap":
+            full_context = [
+                _with_metadata(
+                    chunk,
+                    {
+                        "retrieval_via": "mindmap_full_selected_files",
+                        "retrieval_mode": "full_document",
+                        "mindmap_full_context": True,
+                    },
+                )
+                for chunk in all_chunks
+            ]
+            if not full_context:
+                return []
+            structural_context = _mindmap_course_context(
+                all_chunks,
+                conversation_id=conversation_id,
+                source_file_ids=source_file_ids or None,
+            )
+            graph_context = get_knowledge_graph_service().mindmap_context_chunks(
+                conversation_id,
+                source_file_ids=source_file_ids or None,
+            )
+            return _dedupe_chunks([*full_context, *structural_context, *graph_context])
+
+        chunks = [chunk for chunk in all_chunks if not _is_low_information_text(chunk.text)]
         if not chunks:
             chunks = [_row_to_chunk(row) for row in rows]
         if not chunks:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import hashlib
 import json
 import re
 import unicodedata
@@ -8,6 +9,7 @@ from collections import Counter
 from collections.abc import AsyncIterator
 from typing import Any
 
+from pydantic import BaseModel, Field, ValidationError
 from teacherlm_core.llm.providers import LLMMessage, complete_text
 from teacherlm_core.schemas import (
     Chunk,
@@ -23,6 +25,16 @@ from local_api.services.settings import get_settings_service
 
 
 GeneratorEvent = dict[str, Any]
+
+
+class _MindmapNodeModel(BaseModel):
+    text: str = Field(min_length=2, max_length=90)
+    children: list["_MindmapNodeModel"] = Field(default_factory=list, max_length=7)
+
+
+class _MindmapModel(BaseModel):
+    central_topic: str = Field(min_length=2, max_length=90)
+    branches: list[_MindmapNodeModel] = Field(min_length=3, max_length=7)
 
 _BLOOM = ("remember", "understand", "apply", "analyze")
 _QUESTION_WORDS = {"what", "how", "why", "explain", "describe", "define", "teach", "summarize", "compare"}
@@ -362,8 +374,28 @@ async def _quiz(payload: GeneratorInput) -> AsyncIterator[GeneratorEvent]:
 
 async def _mindmap(payload: GeneratorInput) -> AsyncIterator[GeneratorEvent]:
     chunks = payload.context_chunks
-    yield _event("progress", {"stage": "starting", "chunks": len(chunks)})
-    mindmap = _build_mindmap(chunks, payload.user_message, payload.options)
+    source_chunks = [chunk for chunk in chunks if chunk.metadata.get("mindmap_full_context")] or [
+        chunk for chunk in chunks if not str(chunk.metadata.get("context_type") or "").startswith("mindmap_")
+    ]
+    source_files = sorted({chunk.source for chunk in source_chunks if chunk.source})
+    graph_stats = _mindmap_graph_stats(chunks)
+    generation_run_id = str(payload.options.get("generation_run_id") or "")
+    selected_source_file_ids = [str(item) for item in payload.options.get("source_file_ids_snapshot") or []]
+    yield _event(
+        "progress",
+        {
+            "stage": "starting",
+            "chunks": len(source_chunks),
+            "context_chunks": len(chunks),
+            "source_files": len(source_files),
+            "source_file_ids": selected_source_file_ids,
+            "generation_mode": "full_rebuild",
+            "generation_run_id": generation_run_id,
+            "graph_search": graph_stats,
+        },
+    )
+    yield _event("progress", {"stage": "synthesizing", "generation_run_id": generation_run_id})
+    mindmap, synthesis = await _build_fresh_mindmap(payload)
     yield _event(
         "progress",
         {
@@ -374,6 +406,17 @@ async def _mindmap(payload: GeneratorInput) -> AsyncIterator[GeneratorEvent]:
     )
     markdown = _mindmap_markdown(mindmap)
     mindmap["markdown"] = markdown
+    mindmap["generation"] = {
+        "mode": "full_rebuild",
+        "run_id": generation_run_id,
+        "rebuild_from_scratch": True,
+        "source_chunk_count": len(source_chunks),
+        "source_file_count": len(source_files),
+        "source_files": source_files,
+        "source_file_ids": selected_source_file_ids,
+        "graph_search": graph_stats,
+        "synthesis": synthesis,
+    }
     json_artifact = get_artifact_service().create_artifact(
         payload.conversation_id,
         "mindmap",
@@ -388,16 +431,24 @@ async def _mindmap(payload: GeneratorInput) -> AsyncIterator[GeneratorEvent]:
         _mindmap_html(mindmap),
         mime_type="text/html",
     )
+    graph_note = " I also used the course knowledge graph to place related concepts." if graph_stats["used"] else ""
+    synthesis_note = (
+        " I synthesized a new hierarchy for this run."
+        if synthesis.get("backend") == "llm_structured_fresh_rebuild"
+        else " The configured model was unavailable, so I used the grounded deterministic fallback."
+    )
     response = (
         f"I built a grounded mind map of '{mindmap['central_topic']}' from your materials. "
         f"It covers {len(mindmap['branches'])} main themes and {_count_mindmap_nodes(mindmap)} concepts."
+        f"{graph_note}"
+        f"{synthesis_note}"
     )
     output = GeneratorOutput(
         response=response,
         generator_id="mindmap_gen",
         output_type="mindmap",
         artifacts=[json_artifact, html_artifact],
-        sources=chunks[:10],
+        sources=source_chunks[:10],
         learner_updates=LearnerUpdates(concepts_covered=_mindmap_labels(mindmap)),
         metadata={
             "markdown": markdown,
@@ -405,6 +456,18 @@ async def _mindmap(payload: GeneratorInput) -> AsyncIterator[GeneratorEvent]:
             "depth": _mindmap_depth(mindmap),
             "central_topic": mindmap["central_topic"],
             "main_branches": [branch["text"] for branch in mindmap["branches"]],
+            "generation_mode": "full_rebuild",
+            "generation_run_id": generation_run_id,
+            "rebuild_from_scratch": True,
+            "source_chunk_count": len(source_chunks),
+            "source_file_count": len(source_files),
+            "source_files": source_files,
+            "source_file_ids": selected_source_file_ids,
+            "graph_search_used": graph_stats["used"],
+            "graph_node_count": graph_stats["node_count"],
+            "graph_edge_count": graph_stats["edge_count"],
+            "graph_search": graph_stats,
+            "synthesis": synthesis,
         },
     )
     yield _event("artifact", json_artifact.model_dump())
@@ -1430,7 +1493,384 @@ def _build_mindmap(chunks: list[Chunk], prompt: str, options: dict[str, Any]) ->
         mindmap = _mindmap_from_heading_chunks(chunks, prompt, max_nodes=max_nodes)
     if mindmap is None:
         mindmap = _mindmap_from_concepts(chunks, prompt, max_nodes=max_nodes)
+    _enrich_mindmap_from_graph(mindmap, chunks, max_nodes=max_nodes)
     return _balance_mindmap(_refine_mindmap(mindmap), max_nodes=max_nodes)
+
+
+async def _build_fresh_mindmap(payload: GeneratorInput) -> tuple[dict[str, Any], dict[str, Any]]:
+    max_nodes = int(payload.options.get("max_nodes") or 110)
+    fallback = _build_mindmap(payload.context_chunks, payload.user_message, payload.options)
+    provider = get_settings_service().get_default_chat_provider_config()
+    if provider is None:
+        return fallback, {"backend": "deterministic_fallback", "reason": "no_default_chat_provider"}
+
+    run_id = str(payload.options.get("generation_run_id") or "fresh-mindmap")
+    lens = _mindmap_organizing_lens(run_id)
+    evidence = _mindmap_synthesis_context(payload.context_chunks, fallback)
+    schema = _MindmapModel.model_json_schema()
+    system = (
+        "You are TeacherLM's expert mind-map architect. Build a new, accurate learning map using only the supplied "
+        "course evidence. Re-evaluate the chunks and graph on every run; never reuse a previous mind map. "
+        "Return only JSON matching the provided schema. Labels must stay in the dominant language of the sources."
+    )
+    user = (
+        f"Fresh rebuild run: {run_id}\n"
+        f"Organizing lens for this run: {lens}\n\n"
+        "Construct a genuinely fresh hierarchy from the evidence below. Use 4-7 strong conceptual branches, "
+        "normally 35-90 total nodes, and 3-4 useful levels of depth. Prefer concepts, mechanisms, comparisons, "
+        "prerequisites, examples, and consequences over filenames or document order. Integrate meaningful graph "
+        "relationships. The candidate outline is only a coverage checklist: reorganize it rather than copying it. "
+        "Do not invent facts or labels unsupported by the evidence.\n\n"
+        f"{evidence}"
+    )
+    messages = [LLMMessage(role="system", content=system), LLMMessage(role="user", content=user)]
+    raw = ""
+    try:
+        raw = await complete_text(provider, messages, json_schema=schema, temperature=0.7)
+        mindmap = _validated_llm_mindmap(raw, max_nodes=max_nodes)
+    except (ValidationError, ValueError, json.JSONDecodeError) as exc:
+        repair_messages = [
+            *messages,
+            LLMMessage(role="assistant", content=raw[:12000]),
+            LLMMessage(
+                role="user",
+                content=(
+                    "Repair the response into valid JSON matching the schema. Keep 3-7 branches, concise grounded "
+                    f"labels, and no more than {max_nodes} total nodes. Validation issue: {str(exc)[:300]}"
+                ),
+            ),
+        ]
+        try:
+            repaired = await complete_text(provider, repair_messages, json_schema=schema, temperature=0.35)
+            mindmap = _validated_llm_mindmap(repaired, max_nodes=max_nodes)
+        except Exception as repair_exc:  # noqa: BLE001 - deterministic fallback is the recovery boundary.
+            return fallback, {
+                "backend": "deterministic_fallback",
+                "reason": "structured_generation_failed",
+                "error": str(repair_exc)[:300],
+                "provider_id": provider.provider_id,
+                "model": provider.model_name,
+                "organizing_lens": lens,
+            }
+    except Exception as exc:  # noqa: BLE001 - provider failures must not break artifact generation.
+        return fallback, {
+            "backend": "deterministic_fallback",
+            "reason": "provider_failed",
+            "error": str(exc)[:300],
+            "provider_id": provider.provider_id,
+            "model": provider.model_name,
+            "organizing_lens": lens,
+        }
+
+    return mindmap, {
+        "backend": "llm_structured_fresh_rebuild",
+        "provider_id": provider.provider_id,
+        "model": provider.model_name,
+        "organizing_lens": lens,
+    }
+
+
+def _validated_llm_mindmap(raw: str, *, max_nodes: int) -> dict[str, Any]:
+    candidate = raw.strip()
+    if candidate.startswith("```"):
+        candidate = re.sub(r"^```(?:json)?\s*|\s*```$", "", candidate, flags=re.IGNORECASE | re.DOTALL).strip()
+    if not candidate.startswith("{"):
+        start = candidate.find("{")
+        end = candidate.rfind("}")
+        if start < 0 or end <= start:
+            raise ValueError("structured mind map did not contain a JSON object")
+        candidate = candidate[start : end + 1]
+    validated = _MindmapModel.model_validate_json(candidate)
+    mindmap = validated.model_dump()
+    mindmap = _balance_mindmap(_refine_mindmap(mindmap), max_nodes=max_nodes)
+    if len(mindmap.get("branches", [])) < 3 or _count_mindmap_nodes(mindmap) < 8:
+        raise ValueError("structured mind map was too shallow after validation")
+    return mindmap
+
+
+def _mindmap_organizing_lens(run_id: str) -> str:
+    lenses = (
+        "foundations to advanced applications",
+        "problems, mechanisms, and solutions",
+        "concept taxonomy with contrasts",
+        "system components and information flow",
+        "learning prerequisites and progression",
+        "theory, methods, evaluation, and limitations",
+        "core ideas connected to worked applications",
+        "relationships, trade-offs, and consequences",
+    )
+    digest = hashlib.sha256(run_id.encode("utf-8")).digest()
+    return lenses[int.from_bytes(digest[:2], "big") % len(lenses)]
+
+
+def _mindmap_synthesis_context(chunks: list[Chunk], fallback: dict[str, Any]) -> str:
+    source_chunks = [chunk for chunk in chunks if chunk.metadata.get("mindmap_full_context")] or [
+        chunk for chunk in chunks if not str(chunk.metadata.get("context_type") or "").startswith("mindmap_")
+    ]
+    module_packs = [chunk for chunk in chunks if chunk.metadata.get("context_type") == "mindmap_module_pack"]
+    graph_contexts = [chunk for chunk in chunks if chunk.metadata.get("context_type") == "mindmap_graph_context"]
+
+    parts = [
+        "CURRENT EVIDENCE-DERIVED COVERAGE CHECKLIST (not a template):\n"
+        + json.dumps(fallback, ensure_ascii=False),
+    ]
+    if module_packs:
+        parts.append(
+            "DOCUMENT STRUCTURE AND SECTION SUMMARIES:\n"
+            + "\n\n".join(module.text[:5000] for module in module_packs)
+        )
+
+    per_chunk_chars = max(260, min(850, 60000 // max(1, len(source_chunks))))
+    chunk_lines: list[str] = []
+    for chunk in source_chunks:
+        heading = chunk.metadata.get("heading_path_list") or chunk.metadata.get("heading_path") or chunk.metadata.get("section_title")
+        if isinstance(heading, list):
+            heading_text = " > ".join(str(item) for item in heading)
+        else:
+            heading_text = str(heading or "")
+        excerpt = " ".join(chunk.text.split())[:per_chunk_chars]
+        chunk_lines.append(
+            f"- chunk_id={chunk.chunk_id} | source={chunk.source} | heading={heading_text}\n  {excerpt}"
+        )
+    parts.append("ALL SELECTED CHUNKS (each chunk is represented):\n" + "\n".join(chunk_lines))
+
+    for graph_context in graph_contexts:
+        nodes = [node for node in graph_context.metadata.get("graph_nodes") or [] if isinstance(node, dict)]
+        edges = [edge for edge in graph_context.metadata.get("graph_edges") or [] if isinstance(edge, dict)]
+        node_types = Counter(str(node.get("node_type") or "unknown") for node in nodes)
+        relation_types = Counter(str(edge.get("relation_type") or "unknown") for edge in edges)
+        semantic_nodes = [
+            node for node in nodes if str(node.get("node_type") or "") in _MINDMAP_GRAPH_NODE_TYPES
+        ]
+        node_lines = [
+            f"- [{node.get('node_type')}] {node.get('label')}"
+            + (f": {str(node.get('description'))[:180]}" if node.get("description") else "")
+            for node in semantic_nodes
+        ]
+        semantic_ids = {str(node.get("id") or "") for node in semantic_nodes}
+        relation_lines = [
+            f"- {edge.get('source_label')} --{edge.get('relation_type')}--> {edge.get('target_label')}"
+            for edge in edges
+            if str(edge.get("source_node_id") or "") in semantic_ids
+            and str(edge.get("target_node_id") or "") in semantic_ids
+            and str(edge.get("relation_type") or "") != "part_of"
+        ]
+        parts.append(
+            "COMPLETE CHECKED-FILE GRAPH SUMMARY:\n"
+            f"node_count={len(nodes)} edge_count={len(edges)} graph_complete={graph_context.metadata.get('graph_complete')}\n"
+            f"node_types={dict(node_types)}\nrelation_types={dict(relation_types)}\n"
+            "SEMANTIC GRAPH NODES:\n"
+            + "\n".join(node_lines)[:30000]
+            + "\nSEMANTIC RELATIONSHIPS:\n"
+            + "\n".join(relation_lines)[:18000]
+        )
+    return "\n\n".join(parts)[:120000]
+
+
+def _mindmap_graph_stats(chunks: list[Chunk]) -> dict[str, Any]:
+    contexts = [chunk for chunk in chunks if chunk.metadata.get("context_type") == "mindmap_graph_context"]
+    return {
+        "used": bool(contexts),
+        "strategy": "complete_source_scoped_course_graph" if contexts else "disabled_or_unavailable",
+        "complete": bool(contexts) and all(bool(chunk.metadata.get("graph_complete")) for chunk in contexts),
+        "node_count": sum(int(chunk.metadata.get("graph_node_count") or 0) for chunk in contexts),
+        "edge_count": sum(int(chunk.metadata.get("graph_edge_count") or 0) for chunk in contexts),
+        "context_chunk_count": len(contexts),
+    }
+
+
+def _enrich_mindmap_from_graph(
+    mindmap: dict[str, Any],
+    chunks: list[Chunk],
+    *,
+    max_nodes: int,
+) -> None:
+    graph_contexts = [chunk for chunk in chunks if chunk.metadata.get("context_type") == "mindmap_graph_context"]
+    if not graph_contexts or not mindmap.get("branches"):
+        return
+
+    source_chunks = {
+        chunk.chunk_id: chunk
+        for chunk in chunks
+        if chunk.metadata.get("mindmap_full_context") and chunk.chunk_id
+    }
+    graph_nodes = [
+        node
+        for context in graph_contexts
+        for node in context.metadata.get("graph_nodes") or []
+        if isinstance(node, dict) and node.get("node_type") in _MINDMAP_GRAPH_NODE_TYPES
+    ]
+    graph_edges = [
+        edge
+        for context in graph_contexts
+        for edge in context.metadata.get("graph_edges") or []
+        if isinstance(edge, dict)
+    ]
+    if not graph_nodes:
+        return
+
+    mapped_nodes: dict[str, dict[str, Any]] = {}
+    graph_nodes.sort(key=lambda node: (_graph_mindmap_node_priority(node), str(node.get("label") or "").casefold()))
+    for graph_node in graph_nodes:
+        label = _short_mindmap_label(str(graph_node.get("label") or ""))
+        if not label or _is_noisy_mindmap_label(label) or _is_generic_mindmap_root_label(label):
+            continue
+        existing = _matching_existing_mindmap_node(mindmap["branches"], label)
+        if existing is not None:
+            mapped_nodes[str(graph_node.get("id") or "")] = existing
+            continue
+        if not _is_strong_graph_mindmap_node(graph_node, label):
+            continue
+        if _count_mindmap_nodes(mindmap) >= max_nodes:
+            break
+        evidence = _graph_mindmap_evidence(graph_node, source_chunks)
+        parent = _best_graph_mindmap_parent(mindmap["branches"], evidence)
+        if parent is None or len(parent.get("children", [])) >= 7:
+            continue
+        new_node = {"text": label, "children": []}
+        parent.setdefault("children", []).append(new_node)
+        mapped_nodes[str(graph_node.get("id") or "")] = new_node
+
+    relation_counts: Counter[str] = Counter()
+    for edge in sorted(graph_edges, key=lambda item: -float(item.get("confidence") or 0.0)):
+        relation = str(edge.get("relation_type") or "supports")
+        if relation not in _MINDMAP_VISIBLE_GRAPH_RELATIONS or float(edge.get("confidence") or 0.0) < 0.65:
+            continue
+        source_id = str(edge.get("source_node_id") or "")
+        target_id = str(edge.get("target_node_id") or "")
+        source_node = mapped_nodes.get(source_id)
+        target_node = mapped_nodes.get(target_id)
+        if source_node is None or target_node is None or source_node is target_node or relation_counts[source_id] >= 2:
+            continue
+        relation_label = _short_mindmap_label(
+            f"{_MINDMAP_GRAPH_RELATION_LABELS.get(relation, relation.replace('_', ' ').title())}: {target_node['text']}",
+            max_len=90,
+        )
+        relation_key = _mindmap_norm(relation_label)
+        existing_keys = {_mindmap_norm(str(child.get("text") or "")) for child in source_node.get("children", [])}
+        if relation_key in existing_keys or len(source_node.get("children", [])) >= 7:
+            continue
+        source_node.setdefault("children", []).append({"text": relation_label, "children": []})
+        relation_counts[source_id] += 1
+        if _count_mindmap_nodes(mindmap) >= max_nodes:
+            break
+
+
+def _graph_mindmap_node_priority(node: dict[str, Any]) -> int:
+    priorities = {
+        "section": 0,
+        "concept": 1,
+        "procedure": 2,
+        "skill": 3,
+        "formula": 4,
+        "objective": 5,
+        "example": 6,
+        "misconception": 7,
+        "assessment": 8,
+    }
+    return priorities.get(str(node.get("node_type") or "concept"), 9)
+
+
+def _is_strong_graph_mindmap_node(node: dict[str, Any], label: str) -> bool:
+    if str(node.get("node_type") or "concept") != "concept":
+        return True
+    tokens = _mindmap_tokens(label)
+    if len(tokens) >= 2 or len(str(node.get("description") or "").strip()) >= 20:
+        return True
+    if len(node.get("source_chunk_ids") or []) >= 3:
+        return True
+    return sum(1 for char in label if char.isupper()) >= 2
+
+
+def _matching_existing_mindmap_node(nodes: list[dict[str, Any]], label: str) -> dict[str, Any] | None:
+    label_key = _mindmap_norm(label)
+    label_tokens = _mindmap_tokens(label)
+    best: dict[str, Any] | None = None
+    best_overlap = 0.0
+    for node in _iter_mindmap_nodes(nodes):
+        node_label = str(node.get("text") or "")
+        if _mindmap_norm(node_label) == label_key:
+            return node
+        node_tokens = _mindmap_tokens(node_label)
+        overlap = len(label_tokens & node_tokens) / max(1, len(label_tokens | node_tokens))
+        if overlap > best_overlap:
+            best = node
+            best_overlap = overlap
+    return best if best_overlap >= 0.8 else None
+
+
+def _graph_mindmap_evidence(node: dict[str, Any], source_chunks: dict[str, Chunk]) -> str:
+    parts = [str(node.get("label") or ""), str(node.get("description") or "")]
+    for chunk_id in node.get("source_chunk_ids") or []:
+        chunk = source_chunks.get(str(chunk_id))
+        if chunk is None:
+            continue
+        heading = chunk.metadata.get("heading_path_list") or chunk.metadata.get("heading_path") or chunk.metadata.get("section_title")
+        if isinstance(heading, list):
+            parts.extend(str(item) for item in heading)
+        elif heading:
+            parts.append(str(heading))
+        parts.append(chunk.text[:500])
+    return " ".join(parts)
+
+
+def _best_graph_mindmap_parent(
+    branches: list[dict[str, Any]],
+    evidence: str,
+) -> dict[str, Any] | None:
+    evidence_tokens = _mindmap_tokens(evidence)
+    if not evidence_tokens:
+        return None
+    candidates: list[tuple[int, int, dict[str, Any]]] = []
+
+    def walk(node: dict[str, Any], depth: int) -> None:
+        if depth <= 2 and len(node.get("children", [])) < 7:
+            label_tokens = _mindmap_tokens(str(node.get("text") or ""))
+            subtree_tokens = _mindmap_tokens(" ".join(_mindmap_node_texts(node)))
+            score = len(evidence_tokens & label_tokens) * 4 + len(evidence_tokens & subtree_tokens)
+            candidates.append((score, depth, node))
+        for child in node.get("children", []):
+            walk(child, depth + 1)
+
+    for branch in branches:
+        walk(branch, 0)
+    if not candidates:
+        return None
+    score, _depth, parent = max(candidates, key=lambda item: (item[0], item[1]))
+    return parent if score > 0 else None
+
+
+_MINDMAP_VISIBLE_GRAPH_RELATIONS = {
+    "requires",
+    "prerequisite_of",
+    "explains",
+    "applies",
+    "contrasts_with",
+    "causes",
+    "solves",
+    "remediates",
+}
+_MINDMAP_GRAPH_NODE_TYPES = {
+    "section",
+    "concept",
+    "skill",
+    "procedure",
+    "formula",
+    "example",
+    "misconception",
+    "assessment",
+    "objective",
+}
+_MINDMAP_GRAPH_RELATION_LABELS = {
+    "requires": "Requires",
+    "prerequisite_of": "Prerequisite for",
+    "explains": "Explains",
+    "applies": "Applies to",
+    "contrasts_with": "Contrasts with",
+    "causes": "Causes",
+    "solves": "Solves",
+    "remediates": "Remediates",
+}
 
 
 def _mindmap_from_module_packs(chunks: list[Chunk], *, max_nodes: int) -> dict[str, Any] | None:
@@ -1468,17 +1908,19 @@ def _mindmap_from_module_packs(chunks: list[Chunk], *, max_nodes: int) -> dict[s
 
     _merge_supporting_mindmap_modules(branches, modules, branch_budget=branch_budget)
 
-    if len(branches) < 3:
+    if not branches:
         headings = _dedupe(
             heading
             for module in modules
             for heading in _clean_mindmap_heading_labels(_module_major_headings(module.text), "")
         )
         branches = [{"text": _short_mindmap_label(heading), "children": []} for heading in headings[:10]]
-    if len(branches) < 3:
+    if not branches:
         return None
     central_topic = _infer_mindmap_central_topic(main_modules, module_titles)
     _remove_mindmap_root_repeats(branches, central_topic)
+    if len(branches) == 1 and len(branches[0].get("children", [])) >= 2:
+        branches = branches[0]["children"]
     return {
         "central_topic": central_topic,
         "branches": branches,
@@ -1820,6 +2262,7 @@ def _clean_mindmap_heading_labels(headings: list[str], module_title: str) -> lis
 def _infer_mindmap_central_topic(modules: list[Chunk], titles: list[str]) -> str:
     root_modules: dict[str, set[str]] = {}
     root_originals: dict[str, str] = {}
+    root_occurrences: Counter[str] = Counter()
     for module_index, module in enumerate(modules):
         for heading in _module_major_headings(module.text):
             parts = [_clean_mindmap_label(part) for part in re.split(r"\s*>\s*", heading)]
@@ -1832,9 +2275,14 @@ def _infer_mindmap_central_topic(modules: list[Chunk], titles: list[str]) -> str
                 continue
             root_modules.setdefault(key, set()).add(str(module.metadata.get("source_file_id") or module_index))
             root_originals.setdefault(key, root)
+            root_occurrences[key] += 1
     ranked = sorted(root_modules.items(), key=lambda item: (-len(item[1]), len(root_originals.get(item[0], ""))))
     for key, module_ids in ranked:
         if len(module_ids) >= 2:
+            return _short_mindmap_label(root_originals[key], max_len=60)
+    if len(modules) == 1 and root_occurrences:
+        key, count = root_occurrences.most_common(1)[0]
+        if count >= 2:
             return _short_mindmap_label(root_originals[key], max_len=60)
 
     cleaned = [_compact_mindmap_module_title(title) for title in titles if title.strip()]
