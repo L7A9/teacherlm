@@ -27,9 +27,10 @@ async def _generate_stream(conversation_id: str, payload: GenerateRequest) -> As
     prompt = payload.prompt or f"Generate {payload.output_type}"
     source_file_ids = list(dict.fromkeys(payload.source_file_ids))
     generation_options = dict(payload.options)
-    if payload.output_type == "mindmap":
+    if payload.output_type in {"mindmap", "quiz"}:
         if not source_file_ids:
-            yield sse("error", {"message": "Select at least one ready source file before rebuilding the mind map."})
+            output_label = "mind map" if payload.output_type == "mindmap" else "quiz"
+            yield sse("error", {"message": f"Select at least one ready source file before generating the {output_label}."})
             return
         ready_file_ids = {
             str(row["id"])
@@ -41,16 +42,29 @@ async def _generate_stream(conversation_id: str, payload: GenerateRequest) -> As
             yield sse(
                 "error",
                 {
-                    "message": "The mind map can only be rebuilt from ready files checked in this conversation.",
+                    "message": f"The {payload.output_type} can only be generated from ready files checked in this conversation.",
                     "invalid_source_file_ids": invalid_file_ids,
                 },
             )
             return
+    if payload.output_type == "mindmap":
         generation_options.update(
             {
                 "generation_mode": "full_rebuild",
                 "generation_run_id": new_id("mindmap_run"),
                 "rebuild_from_scratch": True,
+                "source_file_ids_snapshot": source_file_ids,
+            }
+        )
+    elif payload.output_type == "quiz":
+        generation_options.update(
+            {
+                "generation_mode": "fresh_quiz",
+                "generation_run_id": new_id("quiz_run"),
+                "fresh_generation": True,
+                "rebuild_from_scratch": True,
+                "retrieval_mode": "full_selected_files_with_graph",
+                "include_knowledge_graph": True,
                 "source_file_ids_snapshot": source_file_ids,
             }
         )
@@ -67,7 +81,7 @@ async def _generate_stream(conversation_id: str, payload: GenerateRequest) -> As
         source_file_ids=source_file_ids,
         options=generation_options,
     )
-    chat_history = [] if payload.output_type == "mindmap" else [
+    chat_history = [] if payload.output_type in {"mindmap", "quiz"} else [
         {"role": row["role"], "content": row["content"]}
         for row in get_store().list_messages(conversation_id)[-12:]
     ]

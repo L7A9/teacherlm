@@ -52,20 +52,27 @@ class RetrievalService:
         options = options or {}
         rows = get_store().list_chunks(conversation_id, source_file_ids=source_file_ids or None)
         all_chunks = [_row_to_chunk(row) for row in rows]
-        if output_type == "mindmap":
+        if output_type in {"mindmap", "quiz"}:
+            full_context_flag = f"{output_type}_full_context"
             full_context = [
                 _with_metadata(
                     chunk,
                     {
-                        "retrieval_via": "mindmap_full_selected_files",
+                        "retrieval_via": f"{output_type}_full_selected_files",
                         "retrieval_mode": "full_document",
-                        "mindmap_full_context": True,
+                        full_context_flag: True,
                     },
                 )
                 for chunk in all_chunks
             ]
             if not full_context:
                 return []
+            if output_type == "quiz":
+                graph_context = get_knowledge_graph_service().quiz_context_chunks(
+                    conversation_id,
+                    source_file_ids=source_file_ids or None,
+                )
+                return _dedupe_chunks([*full_context, *graph_context])
             structural_context = _mindmap_course_context(
                 all_chunks,
                 conversation_id=conversation_id,

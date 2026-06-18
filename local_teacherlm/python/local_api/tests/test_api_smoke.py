@@ -92,6 +92,236 @@ def _install_fake_fastembed(monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "fastembed.rerank.cross_encoder", cross_encoder)
 
 
+def test_quiz_repairs_wrapped_answer_sentences() -> None:
+    from local_api.services import generators
+
+    text = '''The jam study demonstrated the phenomenon known as "choice overload
+problem" when humans are faced with choices, so less is often better.
+▶ A separate complete idea remains a separate answer option.'''
+
+    candidates = generators._statement_candidates(text)
+
+    assert 'The jam study demonstrated the phenomenon known as "choice overload problem" when humans are faced with choices, so less is often better.' in candidates
+    assert not any(candidate.startswith("problem\"") for candidate in candidates)
+    assert all(not generators._has_unbalanced_quiz_delimiters(candidate) for candidate in candidates)
+
+
+def test_quiz_rejects_incomplete_and_overlapping_options() -> None:
+    from local_api.services import generators
+
+    assert not generators._is_quiz_answer_option('problem" when humans are faced with choices, less is better')
+    question = {
+        "type": "mcq",
+        "category": "definition",
+        "question": "What best defines hybrid search?",
+        "options": [
+            "Hybrid search combines lexical and semantic evidence.",
+            "Hybrid search combines lexical and semantic evidence to improve retrieval.",
+            "Hybrid search relies only on document filenames and locations.",
+            "Hybrid search removes the need to evaluate retrieved results.",
+        ],
+    }
+    assert not generators._validate_quiz_question(question)
+
+
+def test_quiz_calls_structured_llm_with_full_chunks_graph_type_and_count(monkeypatch) -> None:
+    from teacherlm_core.llm.providers import LLMProviderConfig
+    from teacherlm_core.schemas import GeneratorInput, LearnerState
+    import local_api.services.generators as generators
+
+    provider = LLMProviderConfig(
+        provider_id="quiz-provider",
+        display_name="Quiz provider",
+        provider_type="ollama",
+        model_name="quiz-model",
+    )
+    monkeypatch.setattr(
+        generators,
+        "get_settings_service",
+        lambda: types.SimpleNamespace(get_default_chat_provider_config=lambda: provider),
+    )
+    calls: list[dict] = []
+
+    async def fake_complete_text(_provider, messages, *, json_schema=None, temperature=0.2):
+        calls.append({"messages": messages, "json_schema": json_schema, "temperature": temperature})
+        return json.dumps(
+            {
+                "title": f"Fresh Search Quiz {len(calls)}",
+                "intro_message": "Apply the selected search concepts.",
+                "questions": [
+                    {
+                        "type": "mcq",
+                        "category": "definition",
+                        "bloom_level": "remember",
+                        "question": "What evidence does dense retrieval use for semantic matching?",
+                        "options": [
+                            "Dense retrieval uses vector similarity to represent semantic meaning.",
+                            "Dense retrieval uses only alphabetical ordering of unrelated labels.",
+                            "Dense retrieval removes all semantic information before matching.",
+                            "Dense retrieval depends exclusively on arbitrary visual decoration.",
+                        ],
+                        "correct_index": 0,
+                        "explanation": "Dense retrieval represents semantic meaning through vector similarity.",
+                        "concept": "Dense retrieval",
+                        "source_chunk_id": "dense-chunk",
+                    },
+                    {
+                        "type": "mcq",
+                        "category": "mechanism",
+                        "bloom_level": "understand",
+                        "question": "What does reciprocal rank fusion combine?",
+                        "options": [
+                            "Reciprocal rank fusion combines multiple ranked result lists.",
+                            "Reciprocal rank fusion discards every available ranking signal.",
+                            "Reciprocal rank fusion sorts only by source filename length.",
+                            "Reciprocal rank fusion creates results without any ranked inputs.",
+                        ],
+                        "correct_index": 0,
+                        "explanation": "Reciprocal rank fusion combines ranked result lists.",
+                        "concept": "Reciprocal rank fusion",
+                        "source_chunk_id": "fusion-chunk",
+                    },
+                ],
+            }
+        )
+
+    monkeypatch.setattr(generators, "complete_text", fake_complete_text)
+    source_chunks = [
+        generators.Chunk(
+            text="Dense retrieval uses vector similarity to represent semantic meaning.",
+            source="search.md",
+            score=1.0,
+            chunk_id="dense-chunk",
+            metadata={"quiz_full_context": True},
+        ),
+        generators.Chunk(
+            text="Reciprocal rank fusion combines multiple ranked result lists.",
+            source="search.md",
+            score=1.0,
+            chunk_id="fusion-chunk",
+            metadata={"quiz_full_context": True},
+        ),
+    ]
+    graph_chunk = generators.Chunk(
+        text="Dense Retrieval --supports--> Reciprocal Rank Fusion",
+        source="knowledge_graph",
+        score=1.0,
+        chunk_id="quiz-graph:test",
+        metadata={
+            "context_type": "quiz_graph_context",
+            "graph_complete": True,
+            "source_file_ids": ["file-search"],
+            "source_chunk_ids": ["dense-chunk", "fusion-chunk"],
+            "graph_nodes": [
+                {"id": "dense", "label": "Dense Retrieval", "node_type": "concept"},
+                {"id": "fusion", "label": "Reciprocal Rank Fusion", "node_type": "concept"},
+            ],
+            "graph_edges": [
+                {
+                    "source_node_id": "dense",
+                    "target_node_id": "fusion",
+                    "source_label": "Dense Retrieval",
+                    "target_label": "Reciprocal Rank Fusion",
+                    "relation_type": "supports",
+                }
+            ],
+        },
+    )
+
+    def payload(run_id: str) -> GeneratorInput:
+        return GeneratorInput(
+            conversation_id="quiz-conversation",
+            user_message="Focus on search mechanisms",
+            context_chunks=[*source_chunks, graph_chunk],
+            learner_state=LearnerState(conversation_id="quiz-conversation"),
+            chat_history=[],
+            options={"generation_run_id": run_id, "question_type": "mcq", "question_count": 2},
+        )
+
+    first, first_meta = asyncio.run(
+        generators._build_fresh_quiz(
+            payload("quiz-run-one"),
+            source_chunks=source_chunks,
+            graph_chunks=[graph_chunk],
+            question_type="mcq",
+            question_count=2,
+        )
+    )
+    second, second_meta = asyncio.run(
+        generators._build_fresh_quiz(
+            payload("quiz-run-two"),
+            source_chunks=source_chunks,
+            graph_chunks=[graph_chunk],
+            question_type="mcq",
+            question_count=2,
+        )
+    )
+
+    assert len(calls) == 2
+    assert all(call["json_schema"] for call in calls)
+    assert calls[0]["temperature"] == 0.7
+    first_prompt = calls[0]["messages"][-1].content
+    assert "quiz-run-one" in first_prompt
+    assert "Focus on search mechanisms" in first_prompt
+    assert "Question type: mcq" in first_prompt
+    assert "Number of questions: 2" in first_prompt
+    assert source_chunks[0].text in first_prompt
+    assert source_chunks[1].text in first_prompt
+    assert "Dense Retrieval" in first_prompt and "supports" in first_prompt
+    assert first["title"] != second["title"]
+    assert first_meta["backend"] == "llm_structured_fresh_generation"
+    assert second_meta["backend"] == "llm_structured_fresh_generation"
+
+
+def test_quiz_accepts_mistral_nested_option_objects_without_repair() -> None:
+    import local_api.services.generators as generators
+
+    source_chunk = generators.Chunk(
+        text=(
+            "Item-based collaborative filtering finds items similar to the target item that the user already rated, "
+            "then predicts a score with a weighted average of those neighboring item ratings."
+        ),
+        source="collaborative-filtering.pdf",
+        score=1.0,
+        chunk_id="chunk-item-cf",
+        metadata={"section_title": "Item-Based Collaborative Filtering"},
+    )
+    raw = json.dumps(
+        {
+            "quiz": {
+                "metadata": {"question_type": "mcq", "language": "en"},
+                "questions": [
+                    {
+                        "question_text": "How does item-based collaborative filtering predict a missing score?",
+                        "options": [
+                            {"text": "RMSE", "is_correct": False},
+                            {
+                                "text": "It uses a weighted average of ratings for similar neighboring items.",
+                                "is_correct": True,
+                                "source_chunk_id": "chunk-invented-by-model",
+                            },
+                            {"text": "It discards every rating before making the prediction.", "is_correct": False},
+                            {"text": "It predicts scores from visual formatting alone.", "is_correct": False},
+                        ],
+                        "bloom_level": "application",
+                    }
+                ],
+            }
+        }
+    )
+
+    quiz = generators._validated_llm_quiz(
+        raw,
+        source_chunks=[source_chunk],
+        question_type="mcq",
+        question_count=1,
+    )
+
+    assert quiz["questions"][0]["correct_index"] == 1
+    assert quiz["questions"][0]["source_chunk_id"] == "chunk-item-cf"
+    assert quiz["questions"][0]["bloom_level"] == "apply"
+
+
 def test_app_factory_smoke(monkeypatch, tmp_path) -> None:
     client = _client(monkeypatch, tmp_path)
     response = client.get("/api/health")
@@ -229,6 +459,7 @@ def test_llama_cloud_parser_mode_calls_llama_cloud(monkeypatch, tmp_path) -> Non
     file_id = upload.json()["id"]
     stored = client.get(f"/api/conversations/{conversation['id']}/files/{file_id}").json()
     assert stored["status"] == "ready"
+
     assert stored["parser_used"] == "llamacloud:job-123"
     assert stored["chunk_count"] > 0
     assert calls
@@ -382,6 +613,103 @@ A good podcast follows a narrative arc: introduction, key points, examples, and 
     stored = client.get(f"/api/conversations/{conversation['id']}/files/{file_id}").json()
     assert stored["status"] == "ready"
 
+    from local_api.db import get_store
+    import local_api.services.generators as generators_module
+
+    course_chunks = get_store().list_chunks(conversation["id"], source_file_ids=[file_id])
+
+    def chunk_id_for(text: str) -> str:
+        return next(row["id"] for row in course_chunks if text.casefold() in row["text"].casefold())
+
+    quiz_llm_calls: list[dict] = []
+
+    async def fake_quiz_llm(_provider, messages, *, json_schema=None, temperature=0.2):
+        quiz_llm_calls.append({"messages": messages, "json_schema": json_schema, "temperature": temperature})
+        return json.dumps(
+            {
+                "title": f"Fresh Retrieval Quiz {len(quiz_llm_calls)}",
+                "intro_message": "Test your understanding of the selected retrieval material.",
+                "questions": [
+                    {
+                        "type": "mcq",
+                        "category": "mechanism",
+                        "bloom_level": "understand",
+                        "question": "How does retrieval augmented generation support grounded answers?",
+                        "options": [
+                            "It uses indexed source chunks to answer questions with citations.",
+                            "It removes all source evidence before producing an answer.",
+                            "It ranks responses only by their visual formatting choices.",
+                            "It replaces retrieval with an unrelated random selection process.",
+                        ],
+                        "correct_index": 0,
+                        "explanation": "Retrieval augmented generation uses indexed source chunks for cited answers.",
+                        "concept": "Retrieval augmented generation",
+                        "source_chunk_id": chunk_id_for("Retrieval augmented generation"),
+                    },
+                    {
+                        "type": "mcq",
+                        "category": "relationship",
+                        "bloom_level": "understand",
+                        "question": "Which combination correctly describes hybrid search?",
+                        "options": [
+                            "It combines exact lexical matching with semantic similarity.",
+                            "It combines color matching with chronological sorting alone.",
+                            "It ignores both precise terms and broader related meanings.",
+                            "It relies entirely on an unranked collection of unrelated items.",
+                        ],
+                        "correct_index": 0,
+                        "explanation": "Hybrid search combines lexical matching and semantic similarity.",
+                        "concept": "Hybrid search",
+                        "source_chunk_id": chunk_id_for("Hybrid search combines"),
+                    },
+                    {
+                        "type": "mcq",
+                        "category": "application",
+                        "bloom_level": "apply",
+                        "question": "What should a grounded answer provide for its claims?",
+                        "options": [
+                            "It should cite the source chunks that support the answer.",
+                            "It should hide every piece of supporting course evidence.",
+                            "It should replace evidence with unsupported personal guesses.",
+                            "It should choose claims solely because they sound confident.",
+                        ],
+                        "correct_index": 0,
+                        "explanation": "Grounded answers cite the source chunks supporting their claims.",
+                        "concept": "Grounded answers",
+                        "source_chunk_id": chunk_id_for("Grounded answers"),
+                    },
+                    {
+                        "type": "mcq",
+                        "category": "classification",
+                        "bloom_level": "remember",
+                        "question": "Which sequence belongs to a strong podcast narrative arc?",
+                        "options": [
+                            "Introduction, key points, examples, and a concluding wrap-up.",
+                            "A silent opening followed by disconnected labels and no ending.",
+                            "Only a timestamp, an empty audio segment, and unrelated markers.",
+                            "Random fragments presented without examples or a coherent progression.",
+                        ],
+                        "correct_index": 0,
+                        "explanation": "A good podcast uses an introduction, key points, examples, and wrap-up.",
+                        "concept": "Podcast narrative arc",
+                        "source_chunk_id": chunk_id_for("A good podcast"),
+                    },
+                ],
+            }
+        )
+
+    monkeypatch.setattr(generators_module, "complete_text", fake_quiz_llm)
+    provider = client.post(
+        "/api/settings/llm-providers",
+        json={
+            "display_name": "Offline structured quiz model",
+            "provider_type": "ollama",
+            "model_name": "test-quiz-model",
+            "is_default_chat": True,
+        },
+    )
+    assert provider.status_code == 200
+
     course = client.get(f"/api/conversations/{conversation['id']}/coursebuilder").json()
     assert course["status"] == "ready"
     assert course["chapters"]
@@ -389,11 +717,14 @@ A good podcast follows a narrative arc: introduction, key points, examples, and 
     assert course["chapters"][0]["lessons"][0]["blocks"]
     assert course["chapters"][0]["lessons"][0]["citations"]
 
+    quiz_request = {
+        "output_type": "quiz",
+        "prompt": "Generate quiz",
+        "source_file_ids": [file_id],
+        "options": {"question_count": 4},
+    }
     quiz_done = _done_event(
-        client.post(
-            f"/api/conversations/{conversation['id']}/generate",
-            json={"output_type": "quiz", "prompt": "Generate quiz", "source_file_ids": [], "options": {"question_count": 4}},
-        ).text
+        client.post(f"/api/conversations/{conversation['id']}/generate", json=quiz_request).text
     )
     assert quiz_done["output_type"] == "quiz"
     quiz_data = quiz_done["metadata"]["quiz_data"]
@@ -430,6 +761,25 @@ A good podcast follows a narrative arc: introduction, key points, examples, and 
         "classification",
     }
     assert "bloom_distribution" in quiz_done["metadata"]
+    second_quiz_done = _done_event(
+        client.post(f"/api/conversations/{conversation['id']}/generate", json=quiz_request).text
+    )
+    assert quiz_done["metadata"]["generation_mode"] == "fresh_quiz"
+    assert quiz_done["metadata"]["fresh_generation"] is True
+    assert quiz_done["metadata"]["rebuild_from_scratch"] is True
+    assert quiz_done["metadata"]["retrieval_mode"] == "full_selected_files_with_graph"
+    assert quiz_done["metadata"]["source_file_ids"] == [file_id]
+    assert quiz_done["metadata"]["source_chunk_count"] > 0
+    assert quiz_done["metadata"]["graph_search_used"] is True
+    assert quiz_done["metadata"]["graph_search"]["complete"] is True
+    assert quiz_done["metadata"]["graph_node_count"] > 0
+    assert quiz_done["metadata"]["synthesis"]["backend"] == "llm_structured_fresh_generation"
+    assert quiz_done["metadata"]["synthesis"]["question_type_sent"] == "mcq"
+    assert quiz_done["metadata"]["synthesis"]["question_count_sent"] == 4
+    assert len(quiz_llm_calls) == 2
+    assert all(call["json_schema"] for call in quiz_llm_calls)
+    assert quiz_done["metadata"]["generation_run_id"] != second_quiz_done["metadata"]["generation_run_id"]
+    assert quiz_done["artifacts"][0]["key"] != second_quiz_done["artifacts"][0]["key"]
 
     mindmap_done = _done_event(
         client.post(
@@ -535,6 +885,33 @@ Recall measures how many relevant items were found.
     assert second["id"] not in {
         str(node.get("metadata", {}).get("source_file_id") or "")
         for node in graph_context[0].metadata["graph_nodes"]
+    }
+
+    selected_quiz_context = asyncio.run(
+        get_retrieval_service().retrieve_for(
+            conversation_id=conversation["id"],
+            user_message="Generate quiz",
+            output_type="quiz",
+            source_file_ids=[first["id"]],
+        )
+    )
+    quiz_full_context = [
+        chunk for chunk in selected_quiz_context if chunk.metadata.get("quiz_full_context") is True
+        and chunk.metadata.get("context_type") != "quiz_graph_context"
+    ]
+    quiz_graph_context = [
+        chunk for chunk in selected_quiz_context if chunk.metadata.get("context_type") == "quiz_graph_context"
+    ]
+    assert [chunk.chunk_id for chunk in quiz_full_context] == [row["id"] for row in selected_rows]
+    assert {chunk.metadata.get("source_file_id") for chunk in quiz_full_context} == {first["id"]}
+    assert second["id"] not in {chunk.metadata.get("source_file_id") for chunk in quiz_full_context}
+    assert quiz_graph_context
+    assert quiz_graph_context[0].metadata["graph_complete"] is True
+    assert quiz_graph_context[0].metadata["source_file_ids"] == [first["id"]]
+    assert set(quiz_graph_context[0].metadata["source_chunk_ids"]) == {row["id"] for row in selected_rows}
+    assert second["id"] not in {
+        str(node.get("metadata", {}).get("source_file_id") or "")
+        for node in quiz_graph_context[0].metadata["graph_nodes"]
     }
 
     empty_scope_error = _error_event(
