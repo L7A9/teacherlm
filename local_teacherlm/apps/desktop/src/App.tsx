@@ -59,6 +59,11 @@ import type {
   Artifact,
   Conversation,
   CourseBuilderRead,
+  CourseChapter,
+  CourseLesson,
+  CourseLessonBlock,
+  CourseQuiz,
+  CourseQuizSubmissionResult,
   GeneratorManifest,
   LearnerState,
   Message,
@@ -134,6 +139,7 @@ const PIPELINE_STATUSES = new Set([
   "parsing",
   "chunking",
   "extracting_concepts",
+  "planning_course",
   "building_course",
   "embedding",
 ]);
@@ -201,12 +207,12 @@ export default function App() {
 
   useEffect(() => {
     if (!conversation?.id) return;
-    if (!files.some((file) => PIPELINE_STATUSES.has(file.status))) return;
+    if (!files.some((file) => PIPELINE_STATUSES.has(file.status)) && course?.status !== "building") return;
     const timer = window.setInterval(() => {
       void loadConversation(conversation.id);
     }, 3000);
     return () => window.clearInterval(timer);
-  }, [conversation?.id, files]);
+  }, [conversation?.id, files, course?.status]);
 
   useEffect(() => {
     applyTheme(theme);
@@ -401,10 +407,9 @@ export default function App() {
     setBusy(true);
     setStatus("Indexing");
     try {
-      for (const file of Array.from(fileList)) {
-        const uploaded = await api.uploadFile(conversation.id, file);
-        setFiles((current) => [uploaded, ...current.filter((item) => item.id !== uploaded.id)]);
-      }
+      const response = await api.uploadFiles(conversation.id, Array.from(fileList));
+      const uploadedIds = new Set(response.files.map((file) => file.id));
+      setFiles((current) => [...response.files, ...current.filter((item) => !uploadedIds.has(item.id))]);
       await loadConversation(conversation.id);
       setStatus("Ready");
     } finally {
@@ -750,6 +755,7 @@ export default function App() {
         busy={busy}
         artifacts={artifacts}
         course={course}
+        onCourseChange={setCourse}
         outputs={enabledOutputs}
         hint={hint}
         sourcesCollapsed={sourcesCollapsed}
@@ -981,6 +987,7 @@ function WorkspacePage({
   busy,
   artifacts,
   course,
+  onCourseChange,
   outputs,
   hint,
   sourcesCollapsed,
@@ -1013,6 +1020,7 @@ function WorkspacePage({
   busy: boolean;
   artifacts: Artifact[];
   course: CourseBuilderRead | null;
+  onCourseChange: (course: CourseBuilderRead) => void;
   outputs: GeneratorManifest[];
   hint: string | null;
   sourcesCollapsed: boolean;
@@ -1149,7 +1157,7 @@ function WorkspacePage({
                   onRunGenerator={onRunGenerator}
                 />
               ) : (
-                <CoursePanel files={files} course={course} />
+                <CoursePanel conversationId={conversation.id} files={files} course={course} onCourseChange={onCourseChange} />
               )}
             </div>
           ) : (
@@ -1162,7 +1170,7 @@ function WorkspacePage({
                   } as CSSProperties
                 }
               >
-                <CoursePanel files={files} course={course} />
+                <CoursePanel conversationId={conversation.id} files={files} course={course} onCourseChange={onCourseChange} />
               </div>
               <ResizeHandle
                 onDrag={(clientX) => {
@@ -1835,27 +1843,71 @@ function PodcastSetupDialog({
   );
 }
 
-function CoursePanel({ files, course }: { files: SourceFile[]; course: CourseBuilderRead | null }) {
+function CoursePanel({
+  conversationId,
+  files,
+  course,
+  onCourseChange,
+}: {
+  conversationId: string;
+  files: SourceFile[];
+  course: CourseBuilderRead | null;
+  onCourseChange: (course: CourseBuilderRead) => void;
+}) {
+  const [focusMode, setFocusMode] = useState(false);
   return (
-    <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background" aria-label="Generated course">
+    <section
+      className={cn(
+        "flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background",
+        focusMode && "fixed inset-0 z-50 h-dvh w-screen",
+      )}
+      aria-label="Generated course"
+    >
       <header className="app-chrome flex h-11 items-center gap-2 border-b border-border px-4">
         <BookOpen className="h-4 w-4 text-primary" />
-        <h2 className="truncate text-sm font-semibold">Generated course</h2>
+        <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">Generated course</h2>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 px-2 text-xs"
+          onClick={() => setFocusMode((value) => !value)}
+          title={focusMode ? "Return to workspace" : "Open course focus mode"}
+        >
+          {focusMode ? <X className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+          {focusMode ? "Exit focus" : "Focus"}
+        </Button>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <CourseBuilderLikePanel files={files} course={course} />
-      </div>
+      <CourseBuilderLikePanel
+        conversationId={conversationId}
+        files={files}
+        course={course}
+        onCourseChange={onCourseChange}
+        focusMode={focusMode}
+      />
     </section>
   );
 }
 
-function CourseBuilderLikePanel({ files, course }: { files: SourceFile[]; course: CourseBuilderRead | null }) {
+function CourseBuilderLikePanel({
+  conversationId,
+  files,
+  course,
+  onCourseChange,
+  focusMode,
+}: {
+  conversationId: string;
+  files: SourceFile[];
+  course: CourseBuilderRead | null;
+  onCourseChange: (course: CourseBuilderRead) => void;
+  focusMode: boolean;
+}) {
   const readyFiles = files.filter((file) => file.status === "ready");
   const pending = files.filter((file) => file.status !== "ready" && file.status !== "error" && file.status !== "failed").length;
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 
   if (files.length === 0) {
     return (
-      <div className="px-4 py-4 text-xs leading-5 text-muted-foreground">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 text-xs leading-5 text-muted-foreground">
         Upload course files first. After processing, TeacherLM will build a structured text course here.
       </div>
     );
@@ -1863,95 +1915,477 @@ function CourseBuilderLikePanel({ files, course }: { files: SourceFile[]; course
 
   if (pending > 0) {
     return (
-      <div className="flex flex-col gap-3 px-4 py-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <div className="flex flex-col gap-3">
         <StateCard
           icon={<BookOpen className="h-4 w-4 text-primary" />}
           title="Course will be generated after processing"
           body={`${pending} of ${files.length} files are not ready yet.`}
         />
         <ProgressBar percent={Math.round((readyFiles.length / files.length) * 100)} />
+        </div>
       </div>
     );
   }
 
   if (readyFiles.length === 0) {
     return (
-      <div className="flex flex-col gap-3 px-4 py-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <div className="flex flex-col gap-3">
         <StateCard
           icon={<AlertCircle className="h-4 w-4 text-danger" />}
           title="Course files need attention"
           body="No ready source files are available for this conversation yet."
         />
+        </div>
       </div>
     );
   }
 
-  if (!course || course.status !== "ready" || course.chapters.length === 0) {
+  if (!course || (!course.chapters.length && course.status !== "ready")) {
+    const buildStage = String(course?.metadata?.stage || "planning").replace(/_/g, " ");
     return (
-      <div className="flex flex-col gap-3 px-4 py-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <div className="flex flex-col gap-3">
         <StateCard
           icon={<Loader2 className="h-4 w-4 animate-spin text-primary" />}
           title="Building course"
-          body="TeacherLM is organizing the ready sources into chapters, lessons, citations, and review questions."
+          body={`TeacherLM is ${buildStage}: organizing the ready sources into a cumulative course.`}
         />
+        </div>
       </div>
     );
   }
 
-  return (
-    <div className="flex flex-col gap-4 px-4 py-4">
-      <section className="flex flex-col gap-2">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <h3 className="text-sm font-semibold">{course.title || "Generated course"}</h3>
-            <p className="mt-1 line-clamp-3 text-xs leading-5 text-muted-foreground">
-              {course.description || "TeacherLM generated this course from the ready sources."}
-            </p>
-          </div>
-          <Badge variant="primary">{course.chapters.length} chapters</Badge>
-        </div>
-        {course.learning_objectives && course.learning_objectives.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {course.learning_objectives.slice(0, 4).map((objective) => (
-              <Badge key={objective} variant="muted">{objective}</Badge>
-            ))}
-          </div>
-        )}
-      </section>
+  const allItems = course.chapters.flatMap((chapter) => [
+    ...chapter.lessons.map((lesson) => lesson.id),
+    ...(chapter.quiz ? [chapter.quiz.id] : []),
+  ]).concat(course.final_quiz ? [course.final_quiz.id] : []);
+  const defaultItem = course.chapters
+    .flatMap((chapter) => chapter.lessons)
+    .find((lesson) => !lesson.is_locked && !lesson.is_completed)?.id
+    ?? course.chapters.flatMap((chapter) => chapter.lessons).find((lesson) => !lesson.is_locked)?.id
+    ?? course.chapters[0]?.lessons[0]?.id
+    ?? null;
+  const activeId = selectedItemId && allItems.includes(selectedItemId) ? selectedItemId : defaultItem;
+  const selectedLesson = course.chapters
+    .flatMap((chapter) => chapter.lessons.map((lesson) => ({ chapter, lesson })))
+    .find((item) => item.lesson.id === activeId);
+  const selectedQuiz = [
+    ...course.chapters.flatMap((chapter) => chapter.quiz ? [{ chapter, quiz: chapter.quiz }] : []),
+    ...(course.final_quiz ? [{ chapter: null, quiz: course.final_quiz }] : []),
+  ].find((item) => item.quiz.id === activeId);
 
-      <ol className="app-chrome flex flex-col gap-2">
+  const lessonTotal = course.chapters.reduce((total, chapter) => total + chapter.lessons.length, 0);
+  const completedLessons = course.progress?.completed_lesson_count ?? 0;
+  const passedChapters = course.progress?.passed_chapter_count ?? 0;
+  const progressUnits = Math.max(1, lessonTotal + course.chapters.length + 1);
+  const completedUnits = completedLessons + passedChapters + (course.progress?.course_completed ? 1 : 0);
+  const buildReady = Number(course.metadata?.ready_chapter_count ?? course.chapters.length);
+  const buildTotal = Number(course.metadata?.total_chapter_count ?? course.chapters.length);
+  const qualityMode = String(course.metadata?.quality_mode || "fallback");
+
+  return (
+    <div className={cn(
+      "grid min-h-0 flex-1 grid-cols-1 overflow-hidden",
+      focusMode && "sm:grid-cols-[minmax(230px,25%)_minmax(0,1fr)]",
+    )}>
+      <aside className={cn(
+        "app-chrome min-h-0 overflow-y-auto border-b border-border bg-surface/60 p-3",
+        focusMode ? "sm:border-b-0 sm:border-r" : "max-h-[42vh]",
+      )}>
+        <div className="mb-3">
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="text-sm font-semibold leading-5">{course.title || "Generated course"}</h3>
+            <Badge variant={course.status === "ready" ? "success" : "primary"}>
+              {course.status === "ready" ? "Ready" : `${buildReady}/${buildTotal}`}
+            </Badge>
+          </div>
+          <p className="mt-1 line-clamp-3 text-[11px] leading-4 text-muted-foreground">{course.description}</p>
+          <div className="mt-3">
+            <div className="mb-1 flex justify-between text-[10px] text-muted-foreground">
+              <span>Learning progress</span>
+              <span>{Math.round((completedUnits / progressUnits) * 100)}%</span>
+            </div>
+            <ProgressBar percent={(completedUnits / progressUnits) * 100} />
+          </div>
+          {course.status === "building" && (
+            <div className="mt-2 rounded-md border border-primary/20 bg-primary/10 p-2 text-[10px] leading-4 text-primary">
+              <Loader2 className="mr-1 inline h-3 w-3 animate-spin" />
+              Publishing chapter {Math.min(buildReady + 1, buildTotal)} of {buildTotal}
+            </div>
+          )}
+          {qualityMode !== "llm" && (
+            <div className="mt-2 rounded-md border border-[hsl(var(--warning)/0.35)] bg-[hsl(var(--warning)/0.1)] p-2 text-[10px] leading-4 text-foreground">
+              {qualityMode === "mixed" ? "Some sections use source-extracted fallback content." : "Source-extracted course; configure a chat model for deeper synthesis."}
+            </div>
+          )}
+        </div>
+        <ol className="flex flex-col gap-2">
         {course.chapters.map((chapter, index) => (
           <li key={chapter.id}>
-            <section className="rounded-md border border-border bg-surface transition-colors hover:bg-muted/40">
-              <div className="flex w-full items-start gap-2 px-3 py-2 text-left">
-                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--success))]" />
-                <div className="min-w-0 flex-1">
-                  <p className="line-clamp-2 text-xs font-medium">Chapter {index + 1}: {chapter.title}</p>
-                  {chapter.summary && (
-                    <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-muted-foreground">{chapter.summary}</p>
-                  )}
-                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                    <Badge variant="success">{chapter.lessons.length} lessons</Badge>
-                    <Badge variant="muted">{chapter.source_chunk_ids.length} chunks</Badge>
-                  </div>
-                  <div className="mt-2 flex flex-col gap-1.5">
-                    {chapter.lessons.slice(0, 4).map((lesson) => (
-                      <div key={lesson.id} className="rounded border border-border/70 bg-background px-2 py-1.5">
-                        <p className="line-clamp-1 text-[11px] font-medium">{lesson.title}</p>
-                        {lesson.summary && (
-                          <p className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-muted-foreground">{lesson.summary}</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <div className={cn("rounded-md border bg-background", chapter.is_locked ? "border-border/60 opacity-65" : "border-border")}>
+              <div className="flex items-start gap-2 px-2.5 py-2">
+                {chapter.is_complete ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 text-[hsl(var(--success))]" /> : chapter.is_locked ? <KeyRound className="mt-0.5 h-3.5 w-3.5 text-muted-foreground" /> : <BookOpen className="mt-0.5 h-3.5 w-3.5 text-primary" />}
+                <p className="min-w-0 flex-1 text-[11px] font-semibold leading-4">{index + 1}. {chapter.title}</p>
               </div>
-            </section>
+              <div className="border-t border-border/70 p-1">
+                {chapter.lessons.map((lesson, lessonIndex) => (
+                  <button
+                    key={lesson.id}
+                    type="button"
+                    disabled={lesson.is_locked}
+                    onClick={() => setSelectedItemId(lesson.id)}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[11px] transition-colors",
+                      activeId === lesson.id ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                      lesson.is_locked && "cursor-not-allowed opacity-60",
+                    )}
+                  >
+                    {lesson.is_completed ? <Check className="h-3 w-3 text-[hsl(var(--success))]" /> : lesson.is_locked ? <KeyRound className="h-3 w-3" /> : <span className="w-3 text-center text-[9px]">{lessonIndex + 1}</span>}
+                    <span className="min-w-0 flex-1 truncate">{lesson.title}</span>
+                  </button>
+                ))}
+                {chapter.quiz && (
+                  <button
+                    type="button"
+                    disabled={chapter.quiz.is_locked}
+                    onClick={() => setSelectedItemId(chapter.quiz!.id)}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[11px] transition-colors",
+                      activeId === chapter.quiz.id ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                      chapter.quiz.is_locked && "cursor-not-allowed opacity-60",
+                    )}
+                  >
+                    {chapter.quiz.is_passed ? <CheckCircle2 className="h-3 w-3 text-[hsl(var(--success))]" /> : chapter.quiz.is_locked ? <KeyRound className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
+                    <span>Chapter quiz</span>
+                  </button>
+                )}
+              </div>
+            </div>
           </li>
         ))}
-      </ol>
+        {course.final_quiz && (
+          <li>
+            <button
+              type="button"
+              disabled={course.final_quiz.is_locked}
+              onClick={() => setSelectedItemId(course.final_quiz!.id)}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-md border border-border bg-background px-2.5 py-2 text-left text-[11px] font-semibold",
+                activeId === course.final_quiz.id && "border-primary/40 bg-primary/10 text-primary",
+                course.final_quiz.is_locked && "cursor-not-allowed opacity-60",
+              )}
+            >
+              {course.final_quiz.is_passed ? <CheckCircle2 className="h-3.5 w-3.5 text-[hsl(var(--success))]" /> : course.final_quiz.is_locked ? <KeyRound className="h-3.5 w-3.5" /> : <GraduationCap className="h-3.5 w-3.5" />}
+              Final course quiz
+            </button>
+          </li>
+        )}
+        </ol>
+      </aside>
+
+      <main className="content-selectable min-h-0 overflow-y-auto bg-background">
+        {selectedLesson ? (
+          <CourseLessonView
+            conversationId={conversationId}
+            chapter={selectedLesson.chapter}
+            lesson={selectedLesson.lesson}
+            course={course}
+            onCourseChange={onCourseChange}
+            onNavigate={setSelectedItemId}
+          />
+        ) : selectedQuiz ? (
+          <CourseQuizView
+            conversationId={conversationId}
+            chapter={selectedQuiz.chapter}
+            quiz={selectedQuiz.quiz}
+            onCourseChange={onCourseChange}
+            onNavigateLesson={setSelectedItemId}
+          />
+        ) : (
+          <div className="flex min-h-full items-center justify-center p-8 text-center text-sm text-muted-foreground">
+            {course.status === "building" ? "The first chapter is being prepared." : "Select an unlocked subchapter to begin."}
+          </div>
+        )}
+      </main>
     </div>
+  );
+}
+
+function CourseLessonView({
+  conversationId,
+  chapter,
+  lesson,
+  course,
+  onCourseChange,
+  onNavigate,
+}: {
+  conversationId: string;
+  chapter: CourseChapter;
+  lesson: CourseLesson;
+  course: CourseBuilderRead;
+  onCourseChange: (course: CourseBuilderRead) => void;
+  onNavigate: (id: string) => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const lessonIndex = chapter.lessons.findIndex((item) => item.id === lesson.id);
+
+  async function completeLesson() {
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await api.completeCourseLesson(conversationId, lesson.id);
+      onCourseChange(updated);
+      const updatedChapter = updated.chapters.find((item) => item.id === chapter.id);
+      const nextLesson = updatedChapter?.lessons[lessonIndex + 1];
+      if (nextLesson && !nextLesson.is_locked) onNavigate(nextLesson.id);
+      else if (updatedChapter?.quiz && !updatedChapter.quiz.is_locked) onNavigate(updatedChapter.quiz.id);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not complete this subchapter.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <article className="mx-auto flex w-full max-w-4xl flex-col gap-5 px-4 py-5 sm:px-7 sm:py-7">
+      <header className="border-b border-border pb-4">
+        <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+          <Badge variant="primary">Chapter {chapter.order_index !== undefined ? chapter.order_index + 1 : course.chapters.indexOf(chapter) + 1}</Badge>
+          <span>Subchapter {lessonIndex + 1} of {chapter.lessons.length}</span>
+          {lesson.is_completed && <Badge variant="success"><Check className="h-3 w-3" /> Completed</Badge>}
+        </div>
+        <h1 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">{lesson.title}</h1>
+        {lesson.summary && (
+          <div className="course-markdown mt-2 text-sm text-muted-foreground">
+            <AssistantMarkdown content={lesson.summary} />
+          </div>
+        )}
+        {lesson.learning_objectives.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {lesson.learning_objectives.map((objective) => <Badge key={objective} variant="muted">{objective}</Badge>)}
+          </div>
+        )}
+      </header>
+
+      {lesson.blocks.map((block) => <CourseBlockRenderer key={block.id} block={block} />)}
+
+      <CourseCitations citations={lesson.citations} />
+
+      <footer className="flex flex-col items-start gap-2 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs leading-5 text-muted-foreground">
+          Complete this foundation to unlock the next subchapter.
+        </p>
+        <Button onClick={completeLesson} disabled={saving || lesson.is_completed}>
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+          {lesson.is_completed ? "Completed" : "Mark complete"}
+        </Button>
+      </footer>
+      {error && <p role="alert" className="text-xs text-[hsl(var(--danger))]">{error}</p>}
+    </article>
+  );
+}
+
+function CourseBlockRenderer({ block }: { block: CourseLessonBlock }) {
+  const special = ["equation", "matrix", "chemical_equation", "table", "timeline"].includes(block.block_type);
+  if (block.block_type === "table" && block.data_json?.headers && block.data_json?.rows) {
+    return (
+      <section className="rounded-lg border border-border bg-surface p-4">
+        <h2 className="mb-3 text-sm font-semibold">{block.title}</h2>
+        <div className="overflow-x-auto rounded-md border border-border">
+          <table className="min-w-full border-collapse text-left text-xs">
+            <caption className="sr-only">{block.title}</caption>
+            <thead className="bg-muted">
+              <tr>{block.data_json.headers.map((header, index) => <th key={`${header}-${index}`} scope="col" className="border-b border-r border-border px-3 py-2 font-semibold last:border-r-0">{header}</th>)}</tr>
+            </thead>
+            <tbody>{block.data_json.rows.map((row, rowIndex) => <tr key={rowIndex} className="even:bg-muted/40">{row.map((cell, cellIndex) => <td key={cellIndex} className="border-b border-r border-border px-3 py-2 align-top last:border-r-0">{cell}</td>)}</tr>)}</tbody>
+          </table>
+        </div>
+        <CourseCitations citations={block.citations} compact />
+      </section>
+    );
+  }
+  if (block.block_type === "timeline" && block.data_json?.events) {
+    return (
+      <section className="rounded-lg border border-border bg-surface p-4">
+        <h2 className="mb-4 text-sm font-semibold">{block.title}</h2>
+        <ol className="relative ml-2 border-l border-primary/35 pl-5">
+          {block.data_json.events.map((event, index) => (
+            <li key={`${event.date}-${index}`} className="relative pb-4 last:pb-0">
+              <span className="absolute -left-[1.52rem] top-1 h-2.5 w-2.5 rounded-full border-2 border-primary bg-background" />
+              <time className="text-xs font-semibold text-primary">{event.date}</time>
+              <p className="mt-1 text-sm leading-6 text-surface-foreground">{event.description}</p>
+            </li>
+          ))}
+        </ol>
+        <CourseCitations citations={block.citations} compact />
+      </section>
+    );
+  }
+  return (
+    <section className={cn("course-markdown", special && "rounded-lg border border-primary/20 bg-primary/5 p-4")}>
+      {block.title && block.block_type !== "markdown" && <h2 className="mb-2 text-sm font-semibold">{block.title}</h2>}
+      <AssistantMarkdown content={block.content} />
+      {special && <CourseCitations citations={block.citations} compact />}
+    </section>
+  );
+}
+
+function CourseCitations({ citations, compact = false }: { citations: CourseLessonBlock["citations"]; compact?: boolean }) {
+  if (!citations.length) return null;
+  return (
+    <details className={cn("rounded-md border border-border bg-muted/35", compact ? "mt-3" : "p-1")}>
+      <summary className="cursor-pointer select-none px-2 py-1.5 text-[11px] font-medium text-muted-foreground">
+        {citations.length} grounded source{citations.length === 1 ? "" : "s"}
+      </summary>
+      <ul className="space-y-2 border-t border-border p-2">
+        {citations.map((citation) => (
+          <li key={citation.chunk_id} className="text-[11px] leading-4 text-muted-foreground">
+            <strong className="text-foreground">{citation.source}</strong>{citation.section ? ` · ${citation.section}` : ""}
+            {citation.snippet && <p className="mt-0.5 line-clamp-3">{citation.snippet}</p>}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+function CourseQuizView({
+  conversationId,
+  chapter,
+  quiz,
+  onCourseChange,
+  onNavigateLesson,
+}: {
+  conversationId: string;
+  chapter: CourseChapter | null;
+  quiz: CourseQuiz;
+  onCourseChange: (course: CourseBuilderRead) => void;
+  onNavigateLesson: (id: string) => void;
+}) {
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [result, setResult] = useState<CourseQuizSubmissionResult | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAnswers({});
+    setResult(null);
+    setError(null);
+  }, [quiz.id]);
+
+  async function submit() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const response = await api.submitCourseQuiz(
+        conversationId,
+        quiz.id,
+        Object.entries(answers).map(([question_id, option_id]) => ({ question_id, option_id })),
+      );
+      setResult(response);
+      onCourseChange(response.course);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not submit this quiz.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const resultByQuestion = new Map(result?.results.map((item) => [item.question_id, item]) ?? []);
+  return (
+    <article className="mx-auto flex w-full max-w-4xl flex-col gap-5 px-4 py-5 sm:px-7 sm:py-7">
+      <header className="border-b border-border pb-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant={quiz.scope === "course" ? "primary" : "muted"}>{quiz.scope === "course" ? "Final assessment" : "Chapter quiz"}</Badge>
+          <Badge variant="muted">{quiz.questions.length} questions</Badge>
+          <Badge variant="muted">Pass at {Math.round(quiz.pass_score * 100)}%</Badge>
+          {quiz.is_passed && <Badge variant="success"><CheckCircle2 className="h-3 w-3" /> Mastered</Badge>}
+        </div>
+        <h1 className="mt-3 text-xl font-semibold sm:text-2xl">{quiz.title}</h1>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          {chapter ? `Show that you are ready to build on ${chapter.title}.` : "Connect ideas across the entire course."}
+        </p>
+      </header>
+
+      {quiz.questions.map((question, questionIndex) => {
+        const questionResult = resultByQuestion.get(question.id);
+        return (
+          <fieldset key={question.id} className="rounded-lg border border-border bg-surface p-4">
+            <legend className="px-1 text-sm font-semibold leading-6">{questionIndex + 1}. {question.prompt}</legend>
+            <div className="mt-3 grid gap-2">
+              {question.options.map((option) => {
+                const selected = answers[question.id] === option.id;
+                const correctAfterSubmit = questionResult?.correct_option_id === option.id;
+                const wrongSelection = Boolean(questionResult && selected && !questionResult.correct);
+                return (
+                  <label key={option.id} className={cn(
+                    "flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2.5 text-sm leading-5 transition-colors",
+                    selected ? "border-primary/50 bg-primary/10" : "border-border hover:bg-muted/60",
+                    correctAfterSubmit && "border-[hsl(var(--success)/0.6)] bg-[hsl(var(--success)/0.1)]",
+                    wrongSelection && "border-[hsl(var(--danger)/0.6)] bg-[hsl(var(--danger)/0.08)]",
+                  )}>
+                    <input
+                      type="radio"
+                      name={`course-${quiz.id}-${question.id}`}
+                      value={option.id}
+                      checked={selected}
+                      disabled={Boolean(result)}
+                      onChange={() => setAnswers((current) => ({ ...current, [question.id]: option.id }))}
+                      className="mt-1 accent-[hsl(var(--primary))]"
+                    />
+                    <span>{option.text}</span>
+                  </label>
+                );
+              })}
+            </div>
+            {questionResult && (
+              <div className={cn("mt-3 rounded-md p-3 text-xs leading-5", questionResult.correct ? "bg-[hsl(var(--success)/0.1)]" : "bg-[hsl(var(--warning)/0.12)]")}>
+                <strong>{questionResult.correct ? "Correct." : "Review this foundation."}</strong> {questionResult.explanation}
+              </div>
+            )}
+          </fieldset>
+        );
+      })}
+
+      {result ? (
+        <section className={cn("rounded-lg border p-4", result.passed ? "border-[hsl(var(--success)/0.5)] bg-[hsl(var(--success)/0.1)]" : "border-[hsl(var(--warning)/0.5)] bg-[hsl(var(--warning)/0.1)]")}>
+          <h2 className="text-base font-semibold">{result.passed ? "Foundation mastered" : "A little review will make this stick"}</h2>
+          <p className="mt-1 text-sm">Score: {Math.round(result.score * 100)}% · Attempt {result.attempt_count}</p>
+          {!result.passed && result.review_lesson_ids.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {result.review_lesson_ids.map((lessonId, index) => (
+                <Button key={lessonId} variant="secondary" size="sm" onClick={() => onNavigateLesson(lessonId)}>
+                  Review section {index + 1}
+                </Button>
+              ))}
+            </div>
+          )}
+          {!result.passed && (
+            <Button
+              className="mt-3"
+              size="sm"
+              onClick={() => {
+                setAnswers({});
+                setResult(null);
+              }}
+            >
+              <RotateCcw className="h-3.5 w-3.5" /> Retry quiz
+            </Button>
+          )}
+        </section>
+      ) : (
+        <div className="flex justify-end">
+          <Button onClick={submit} disabled={submitting || Object.keys(answers).length !== quiz.questions.length}>
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <GraduationCap className="h-4 w-4" />}
+            Submit quiz
+          </Button>
+        </div>
+      )}
+      {error && <p role="alert" className="text-xs text-[hsl(var(--danger))]">{error}</p>}
+    </article>
   );
 }
 
@@ -3582,6 +4016,7 @@ function FileStatusBadge({ status, error }: { status: string; error?: string | n
     parsing: "Parsing...",
     chunking: "Chunking...",
     extracting_concepts: "Extracting concepts...",
+    planning_course: "Planning course structure...",
     building_course: "Building course...",
     embedding: "Embedding...",
     ready: "Ready",

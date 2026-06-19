@@ -73,6 +73,20 @@ class SQLiteStore:
                 conn.execute(ddl)
         if "relation_type" not in edge_columns and "edge_type" in edge_columns:
             conn.execute("UPDATE knowledge_graph_edges SET relation_type = edge_type WHERE relation_type = ''")
+        course_columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(coursebuilder_courses)").fetchall()
+        }
+        for column, ddl in {
+            "status": "ALTER TABLE coursebuilder_courses ADD COLUMN status TEXT NOT NULL DEFAULT 'ready'",
+            "build_id": "ALTER TABLE coursebuilder_courses ADD COLUMN build_id TEXT",
+            "source_fingerprint": "ALTER TABLE coursebuilder_courses ADD COLUMN source_fingerprint TEXT NOT NULL DEFAULT ''",
+            "quality_mode": "ALTER TABLE coursebuilder_courses ADD COLUMN quality_mode TEXT NOT NULL DEFAULT 'fallback'",
+            "error": "ALTER TABLE coursebuilder_courses ADD COLUMN error TEXT",
+            "created_at": "ALTER TABLE coursebuilder_courses ADD COLUMN created_at TEXT",
+        }.items():
+            if column not in course_columns:
+                conn.execute(ddl)
 
     def _ensure_dirs(self) -> None:
         data_dir = self.settings.data_dir
@@ -212,6 +226,9 @@ class SQLiteStore:
                 "learner_state",
                 "review_windows",
                 "knowledge_checks",
+                "coursebuilder_plans",
+                "coursebuilder_quiz_attempts",
+                "coursebuilder_progress",
                 "coursebuilder_courses",
                 "artifacts",
                 "generator_run_traces",
@@ -828,8 +845,52 @@ CREATE TABLE IF NOT EXISTS coursebuilder_courses (
   id TEXT PRIMARY KEY,
   conversation_id TEXT NOT NULL,
   payload_json TEXT NOT NULL DEFAULT '{}',
+  status TEXT NOT NULL DEFAULT 'ready',
+  build_id TEXT,
+  source_fingerprint TEXT NOT NULL DEFAULT '',
+  quality_mode TEXT NOT NULL DEFAULT 'fallback',
+  error TEXT,
+  created_at TEXT,
   updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS coursebuilder_plans (
+  id TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL UNIQUE,
+  plan_id TEXT NOT NULL,
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  status TEXT NOT NULL DEFAULT 'draft',
+  source_fingerprint TEXT NOT NULL DEFAULT '',
+  quality_mode TEXT NOT NULL DEFAULT 'fallback',
+  error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_coursebuilder_plans_conversation
+  ON coursebuilder_plans(conversation_id, updated_at);
+
+CREATE TABLE IF NOT EXISTS coursebuilder_progress (
+  conversation_id TEXT PRIMARY KEY,
+  course_id TEXT NOT NULL,
+  source_fingerprint TEXT NOT NULL DEFAULT '',
+  progress_json TEXT NOT NULL DEFAULT '{}',
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS coursebuilder_quiz_attempts (
+  id TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL,
+  course_id TEXT NOT NULL,
+  quiz_id TEXT NOT NULL,
+  answers_json TEXT NOT NULL DEFAULT '[]',
+  score REAL NOT NULL DEFAULT 0,
+  passed INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_coursebuilder_attempts_conversation
+  ON coursebuilder_quiz_attempts(conversation_id, created_at);
 
 CREATE TABLE IF NOT EXISTS artifacts (
   id TEXT PRIMARY KEY,

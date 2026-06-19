@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import json
 import mimetypes
 import re
 from pathlib import Path
@@ -17,6 +19,9 @@ from local_api.services.vector_service import get_vector_service
 
 
 class IngestionService:
+    def __init__(self) -> None:
+        self._tasks: set[asyncio.Task[Any]] = set()
+
     async def ingest_upload(self, conversation_id: str, upload: UploadFile) -> dict:
         raw = await upload.read()
         filename = upload.filename or "upload.txt"
@@ -28,13 +33,15 @@ class IngestionService:
         stored_path = get_settings().data_dir / "objects" / "uploads" / f"{file_hash}_{safe_name}"
         stored_path.parent.mkdir(parents=True, exist_ok=True)
         stored_path.write_bytes(raw)
-        return get_store().create_uploaded_file(
+        record = get_store().create_uploaded_file(
             conversation_id,
             safe_name,
             stored_path,
             mime_type=mime_type,
             size_bytes=len(raw),
         )
+        get_coursebuilder_service().invalidate_plan(conversation_id, "source file added")
+        return record
 
     async def retry_upload(self, conversation_id: str, file_id: str) -> dict:
         record = get_store().get_file_for_conversation(conversation_id, file_id)
@@ -43,6 +50,7 @@ class IngestionService:
         if record["status"] != "failed":
             raise ValueError("only failed files can be retried")
         get_store().clear_file_content(conversation_id, file_id)
+        get_coursebuilder_service().invalidate_plan(conversation_id, "source file retry requested")
         get_store().update_file(
             file_id,
             status="uploaded",
@@ -58,10 +66,23 @@ class IngestionService:
             return {"ok": False, "error": "file not found"}
         return await self._parse_and_index(record)
 
+    async def process_upload_batch(self, file_ids: list[str]) -> list[dict]:
+        return list(await asyncio.gather(*(self.process_upload(file_id) for file_id in file_ids)))
+
+    def resume_incomplete_uploads(self) -> None:
+        rows = get_store().query(
+            "SELECT id FROM uploaded_files WHERE status NOT IN ('ready', 'failed') ORDER BY created_at ASC"
+        )
+        for row in rows:
+            task = asyncio.create_task(self.process_upload(row["id"]))
+            self._tasks.add(task)
+            task.add_done_callback(self._tasks.discard)
+
     async def _parse_and_index(self, file_record: dict) -> dict:
         file_id = file_record["id"]
         conversation_id = file_record["conversation_id"]
         source_path = Path(file_record["stored_path"])
+        get_coursebuilder_service().invalidate_plan(conversation_id, "source file processing restarted")
         get_store().clear_file_content(conversation_id, file_id)
         get_store().update_file(file_id, status="parsing", error=None, chunk_count=0)
         try:
@@ -93,6 +114,9 @@ class IngestionService:
                 for chunk_text in _chunk_text(section["text"], get_settings().chunk_max_chars, get_settings().chunk_overlap_chars):
                     concepts = _extract_concepts(chunk_text)
                     questions = _generated_questions(concepts, section["heading_path"], get_settings().generated_questions_per_chunk)
+                    equations = _extract_equations(chunk_text)
+                    tables = _extract_tables(chunk_text)
+                    timeline_events = _extract_timeline_events(chunk_text)
                     chunks.append(
                         {
                             "id": _stable_chunk_id(file_id, section_id, section_chunk_index, chunk_text),
@@ -120,9 +144,12 @@ class IngestionService:
                                 "generated_questions": questions,
                                 "context_type": "focused_chunk",
                                 "section_summary": _summary(section["text"]),
-                                "equation_count": len(_extract_equations(chunk_text)),
-                                "table_count": len(_extract_tables(chunk_text)),
-                                "timeline_event_count": len(_extract_timeline_events(chunk_text)),
+                                "equation_count": len(equations),
+                                "table_count": len(tables),
+                                "timeline_event_count": len(timeline_events),
+                                "equations": equations,
+                                "tables": tables,
+                                "timeline_events": timeline_events,
                             },
                         }
                     )
@@ -131,7 +158,12 @@ class IngestionService:
             _link_neighbor_chunks(chunks)
             get_store().update_file(file_id, status="extracting_concepts", chunk_count=len(chunks))
             get_store().replace_chunks_for_file(file_id, chunks)
+            self._store_content_features(conversation_id, file_id, chunks)
             self._upsert_concepts(conversation_id, chunks)
+            get_store().update_file(file_id, status="planning_course", chunk_count=len(chunks))
+            plan = await get_coursebuilder_service().prepare_plan_async(conversation_id)
+            if plan.get("status") not in {"draft", "validated"}:
+                raise ValueError("course plan could not be prepared before embedding")
             get_store().update_file(file_id, status="embedding", chunk_count=len(chunks))
             embeddings = await get_vector_service().embed_chunks(chunks)
             retrieval_settings = get_settings_service().effective_retrieval_settings()
@@ -146,7 +178,7 @@ class IngestionService:
             try:
                 ready_files = get_store().list_files(conversation_id)
                 if ready_files and all(file["status"] == "ready" for file in ready_files):
-                    get_coursebuilder_service().rebuild(conversation_id)
+                    await get_coursebuilder_service().rebuild_async(conversation_id)
             except Exception:
                 pass
         except Exception as exc:  # noqa: BLE001
@@ -220,6 +252,50 @@ class IngestionService:
                     VALUES (?, ?, ?, '[]', '{}')
                     """,
                     (new_id("concept"), conversation_id, concept),
+                )
+
+    def _store_content_features(self, conversation_id: str, file_id: str, chunks: list[dict]) -> None:
+        for chunk in chunks:
+            metadata = chunk.get("metadata", {})
+            for expression in metadata.get("equations", []):
+                kind = "matrix" if "\\begin{" in expression and "matrix}" in expression else (
+                    "chemical" if _looks_like_chemical_equation(expression) else "equation"
+                )
+                get_store().execute(
+                    """
+                    INSERT INTO formulas (id, conversation_id, source_file_id, chunk_id, label, expression, metadata_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        new_id("formula"), conversation_id, file_id, chunk["id"], kind, expression,
+                        json.dumps({"kind": kind}, ensure_ascii=False),
+                    ),
+                )
+            for table_markdown in metadata.get("tables", []):
+                rows = [
+                    [cell.strip() for cell in line.strip().strip("|").split("|")]
+                    for line in table_markdown.splitlines()
+                    if line.strip() and not re.match(r"^\s*\|?\s*:?-{3,}", line)
+                ]
+                get_store().execute(
+                    """
+                    INSERT INTO tables (id, conversation_id, source_file_id, chunk_id, caption, content_json, metadata_json)
+                    VALUES (?, ?, ?, ?, ?, ?, '{}')
+                    """,
+                    (
+                        new_id("table"), conversation_id, file_id, chunk["id"], "Source table",
+                        json.dumps({"headers": rows[0] if rows else [], "rows": rows[1:]}, ensure_ascii=False),
+                    ),
+                )
+            for event in metadata.get("timeline_events", []):
+                date_match = re.search(r"\b(?:\d{3,4}(?:\s*(?:BCE|BC|CE|AD))?|Q[1-4]\s+\d{4})\b", event, re.IGNORECASE)
+                get_store().execute(
+                    """
+                    INSERT INTO timeline_events
+                      (id, conversation_id, source_file_id, chunk_id, label, event_date, metadata_json)
+                    VALUES (?, ?, ?, ?, ?, ?, '{}')
+                    """,
+                    (new_id("event"), conversation_id, file_id, chunk["id"], event, date_match.group(0) if date_match else None),
                 )
 
 
@@ -398,6 +474,8 @@ def _clean_line(raw_line: str) -> str:
     line = raw_line.strip()
     if not line:
         return ""
+    if line.startswith("|") and line.endswith("|"):
+        return line
     line = _EMPTY_PARENS_RE.sub(" ", line)
     line = _MONTH_DATE_RE.sub(" ", line)
     line = _PAGE_COUNTER_RE.sub(" ", line)
@@ -541,6 +619,13 @@ def _extract_tables(text: str) -> list[str]:
 def _extract_timeline_events(text: str) -> list[str]:
     event_re = re.compile(r"\b(?:\d{4}|Q[1-4]\s+\d{4}|week\s+\d+|module\s+\d+)\b", re.IGNORECASE)
     return [line.strip() for line in text.splitlines() if event_re.search(line)]
+
+
+def _looks_like_chemical_equation(value: str) -> bool:
+    return bool(
+        re.search(r"(?:->|<-|<=>|=>|→|⇌|\\rightarrow|\\leftrightarrow)", value)
+        and len(re.findall(r"(?:\d*[A-Z][a-z]?\d*)+", value)) >= 2
+    )
 
 
 def _extract_concepts(text: str) -> list[str]:

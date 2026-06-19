@@ -55,6 +55,7 @@ export type SourceFile = {
     | "parsing"
     | "chunking"
     | "extracting_concepts"
+    | "planning_course"
     | "building_course"
     | "embedding"
     | "ready"
@@ -142,40 +143,115 @@ export type CourseLessonBlock = {
   block_type: string;
   title: string;
   content: string;
+  data_json?: {
+    expression?: string;
+    headers?: string[];
+    rows?: string[][];
+    events?: Array<{ date: string; description: string }>;
+    [key: string]: unknown;
+  };
   source_chunk_ids: string[];
   citations: CourseCitation[];
+};
+
+export type CourseQuizOption = {
+  id: string;
+  text: string;
+};
+
+export type CourseQuizQuestion = {
+  id: string;
+  type: "mcq" | string;
+  prompt: string;
+  options: CourseQuizOption[];
+  source_chunk_ids: string[];
+  citations: CourseCitation[];
+};
+
+export type CourseQuiz = {
+  id: string;
+  title: string;
+  scope: "chapter" | "course" | string;
+  questions: CourseQuizQuestion[];
+  pass_score: number;
+  is_locked?: boolean;
+  is_passed?: boolean;
+  attempt_count?: number;
 };
 
 export type CourseLesson = {
   id: string;
   title: string;
+  order_index?: number;
   summary: string;
   learning_objectives: string[];
+  prerequisite_lesson_ids?: string[];
   source_chunk_ids: string[];
   citations: CourseCitation[];
   blocks: CourseLessonBlock[];
+  content_fingerprint?: string;
+  generation_status?: "pending" | "building" | "ready" | string;
+  is_locked?: boolean;
+  is_completed?: boolean;
 };
 
 export type CourseChapter = {
   id: string;
   title: string;
+  order_index?: number;
   description: string;
   summary: string;
+  learning_objectives?: string[];
+  prerequisite_chapter_ids?: string[];
   source_chunk_ids: string[];
   citations: CourseCitation[];
   lessons: CourseLesson[];
+  quiz?: CourseQuiz;
+  generation_status?: "pending" | "building" | "ready" | string;
+  is_locked?: boolean;
+  is_complete?: boolean;
+};
+
+export type CourseProgress = {
+  completed_lesson_ids: string[];
+  passed_quiz_ids: string[];
+  quiz_scores: Record<string, number>;
+  quiz_attempt_counts: Record<string, number>;
+  completed_lesson_count: number;
+  passed_chapter_count: number;
+  course_completed: boolean;
 };
 
 export type CourseBuilderRead = {
   id?: string;
-  status: "empty" | "waiting_for_files" | "ready" | string;
+  status: "empty" | "waiting_for_files" | "building" | "ready" | "failed" | string;
   title?: string;
   description?: string;
   learning_objectives?: string[];
   chapters: CourseChapter[];
+  final_quiz?: CourseQuiz | null;
+  progress?: CourseProgress;
   metadata?: Record<string, unknown>;
   files_total?: number;
   files_pending?: number;
+  files_failed?: number;
+  course_plan?: Record<string, unknown>;
+};
+
+export type CourseQuizSubmissionResult = {
+  score: number;
+  passed: boolean;
+  pass_score: number;
+  attempt_count: number;
+  results: Array<{
+    question_id: string;
+    selected_option_id: string;
+    correct_option_id: string;
+    correct: boolean;
+    explanation: string;
+  }>;
+  review_lesson_ids: string[];
+  course: CourseBuilderRead;
 };
 
 export type StreamEvent =

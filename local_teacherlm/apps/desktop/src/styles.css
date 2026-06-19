@@ -142,8 +142,8 @@
 
   .course-markdown .prose {
     max-width: none;
-    font-size: 0.75rem;
-    line-height: 1.35rem;
+    font-size: 0.875rem;
+    line-height: 1.65rem;
   }
 
   .course-markdown .prose :where(p, ul, ol, blockquote, table) {
@@ -154,8 +154,8 @@
   .course-markdown .prose :where(h1, h2, h3, h4, h5, h6) {
     margin-top: 0.5rem;
     margin-bottom: 0.35rem;
-    font-size: 0.8rem;
-    line-height: 1.2rem;
+    font-size: 0.95rem;
+    line-height: 1.35rem;
   }
 
   .prose .katex-display,

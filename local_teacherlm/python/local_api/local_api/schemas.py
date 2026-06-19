@@ -26,6 +26,15 @@ class GenerateRequest(BaseModel):
     options: dict = Field(default_factory=dict)
 
 
+class CourseQuizAnswer(BaseModel):
+    question_id: str
+    option_id: str
+
+
+class CourseQuizSubmission(BaseModel):
+    answers: list[CourseQuizAnswer] = Field(default_factory=list)
+
+
 class ProviderWrite(BaseModel):
     display_name: str
     provider_type: Literal[
