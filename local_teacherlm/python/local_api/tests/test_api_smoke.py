@@ -20,6 +20,7 @@ def _client(monkeypatch, tmp_path):
     from local_api.config import get_settings
     from local_api.db import get_store
     from local_api.main import create_app
+    import local_api.services.coursebuilder as coursebuilder_module
     import local_api.services.generators as generators_module
     import local_api.services.ingestion as ingestion_module
     import local_api.services.knowledge_graph as graph_module
@@ -43,6 +44,7 @@ def _client(monkeypatch, tmp_path):
     retrieval_module._retrieval_service = None
     generators_module._generator_service = None
     podcast_audio_module.get_podcast_audio_service.cache_clear()
+    coursebuilder_module._coursebuilder_service = None
 
     async def offline_generator_llm(*_args, **_kwargs):
         raise RuntimeError("LLM disabled in API smoke tests")
@@ -1219,6 +1221,665 @@ def test_mindmap_rejects_low_coverage_output_when_sources_support_more() -> None
     assert generators._count_mindmap_nodes(compact) == 21
     with pytest.raises(ValueError, match="too shallow"):
         generators._validated_llm_mindmap(raw, max_nodes=110, min_nodes=35)
+
+
+def test_coursebuilder_mastery_gates_final_quiz_and_rich_blocks(monkeypatch, tmp_path) -> None:
+    client = _client(monkeypatch, tmp_path)
+    conversation = client.post("/api/conversations", json={"title": "Cumulative science history"}).json()
+    uploads = [
+        (
+            "foundations.md",
+            b"""# Mathematical Foundations
+
+## Variables and Equations
+An equation relates quantities and provides the foundation for later calculations.
+
+$$E = mc^2$$
+
+## Matrices
+Matrices organize values so transformations can be calculated consistently.
+
+$$A = \\begin{pmatrix}1 & 0 \\\\ 0 & 1\\end{pmatrix}$$
+
+| Symbol | Meaning |
+| --- | --- |
+| E | Energy |
+| m | Mass |
+
+In 1905 Einstein published work connecting mass and energy.
+""",
+        ),
+        (
+            "applications.md",
+            b"""# Scientific Applications
+
+## Chemical Reactions
+Balanced reactions preserve the number of atoms on both sides.
+
+2H2 + O2 -> 2H2O
+
+## Historical Development
+In 1945 scientific institutions entered a new period of international collaboration.
+Applications depend on the mathematical and scientific foundations introduced earlier.
+""",
+        ),
+    ]
+    for filename, body in uploads:
+        response = client.post(
+            f"/api/conversations/{conversation['id']}/files",
+            files={"upload": (filename, body, "text/markdown")},
+        )
+        assert response.status_code == 200
+
+    course_url = f"/api/conversations/{conversation['id']}/coursebuilder"
+    course = client.get(course_url).json()
+    assert course["status"] == "ready"
+    assert len(course["chapters"]) == 2
+    assert course["chapters"][0]["is_locked"] is False
+    assert course["chapters"][1]["is_locked"] is True
+
+    block_types = {
+        block["block_type"]
+        for chapter in course["chapters"]
+        for lesson in chapter["lessons"]
+        for block in lesson["blocks"]
+    }
+    assert {"equation", "matrix", "chemical_equation", "table", "timeline"} <= block_types
+
+    locked_quiz = course["chapters"][0]["quiz"]
+    locked_submit = client.post(
+        f"{course_url}/quizzes/{locked_quiz['id']}/submit",
+        json={"answers": []},
+    )
+    assert locked_submit.status_code == 409
+
+    from local_api.db import get_store
+
+    for chapter_index in range(len(course["chapters"])):
+        course = client.get(course_url).json()
+        chapter = course["chapters"][chapter_index]
+        assert chapter["is_locked"] is False
+        for lesson in chapter["lessons"]:
+            refreshed = client.get(course_url).json()
+            current_lesson = next(
+                item
+                for item in refreshed["chapters"][chapter_index]["lessons"]
+                if item["id"] == lesson["id"]
+            )
+            assert current_lesson["is_locked"] is False
+            completed = client.post(f"{course_url}/lessons/{lesson['id']}/complete")
+            assert completed.status_code == 200
+
+        public_course = client.get(course_url).json()
+        public_quiz = public_course["chapters"][chapter_index]["quiz"]
+        assert public_quiz["is_locked"] is False
+        assert all("correct_option_id" not in question for question in public_quiz["questions"])
+        assert 4 <= len(public_quiz["questions"]) <= 10
+
+        private_row = get_store().one(
+            "SELECT payload_json FROM coursebuilder_courses WHERE conversation_id = ?",
+            (conversation["id"],),
+        )
+        private_course = json.loads(private_row["payload_json"])
+        private_quiz = private_course["chapters"][chapter_index]["quiz"]
+        correct_by_question = {
+            question["id"]: question["correct_option_id"]
+            for question in private_quiz["questions"]
+        }
+        submitted = client.post(
+            f"{course_url}/quizzes/{public_quiz['id']}/submit",
+            json={
+                "answers": [
+                    {"question_id": question["id"], "option_id": correct_by_question[question["id"]]}
+                    for question in public_quiz["questions"]
+                ]
+            },
+        )
+        assert submitted.status_code == 200
+        assert submitted.json()["passed"] is True
+
+    course = client.get(course_url).json()
+    final_quiz = course["final_quiz"]
+    assert final_quiz["is_locked"] is False
+    assert len(final_quiz["questions"]) == 10
+
+    private_row = get_store().one(
+        "SELECT payload_json FROM coursebuilder_courses WHERE conversation_id = ?",
+        (conversation["id"],),
+    )
+    private_final = json.loads(private_row["payload_json"])["final_quiz"]
+    private_questions = {question["id"]: question for question in private_final["questions"]}
+    wrong_answers = []
+    for question in final_quiz["questions"]:
+        private_question = private_questions[question["id"]]
+        wrong_option = next(
+            option["id"]
+            for option in private_question["options"]
+            if option["id"] != private_question["correct_option_id"]
+        )
+        wrong_answers.append({"question_id": question["id"], "option_id": wrong_option})
+    failed = client.post(
+        f"{course_url}/quizzes/{final_quiz['id']}/submit",
+        json={"answers": wrong_answers},
+    ).json()
+    assert failed["passed"] is False
+    assert failed["review_lesson_ids"]
+
+    retry_course = client.get(course_url).json()
+    retry_quiz = retry_course["final_quiz"]
+    passed = client.post(
+        f"{course_url}/quizzes/{retry_quiz['id']}/submit",
+        json={
+            "answers": [
+                {
+                    "question_id": question["id"],
+                    "option_id": private_questions[question["id"]]["correct_option_id"],
+                }
+                for question in retry_quiz["questions"]
+            ]
+        },
+    ).json()
+    assert passed["passed"] is True
+    assert passed["course"]["progress"]["course_completed"] is True
+
+
+def test_coursebuilder_structured_synthesis_keeps_every_block_grounded(monkeypatch) -> None:
+    from teacherlm_core.llm.providers import LLMProviderConfig
+    import local_api.services.coursebuilder as coursebuilder
+
+    chunks = [
+        {
+            "id": "chunk-foundation",
+            "conversation_id": "conv-synthesis",
+            "source_file_id": "file-foundation",
+            "source_filename": "foundation.md",
+            "chunk_index": 0,
+            "text": "Vector representations are the foundation for semantic retrieval.",
+            "metadata": {
+                "heading_path": "Retrieval > Vector Foundations",
+                "heading_path_list": ["Retrieval", "Vector Foundations"],
+                "section_title": "Vector Foundations",
+                "key_concepts": ["Vector representations"],
+            },
+        },
+        {
+            "id": "chunk-application",
+            "conversation_id": "conv-synthesis",
+            "source_file_id": "file-application",
+            "source_filename": "application.md",
+            "chunk_index": 1,
+            "text": "Semantic retrieval applies vector similarity to rank relevant passages.",
+            "metadata": {
+                "heading_path": "Retrieval > Semantic Retrieval",
+                "heading_path_list": ["Retrieval", "Semantic Retrieval"],
+                "section_title": "Semantic Retrieval",
+                "key_concepts": ["Semantic retrieval"],
+            },
+        },
+    ]
+    fallback = coursebuilder._build_fallback_course("conv-synthesis", chunks, "fingerprint")
+    provider = LLMProviderConfig(provider_id="test", display_name="Test", provider_type="ollama", model_name="test")
+
+    async def fake_complete(_provider, messages, *, json_schema=None, temperature=0.2):
+        properties = (json_schema or {}).get("properties", {})
+        if "chapters" in properties:
+            return json.dumps(
+                {
+                    "title": "Retrieval Foundations",
+                    "description": "A cumulative retrieval course.",
+                    "learning_objectives": ["Connect vector foundations to semantic retrieval"],
+                    "chapters": [
+                        {
+                            "title": "Vector Foundations",
+                            "description": "Build the representation foundation.",
+                            "learning_objectives": ["Explain vector representations"],
+                            "source_chunk_ids": ["chunk-foundation", "chunk-application"],
+                            "lessons": [
+                                {
+                                    "title": "From vectors to retrieval",
+                                    "summary": "Vectors prepare semantic retrieval.",
+                                    "learning_objectives": ["Connect the two ideas"],
+                                    "source_chunk_ids": ["chunk-foundation", "chunk-application"],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+        if "lessons" in properties:
+            return json.dumps(
+                {
+                    "summary": "Vector representations support semantic retrieval.",
+                    "lessons": [
+                        {
+                            "title": "From vectors to retrieval",
+                            "summary": "Vectors prepare semantic retrieval.",
+                            "learning_objectives": ["Connect the two ideas"],
+                            "source_chunk_ids": ["chunk-foundation", "chunk-application"],
+                            "blocks": [
+                                {
+                                    "block_type": "markdown",
+                                    "title": "Foundation",
+                                    "content": "Vector representations provide the basis used by semantic retrieval.",
+                                    "source_chunk_ids": ["chunk-foundation", "chunk-application"],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+        count_match = re.search(r"Create exactly (\d+)", messages[-1].content)
+        count = int(count_match.group(1)) if count_match else 4
+        return json.dumps(
+            {
+                "questions": [
+                    {
+                        "prompt": f"How do vector foundations support semantic retrieval in case {index + 1}?",
+                        "options": [
+                            "They provide representations used for similarity ranking.",
+                            "They remove the need for ranking.",
+                            "They make course evidence unnecessary.",
+                            "They replace passages with unrelated labels.",
+                        ],
+                        "correct_index": 0,
+                        "explanation": "The supplied evidence connects vectors to similarity-based retrieval.",
+                        "source_chunk_id": "chunk-application",
+                    }
+                    for index in range(count)
+                ]
+            }
+        )
+
+    monkeypatch.setattr(coursebuilder, "complete_text", fake_complete)
+    outline = asyncio.run(coursebuilder._build_outline_with_llm(provider, chunks, fallback))
+    chapter = asyncio.run(
+        coursebuilder._build_chapter_with_llm(
+            provider,
+            "conv-synthesis",
+            0,
+            outline.chapters[0],
+            chunks,
+            "",
+        )
+    )
+    assert chapter["lessons"][0]["blocks"]
+    assert chapter["lessons"][0]["blocks"][0]["source_chunk_ids"] == ["chunk-foundation", "chunk-application"]
+    assert len(chapter["quiz"]["questions"]) == 4
+    assert all(question["source_chunk_ids"] == ["chunk-application"] for question in chapter["quiz"]["questions"])
+
+
+def test_coursebuilder_uses_domain_specific_architectures() -> None:
+    import local_api.services.coursebuilder as coursebuilder
+
+    def chunks_for(course_title: str, sections: list[tuple[str, str]]) -> list[dict]:
+        return [
+            {
+                "id": f"{course_title}-{index}",
+                "conversation_id": "conv-domain",
+                "source_file_id": f"file-{course_title}",
+                "source_filename": f"{course_title}.md",
+                "chunk_index": index,
+                "text": text,
+                "metadata": {
+                    "heading_path": f"{course_title} > {title}",
+                    "heading_path_list": [course_title, title],
+                    "section_title": title,
+                    "key_concepts": [],
+                    "equation_count": int("=" in text),
+                },
+            }
+            for index, (title, text) in enumerate(sections)
+        ]
+
+    recommendation = chunks_for(
+        "Recommendation Systems",
+        [
+            ("Evaluation Metrics", "Precision, recall, RMSE and MAE evaluate recommender quality."),
+            ("Hybrid Recommenders", "Hybrid recommenders combine collaborative and content-based components."),
+            ("Collaborative Filtering", "Collaborative filtering learns from user-item interactions."),
+            ("Introduction", "What is a recommendation system and what problem does it solve?"),
+            ("Deep Learning Recommenders", "Neural recommenders learn advanced representations."),
+            ("Fundamentals", "Users, items, ratings and feedback form the prerequisites."),
+            ("Matrix Equations", "The user-item matrix and similarity equations formalize CF."),
+            ("Content-Based Filtering", "Content-based filtering uses item features."),
+        ],
+    )
+    history = chunks_for(
+        "Revolution History",
+        [
+            ("Consequences", "The aftermath and legacy followed the revolution."),
+            ("Events of 1791", "In 1791 central events changed the political order."),
+            ("Background", "The social and economic context developed before 1789."),
+            ("Causes", "Long-term causes and immediate factors led to the revolution in 1789."),
+        ],
+    )
+    chemistry = chunks_for(
+        "General Chemistry",
+        [
+            ("Laboratory Safety", "Chemical laboratory safety covers hazards, handling and disposal."),
+            ("Reaction Mechanisms", "Reaction mechanisms and kinetics explain transformation pathways."),
+            ("Atomic Structure", "Atoms, orbitals, molecules and chemical bonds establish structure."),
+            ("Balanced Reactions", "Chemical reactions conserve atoms: 2H2 + O2 -> 2H2O."),
+        ],
+    )
+    physics = chunks_for(
+        "Classical Physics",
+        [
+            ("Experiments", "Experiments measure force, motion and uncertainty."),
+            ("Derivation", "A derivation uses calculus to obtain the motion equation."),
+            ("Physical Quantities", "Units, vectors and measurement are physics foundations."),
+            ("Newton's Laws", "Newton's law relates force and acceleration: F = ma."),
+        ],
+    )
+
+    cases = [
+        (
+            recommendation,
+            "conceptual",
+            ["Introduction", "Fundamentals", "Collaborative Filtering", "Matrix Equations", "Content-Based Filtering", "Hybrid Recommenders", "Deep Learning Recommenders", "Evaluation Metrics"],
+        ),
+        (history, "historical", ["Background", "Causes", "Events of 1791", "Consequences"]),
+        (chemistry, "chemistry", ["Atomic Structure", "Balanced Reactions", "Reaction Mechanisms", "Laboratory Safety"]),
+        (physics, "physics", ["Physical Quantities", "Newton's Laws", "Derivation", "Experiments"]),
+    ]
+    for chunks, expected_architecture, expected_titles in cases:
+        architecture = coursebuilder._infer_course_architecture(chunks)
+        groups = coursebuilder._chapter_groups(chunks, architecture=architecture)
+        assert architecture == expected_architecture
+        assert [group["title"] for group in groups] == expected_titles
+        assert {chunk["id"] for group in groups for chunk in group["chunks"]} == {chunk["id"] for chunk in chunks}
+
+
+def test_coursebuilder_graph_planning_repairs_omitted_chunk_coverage(monkeypatch) -> None:
+    from teacherlm_core.llm.providers import LLMProviderConfig
+    import local_api.services.coursebuilder as coursebuilder
+
+    chunks = [
+        {
+            "id": chunk_id,
+            "conversation_id": "conv-graph-course",
+            "source_file_id": "file-course",
+            "source_filename": "course.md",
+            "chunk_index": index,
+            "text": text,
+            "metadata": {
+                "heading_path": f"Recommendation Systems > {title}",
+                "heading_path_list": ["Recommendation Systems", title],
+                "section_title": title,
+                "key_concepts": [title],
+            },
+        }
+        for index, (chunk_id, title, text) in enumerate(
+            [
+                ("chunk-cf", "Collaborative Filtering", "Collaborative filtering learns from user-item interactions."),
+                ("chunk-cbf", "Content-Based Filtering", "Content-based filtering uses item features."),
+                ("chunk-hybrid", "Hybrid Recommenders", "Hybrid recommenders combine CF and CBF."),
+            ]
+        )
+    ]
+    graph = {
+        "nodes": [
+            {"id": "node-cf", "node_type": "concept", "label": "Collaborative Filtering", "source_chunk_ids": ["chunk-cf"]},
+            {"id": "node-cbf", "node_type": "concept", "label": "Content-Based Filtering", "source_chunk_ids": ["chunk-cbf"]},
+            {"id": "node-hybrid", "node_type": "concept", "label": "Hybrid Recommenders", "source_chunk_ids": ["chunk-hybrid"]},
+        ],
+        "edges": [
+            {
+                "source_node_id": "node-hybrid",
+                "target_node_id": "node-cf",
+                "relation_type": "requires",
+                "confidence": 0.95,
+                "source_chunk_ids": ["chunk-hybrid", "chunk-cf"],
+            },
+            {
+                "source_node_id": "node-hybrid",
+                "target_node_id": "node-cbf",
+                "relation_type": "requires",
+                "confidence": 0.95,
+                "source_chunk_ids": ["chunk-hybrid", "chunk-cbf"],
+            },
+        ],
+    }
+    fallback = coursebuilder._build_fallback_course("conv-graph-course", chunks, "fingerprint", graph=graph)
+    provider = LLMProviderConfig(provider_id="test", display_name="Test", provider_type="ollama", model_name="test")
+    prompts: list[str] = []
+
+    async def incomplete_outline(_provider, messages, *, json_schema=None, temperature=0.2):
+        prompts.append(messages[-1].content)
+        return json.dumps(
+            {
+                "title": "Recommendation Systems",
+                "description": "A prerequisite-driven recommender course.",
+                "architecture_type": "conceptual",
+                "architecture_rationale": "Components precede their hybrid.",
+                "learning_objectives": ["Connect CF, CBF and hybrid recommenders"],
+                "chapters": [
+                    {
+                        "title": "Filtering Foundations",
+                        "description": "Learn the component recommenders.",
+                        "pedagogical_role": "standard_method",
+                        "source_chunk_ids": ["chunk-cf", "chunk-cbf"],
+                        "lessons": [
+                            {
+                                "title": "CF and CBF",
+                                "source_chunk_ids": ["chunk-cf", "chunk-cbf"],
+                                "pedagogical_role": "standard_method",
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+    monkeypatch.setattr(coursebuilder, "complete_text", incomplete_outline)
+    outline = asyncio.run(coursebuilder._build_outline_with_llm(provider, chunks, fallback, graph=graph))
+    covered = {
+        chunk_id
+        for chapter in outline.chapters
+        for lesson in chapter.lessons
+        for chunk_id in lesson.source_chunk_ids
+    }
+    assert covered == {"chunk-cf", "chunk-cbf", "chunk-hybrid"}
+    assert all(chunk["id"] in prompts[0] for chunk in chunks)
+    assert "Hybrid Recommenders --requires--> Collaborative Filtering" in prompts[0]
+
+
+def test_course_plan_graph_validation_repairs_prerequisite_order() -> None:
+    import local_api.services.coursebuilder as coursebuilder
+
+    chunks = [
+        {
+            "id": chunk_id,
+            "source_file_id": "file-course",
+            "source_filename": "course.md",
+            "chunk_index": index,
+            "text": text,
+            "metadata": {"heading_path_list": ["Recommendation Systems", title]},
+        }
+        for index, (chunk_id, title, text) in enumerate(
+            [
+                ("chunk-hybrid", "Hybrid", "Hybrid recommenders combine component methods."),
+                ("chunk-cf", "Collaborative Filtering", "Collaborative filtering is a component method."),
+            ]
+        )
+    ]
+    outline = coursebuilder.CourseOutline.model_validate(
+        {
+            "title": "Recommendation Systems",
+            "architecture_type": "conceptual",
+            "chapters": [
+                {
+                    "title": "Hybrid Recommenders",
+                    "source_chunk_ids": ["chunk-hybrid"],
+                    "lessons": [{"title": "Hybrid", "source_chunk_ids": ["chunk-hybrid"]}],
+                },
+                {
+                    "title": "Collaborative Filtering",
+                    "source_chunk_ids": ["chunk-cf"],
+                    "lessons": [{"title": "CF", "source_chunk_ids": ["chunk-cf"]}],
+                },
+            ],
+        }
+    )
+    graph = {
+        "nodes": [
+            {"id": "hybrid", "node_type": "concept", "source_chunk_ids": ["chunk-hybrid"]},
+            {"id": "cf", "node_type": "concept", "source_chunk_ids": ["chunk-cf"]},
+        ],
+        "edges": [
+            {
+                "source_node_id": "hybrid",
+                "target_node_id": "cf",
+                "relation_type": "requires",
+                "confidence": 0.95,
+            }
+        ],
+    }
+
+    validated = coursebuilder._validate_plan_with_graph(outline, chunks, graph)
+
+    assert [chapter.title for chapter in validated.chapters] == ["Collaborative Filtering", "Hybrid Recommenders"]
+    assert "Collaborative Filtering" in validated.chapters[1].prerequisite_chapter_titles
+
+
+def test_course_plan_is_saved_before_embedding_and_reused_for_generation(monkeypatch, tmp_path) -> None:
+    client = _client(monkeypatch, tmp_path)
+    conversation = client.post("/api/conversations", json={"title": "Two-stage planning"}).json()
+
+    import local_api.services.coursebuilder as coursebuilder
+    from local_api.db import get_store
+    from local_api.services.vector_service import get_vector_service
+
+    events: list[str] = []
+    outline_calls = 0
+
+    async def planning_llm(_provider, messages, *, json_schema=None, temperature=0.2):
+        nonlocal outline_calls
+        properties = (json_schema or {}).get("properties", {})
+        if "chapters" not in properties:
+            raise RuntimeError("chapter and quiz synthesis disabled for lifecycle test")
+        outline_calls += 1
+        events.append("plan_llm")
+        files = get_store().list_files(conversation["id"])
+        assert files and all(file["status"] == "planning_course" for file in files)
+        prompt = messages[-1].content
+        chunk_ids = _dedupe_test_ids(
+            item
+            for group in re.findall(r"chunk_ids=([^\s|]+)", prompt)
+            for item in group.split(",")
+        )
+        assert chunk_ids
+        return json.dumps(
+            {
+                "title": "Recommendation Systems",
+                "description": "A cumulative plan prepared before vector indexing.",
+                "architecture_type": "conceptual",
+                "architecture_rationale": "Foundations precede methods and evaluation.",
+                "chapters": [
+                    {
+                        "title": "Foundations and Methods",
+                        "source_chunk_ids": chunk_ids,
+                        "pedagogical_role": "foundation",
+                        "lessons": [
+                            {
+                                "title": "Definitions and foundations",
+                                "source_chunk_ids": chunk_ids,
+                                "pedagogical_role": "definition",
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+    monkeypatch.setattr(coursebuilder, "complete_text", planning_llm)
+    vector_service = get_vector_service()
+    original_embed = vector_service.embed_chunks
+
+    async def tracked_embed(chunks):
+        events.append("embedding")
+        plan_row = get_store().one(
+            "SELECT status, payload_json FROM coursebuilder_plans WHERE conversation_id = ?",
+            (conversation["id"],),
+        )
+        assert plan_row is not None
+        assert plan_row["status"] == "draft"
+        assert json.loads(plan_row["payload_json"])["outline"]["chapters"]
+        return await original_embed(chunks)
+
+    monkeypatch.setattr(vector_service, "embed_chunks", tracked_embed)
+    upload = client.post(
+        f"/api/conversations/{conversation['id']}/files/batch",
+        files=[
+            (
+                "uploads",
+                (
+                "recommendation.md",
+                b"""# Recommendation Systems
+
+## Fundamentals
+Users, items, ratings, and feedback define the recommendation problem.
+
+## Collaborative Filtering
+Collaborative filtering learns from user-item interactions.
+
+## Evaluation Metrics
+Precision, recall, RMSE, and MAE evaluate recommendation quality.
+""",
+                "text/markdown",
+                ),
+            ),
+            (
+                "uploads",
+                (
+                    "advanced.md",
+                    b"""# Recommendation Systems
+
+## Hybrid Recommenders
+Hybrid recommenders combine collaborative and content-based components.
+
+## Deep Learning
+Neural recommenders learn advanced user and item representations.
+""",
+                    "text/markdown",
+                ),
+            ),
+        ],
+    )
+    assert upload.status_code == 200
+    assert len(upload.json()["files"]) == 2
+    for uploaded_file in upload.json()["files"]:
+        stored = client.get(f"/api/conversations/{conversation['id']}/files/{uploaded_file['id']}").json()
+        assert stored["status"] == "ready"
+    assert events.index("plan_llm") < events.index("embedding")
+    assert outline_calls == 1
+
+    plan = client.get(f"/api/conversations/{conversation['id']}/coursebuilder/plan").json()
+    assert plan["status"] == "validated"
+    assert plan["metadata"]["stage"] == "validated_with_knowledge_graph"
+    assert plan["metadata"]["chunk_coverage_ratio"] == 1.0
+    assert plan["chapters"][0]["subchapters"][0]["title"] == "Definitions and foundations"
+    assert "blocks" not in json.dumps(plan["outline"])
+    assert "final_quiz" not in json.dumps(plan["outline"])
+
+    course = client.get(f"/api/conversations/{conversation['id']}/coursebuilder").json()
+    assert course["status"] == "ready"
+    assert course["metadata"]["plan_id"] == plan["plan_id"]
+    assert course["chapters"][0]["title"] == plan["chapters"][0]["title"]
+    assert course["chapters"][0]["lessons"][0]["title"] == plan["chapters"][0]["subchapters"][0]["title"]
+
+    deleted = client.delete(
+        f"/api/conversations/{conversation['id']}/files/{upload.json()['files'][1]['id']}"
+    )
+    assert deleted.status_code == 204
+    replanned = client.get(f"/api/conversations/{conversation['id']}/coursebuilder/plan").json()
+    assert replanned["status"] == "validated"
+    assert replanned["plan_id"] != plan["plan_id"]
+    assert replanned["metadata"]["chunk_coverage_ratio"] == 1.0
+
+
+def _dedupe_test_ids(values) -> list[str]:
+    return list(dict.fromkeys(value for value in values if value))
 
 
 def _done_event(raw_sse: str) -> dict:

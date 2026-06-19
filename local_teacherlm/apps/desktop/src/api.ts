@@ -2,6 +2,7 @@ import type {
   Artifact,
   Conversation,
   CourseBuilderRead,
+  CourseQuizSubmissionResult,
   GeneratorManifest,
   LearnerState,
   Message,
@@ -57,6 +58,14 @@ export const api = {
       body: form
     });
   },
+  uploadFiles: async (conversationId: string, files: File[]) => {
+    const form = new FormData();
+    for (const file of files) form.append("uploads", file, file.name);
+    return request<{ files: SourceFile[]; items: SourceFile[]; total: number }>(
+      `/conversations/${conversationId}/files/batch`,
+      { method: "POST", body: form }
+    );
+  },
   deleteFile: (conversationId: string, fileId: string) =>
     request<void>(`/conversations/${conversationId}/files/${fileId}`, { method: "DELETE" }),
   retryFile: (conversationId: string, fileId: string) =>
@@ -69,6 +78,15 @@ export const api = {
     request<CourseBuilderRead>(`/conversations/${conversationId}/coursebuilder`),
   rebuildCoursebuilder: (conversationId: string) =>
     request<CourseBuilderRead>(`/conversations/${conversationId}/coursebuilder/rebuild`, { method: "POST" }),
+  completeCourseLesson: (conversationId: string, lessonId: string) =>
+    request<CourseBuilderRead>(`/conversations/${conversationId}/coursebuilder/lessons/${lessonId}/complete`, {
+      method: "POST"
+    }),
+  submitCourseQuiz: (conversationId: string, quizId: string, answers: Array<{ question_id: string; option_id: string }>) =>
+    request<CourseQuizSubmissionResult>(`/conversations/${conversationId}/coursebuilder/quizzes/${quizId}/submit`, {
+      method: "POST",
+      body: JSON.stringify({ answers })
+    }),
   generators: () => request<{ generators: GeneratorManifest[] }>("/generators"),
   providers: () => request<{ providers: ProviderRead[] }>("/settings/llm-providers"),
   createProvider: (payload: Record<string, unknown>) =>

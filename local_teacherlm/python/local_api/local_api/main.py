@@ -9,6 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from local_api.config import get_settings
 from local_api.db import get_store
+from local_api.services.coursebuilder import get_coursebuilder_service
+from local_api.services.ingestion import get_ingestion_service
 from local_api.routers import (
     artifacts,
     chat,
@@ -35,6 +37,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app_settings = get_settings()
     logger.info("starting %s at %s", app_settings.app_name, app_settings.data_dir)
     get_store().initialize()
+    get_ingestion_service().resume_incomplete_uploads()
+    get_coursebuilder_service().resume_incomplete_builds()
     yield
     logger.info("shutting down %s", app_settings.app_name)
 

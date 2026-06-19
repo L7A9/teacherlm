@@ -905,6 +905,40 @@ The local API can stay close to the current backend routes:
 The UI should not call built-in or external generator services directly. It
 should call the local orchestrator.
 
+### CourseBuilder contract
+
+CourseBuilder uses two durable stages. After structural parsing, chunking, and
+concept extraction finish for the current source set, but before embeddings
+start, it saves a source-fingerprinted plan containing only ordered chapters and
+subchapters. After embeddings finish and every file is ready, it validates that
+same plan against the complete knowledge graph and then progressively publishes
+grounded lessons, chapter quizzes, a final course quiz, build metadata, and
+learner progress. It always uses all conversation files rather than the chat
+source selection.
+
+The planner infers a course architecture before ordering content. Conceptual,
+historical, chemistry, physics, mathematics, life-science, procedural, and
+mixed courses use different sequencing policies. Planning combines every
+source chunk. Final validation uses the complete local knowledge graph, assigns
+any omitted chunk back to the closest graph- or topic-related lesson, repairs
+graph-derived prerequisites, and rejects an outline unless source coverage
+reaches 100%. Adding, retrying, or deleting a file invalidates the saved plan.
+
+- `GET /api/conversations/{id}/coursebuilder` returns build state and the
+  currently published course without quiz answer keys.
+- `GET /api/conversations/{id}/coursebuilder/plan` returns the persisted
+  chapters/subchapters plan and its draft or graph-validated status.
+- `POST /api/conversations/{id}/coursebuilder/rebuild` queues an idempotent
+  source-fingerprinted rebuild.
+- `POST /api/conversations/{id}/coursebuilder/lessons/{lesson_id}/complete`
+  advances sequential lesson progress.
+- `POST /api/conversations/{id}/coursebuilder/quizzes/{quiz_id}/submit` grades
+  option IDs server-side and applies the 70% mastery gate.
+
+When structured model output is unavailable or invalid, the service keeps a
+cited source-extracted course and reports `fallback` or `mixed` quality instead
+of leaving the student without a course.
+
 ## Streaming
 
 Keep SSE-compatible event names because the current frontend already understands
