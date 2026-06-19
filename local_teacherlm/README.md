@@ -916,6 +916,11 @@ grounded lessons, chapter quizzes, a final course quiz, build metadata, and
 learner progress. It always uses all conversation files rather than the chat
 source selection.
 
+Chapter count is not capped. The planner creates as many coherent chapters as
+the evidence requires. Every chapter has an explicit introduction, one or more
+grounded content subchapters, and a conclusion/transition subchapter; the same
+arc is repaired deterministically when structured model output is incomplete.
+
 The planner infers a course architecture before ordering content. Conceptual,
 historical, chemistry, physics, mathematics, life-science, procedural, and
 mixed courses use different sequencing policies. Planning combines every

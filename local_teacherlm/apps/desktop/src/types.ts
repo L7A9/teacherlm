@@ -191,6 +191,7 @@ export type CourseLesson = {
   blocks: CourseLessonBlock[];
   content_fingerprint?: string;
   generation_status?: "pending" | "building" | "ready" | string;
+  lesson_stage?: "introduction" | "content" | "conclusion" | string;
   is_locked?: boolean;
   is_completed?: boolean;
 };
