@@ -27,9 +27,9 @@ async def _generate_stream(conversation_id: str, payload: GenerateRequest) -> As
     prompt = payload.prompt or f"Generate {payload.output_type}"
     source_file_ids = list(dict.fromkeys(payload.source_file_ids))
     generation_options = dict(payload.options)
-    if payload.output_type in {"mindmap", "quiz"}:
+    if payload.output_type in {"mindmap", "quiz", "podcast"}:
         if not source_file_ids:
-            output_label = "mind map" if payload.output_type == "mindmap" else "quiz"
+            output_label = {"mindmap": "mind map", "quiz": "quiz", "podcast": "podcast"}[payload.output_type]
             yield sse("error", {"message": f"Select at least one ready source file before generating the {output_label}."})
             return
         ready_file_ids = {
@@ -65,6 +65,13 @@ async def _generate_stream(conversation_id: str, payload: GenerateRequest) -> As
                 "rebuild_from_scratch": True,
                 "retrieval_mode": "full_selected_files_with_graph",
                 "include_knowledge_graph": True,
+                "source_file_ids_snapshot": source_file_ids,
+            }
+        )
+    elif payload.output_type == "podcast":
+        generation_options.update(
+            {
+                "generation_run_id": new_id("podcast_run"),
                 "source_file_ids_snapshot": source_file_ids,
             }
         )

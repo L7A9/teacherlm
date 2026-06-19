@@ -35,6 +35,10 @@ npm.cmd run dev
 
 The Tauri installer path requires Rust/Cargo plus platform webview build tools.
 
+### Local podcast audio
+
+The built-in podcast generator accepts an optional `topic` and a `duration_minutes` value from 3 to 15 (default 6). It creates the grounded Alex/Sam transcript first, then synthesizes English or French audio locally. The first English podcast downloads an approximately 23 MB multi-speaker bundle; French uses two clearer native voice bundles totaling approximately 42 MB. Downloads are verified under the TeacherLM app-data `models/tts` directory, and later runs use the cache offline. Technical terms and ranking acronyms are normalized for pronunciation without changing the saved transcript. If model download or speech synthesis fails, generation still completes with the transcript artifact.
+
 The goal is not to make a thin wrapper around the current Docker platform. The
 goal is to rebuild the same product as a local-first desktop app where student
 files, indexes, learner state, conversations, artifacts, and settings live on

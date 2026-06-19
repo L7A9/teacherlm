@@ -92,6 +92,11 @@ type QuizForm = {
   question_type: QuizQuestionType;
 };
 
+type PodcastForm = {
+  topic: string;
+  duration_minutes: number;
+};
+
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "link";
 type ButtonSize = "sm" | "md" | "lg" | "icon";
 
@@ -107,6 +112,11 @@ const DEFAULT_PROVIDER_FORM: ProviderForm = {
 const DEFAULT_QUIZ_FORM: QuizForm = {
   question_count: 8,
   question_type: "mcq",
+};
+
+const DEFAULT_PODCAST_FORM: PodcastForm = {
+  topic: "",
+  duration_minutes: 6,
 };
 
 const OUTPUT_BUTTONS = [
@@ -161,6 +171,8 @@ export default function App() {
   const [providerForm, setProviderForm] = useState<ProviderForm>(DEFAULT_PROVIDER_FORM);
   const [quizDialogOpen, setQuizDialogOpen] = useState(false);
   const [quizForm, setQuizForm] = useState<QuizForm>(DEFAULT_QUIZ_FORM);
+  const [podcastDialogOpen, setPodcastDialogOpen] = useState(false);
+  const [podcastForm, setPodcastForm] = useState<PodcastForm>(DEFAULT_PODCAST_FORM);
 
   const routeConversationId = route.kind === "conversation" ? route.conversationId : null;
 
@@ -450,10 +462,19 @@ export default function App() {
       setQuizDialogOpen(true);
       return;
     }
+    if (outputType === "podcast") {
+      setPodcastDialogOpen(true);
+      return;
+    }
     void runGenerator(outputType);
   }
 
-  async function runGenerator(outputType: string, options: Record<string, unknown> = {}) {
+  async function runGenerator(
+    outputType: string,
+    options: Record<string, unknown> = {},
+    promptOverride?: string,
+    preserveInput = false,
+  ) {
     if (!conversation || busy) return;
     const sourceFileIds = [...selectedFiles];
     if (outputType === "mindmap" && sourceFileIds.length === 0) return;
@@ -463,8 +484,8 @@ export default function App() {
         ? "Generating a fresh quiz from all selected chunks and their knowledge graph…"
         : "",
     );
-    const prompt = input.trim() || `Generate ${outputType}`;
-    setInput("");
+    const prompt = promptOverride?.trim() || input.trim() || `Generate ${outputType}`;
+    if (!preserveInput) setInput("");
     setMessages((current) => [
       ...current,
       optimisticMessage(conversation.id, "user", prompt, outputType),
@@ -491,6 +512,18 @@ export default function App() {
     });
   }
 
+  function startPodcastFromDialog() {
+    const durationMinutes = Math.max(
+      3,
+      Math.min(15, Math.trunc(Number(podcastForm.duration_minutes) || DEFAULT_PODCAST_FORM.duration_minutes)),
+    );
+    const topic = podcastForm.topic.trim().slice(0, 200);
+    setPodcastForm({ topic, duration_minutes: durationMinutes });
+    setPodcastDialogOpen(false);
+    const prompt = topic || `Generate a ${durationMinutes}-minute podcast from the selected course material`;
+    void runGenerator("podcast", { topic, duration_minutes: durationMinutes }, prompt, true);
+  }
+
   function handleStreamEvent(event: StreamEvent) {
     if (event.event === "progress" && typeof event.data === "object" && event.data && "stage" in event.data) {
       const stage = String(event.data.stage);
@@ -498,6 +531,16 @@ export default function App() {
         setDraft("The model is generating your quiz from the selected files. This can take about a minute…");
       } else if (stage === "llm_quiz_validated") {
         setDraft("Quiz generated—validating answers and sources…");
+      } else if (stage === "podcast_extracting_arc") {
+        setDraft("Planning the podcast from your selected sources…");
+      } else if (stage === "podcast_writing_dialogue") {
+        setDraft("Alex and Sam are writing their grounded dialogue…");
+      } else if (stage === "podcast_transcript_ready") {
+        setDraft("Transcript ready—preparing the local voices…");
+      } else if (stage === "podcast_preparing_voices") {
+        setDraft("Preparing the local voice model. The first run may download about 23 MB…");
+      } else if (stage === "podcast_assembling_audio") {
+        setDraft("Assembling and encoding the podcast audio…");
       }
     }
     if (event.event === "token" && typeof event.data === "string") {
@@ -737,6 +780,15 @@ export default function App() {
           onChange={setQuizForm}
           onCancel={() => setQuizDialogOpen(false)}
           onConfirm={startQuizFromDialog}
+        />
+      )}
+      {podcastDialogOpen && (
+        <PodcastSetupDialog
+          value={podcastForm}
+          busy={busy}
+          onChange={setPodcastForm}
+          onCancel={() => setPodcastDialogOpen(false)}
+          onConfirm={startPodcastFromDialog}
         />
       )}
       {conversationToDelete && (
@@ -1685,6 +1737,104 @@ function QuizSetupDialog({
   );
 }
 
+function PodcastSetupDialog({
+  value,
+  busy,
+  onChange,
+  onCancel,
+  onConfirm,
+}: {
+  value: PodcastForm;
+  busy: boolean;
+  onChange: (value: PodcastForm) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const minutes = Math.max(3, Math.min(15, Math.trunc(Number(value.duration_minutes) || 6)));
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !busy) onCancel();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [busy, onCancel]);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 px-4 backdrop-blur-sm"
+      role="presentation"
+      onClick={busy ? undefined : onCancel}
+    >
+      <section
+        className="w-full max-w-md overflow-hidden rounded-lg border border-border bg-surface shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Podcast setup"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
+              <Mic2 className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="truncate text-base font-semibold">Podcast</h2>
+              <p className="mt-1 text-sm leading-5 text-muted-foreground">Create an English or French conversation between two hosts.</p>
+            </div>
+          </div>
+          <Button variant="ghost" size="icon" title="Close" aria-label="Close podcast setup" disabled={busy} onClick={onCancel}>
+            <X className="h-4 w-4" />
+          </Button>
+        </header>
+
+        <div className="flex flex-col gap-4 px-5 py-4">
+          <Field label="Topic (optional)">
+            <Input
+              value={value.topic}
+              maxLength={200}
+              placeholder="Leave blank to cover the selected material"
+              disabled={busy}
+              onChange={(event) => onChange({ ...value, topic: event.target.value.slice(0, 200) })}
+            />
+          </Field>
+          <p className="-mt-2 text-xs leading-5 text-muted-foreground">
+            {value.topic.length}/200 characters. The podcast stays grounded in the checked course files.
+          </p>
+
+          <Field label="Length in minutes">
+            <Input
+              type="number"
+              min={3}
+              max={15}
+              value={value.duration_minutes}
+              disabled={busy}
+              onChange={(event) =>
+                onChange({
+                  ...value,
+                  duration_minutes: Math.max(3, Math.min(15, Math.trunc(Number(event.target.value) || 3))),
+                })
+              }
+            />
+          </Field>
+          <p className="-mt-2 text-xs leading-5 text-muted-foreground">Choose between 3 and 15 minutes. The default is 6.</p>
+        </div>
+
+        <footer className="flex justify-end gap-2 border-t border-border px-5 py-4">
+          <Button variant="secondary" onClick={onCancel} disabled={busy}>
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={onConfirm} disabled={busy || minutes < 3 || minutes > 15}>
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic2 className="h-4 w-4" />}
+            Generate podcast
+          </Button>
+        </footer>
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
 function CoursePanel({ files, course }: { files: SourceFile[]; course: CourseBuilderRead | null }) {
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background" aria-label="Generated course">
@@ -2453,6 +2603,10 @@ function ArtifactRenderer({
     );
   }
 
+  if (kind === "podcast") {
+    return <PodcastAudioPreview artifact={artifact} />;
+  }
+
   if (kind === "transcript") {
     return (
       <TextArtifactBoundary artifact={artifact}>
@@ -2470,6 +2624,25 @@ function ArtifactRenderer({
   }
 
   return <ArtifactFilePreview artifact={artifact} siblings={siblings} />;
+}
+
+function PodcastAudioPreview({ artifact }: { artifact: Artifact }) {
+  return (
+    <section className="rounded-lg border border-border bg-background p-4">
+      <div className="mb-3 flex items-center gap-3">
+        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
+          <Mic2 className="h-4 w-4" />
+        </span>
+        <div className="min-w-0">
+          <h3 className="truncate text-sm font-semibold">Two-host podcast</h3>
+          <p className="mt-0.5 text-xs text-muted-foreground">Alex and Sam explain the selected course material.</p>
+        </div>
+      </div>
+      <audio controls preload="metadata" className="w-full" src={artifactHref(artifact)}>
+        Your browser does not support audio playback.
+      </audio>
+    </section>
+  );
 }
 
 type QuizArtifactPayload = {
@@ -2830,13 +3003,26 @@ function artifactGroupMeta(outputType: string | null): {
 }
 
 function findDownloadArtifact(artifacts: Artifact[]): Artifact | null {
-  return artifacts.find((artifact) => normalizeArtifactKind(artifact) === "html") ?? artifacts[0] ?? null;
+  return (
+    artifacts.find((artifact) => normalizeArtifactKind(artifact) === "podcast") ??
+    artifacts.find((artifact) => normalizeArtifactKind(artifact) === "html") ??
+    artifacts[0] ??
+    null
+  );
 }
 
 function previewArtifactsForGroup(artifacts: Artifact[]): Artifact[] {
   const mindmapArtifact = artifacts.find((artifact) => normalizeArtifactKind(artifact) === "mindmap");
   if (mindmapArtifact) return [mindmapArtifact];
-  return artifacts;
+  return [...artifacts].sort((left, right) => {
+    const priority = (artifact: Artifact) => {
+      const kind = normalizeArtifactKind(artifact);
+      if (kind === "podcast") return 0;
+      if (kind === "transcript") return 1;
+      return 2;
+    };
+    return priority(left) - priority(right);
+  });
 }
 
 function artifactHref(artifact: Artifact): string {
