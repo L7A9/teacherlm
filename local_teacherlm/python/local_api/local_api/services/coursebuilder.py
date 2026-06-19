@@ -5,6 +5,7 @@ import hashlib
 import json
 import random
 import re
+import unicodedata
 from collections import Counter
 from typing import Any, Literal
 
@@ -15,15 +16,18 @@ from teacherlm_core.schemas.generator_io import LearnerUpdates
 from local_api.db import get_store, new_id, utc_now
 from local_api.services.knowledge_graph import get_knowledge_graph_service
 from local_api.services.learner import get_learner_service
+from local_api.services.retrieval import get_retrieval_service
 from local_api.services.settings import get_settings_service
 
 
-MAX_CHAPTERS = 12
-MAX_LESSONS_PER_CHAPTER = 8
+MAX_LESSONS_PER_CHAPTER = 14
 MAX_BLOCKS_PER_LESSON = 9
+MAX_LESSON_EVIDENCE_CHUNKS = 12
+MIN_TEACHING_SOURCE_WORDS = 140
+MIN_RICH_BLOCK_WORDS = 85
 PASS_SCORE = 0.70
-COURSEBUILDER_VERSION = "local-coursebuilder-v4-persisted-plan"
-COURSE_PLAN_CONTRACT_VERSION = "1.0.0"
+COURSEBUILDER_VERSION = "local-coursebuilder-v8-strict-scientific-blocks"
+COURSE_PLAN_CONTRACT_VERSION = "1.3.0"
 STRUCTURE_PENDING_STATUSES = {"uploaded", "parsing", "chunking", "extracting_concepts"}
 
 PedagogicalRole = Literal[
@@ -64,6 +68,8 @@ ArchitectureType = Literal[
     "procedural",
     "mixed",
 ]
+
+LessonStage = Literal["introduction", "content", "conclusion"]
 
 ARCHITECTURE_ROLE_ORDER: dict[str, tuple[str, ...]] = {
     "conceptual": (
@@ -113,6 +119,8 @@ class OutlineLesson(BaseModel):
     pedagogical_role: PedagogicalRole = "core_concept"
     sequencing_reason: str = Field(default="", max_length=400)
     prerequisite_lesson_titles: list[str] = Field(default_factory=list, max_length=8)
+    lesson_stage: LessonStage = "content"
+    source_queries: list[str] = Field(default_factory=list, max_length=8)
 
 
 class OutlineChapter(BaseModel):
@@ -123,7 +131,8 @@ class OutlineChapter(BaseModel):
     pedagogical_role: PedagogicalRole = "core_concept"
     sequencing_reason: str = Field(default="", max_length=500)
     prerequisite_chapter_titles: list[str] = Field(default_factory=list, max_length=8)
-    lessons: list[OutlineLesson] = Field(min_length=1, max_length=MAX_LESSONS_PER_CHAPTER)
+    source_queries: list[str] = Field(default_factory=list, max_length=10)
+    lessons: list[OutlineLesson] = Field(min_length=1)
 
 
 class CourseOutline(BaseModel):
@@ -132,14 +141,18 @@ class CourseOutline(BaseModel):
     learning_objectives: list[str] = Field(default_factory=list, max_length=10)
     architecture_type: ArchitectureType = "conceptual"
     architecture_rationale: str = Field(default="", max_length=700)
-    chapters: list[OutlineChapter] = Field(min_length=1, max_length=MAX_CHAPTERS)
+    chapters: list[OutlineChapter] = Field(min_length=1)
 
 
 class DraftBlock(BaseModel):
-    block_type: Literal["markdown", "example", "summary"] = "markdown"
+    block_type: Literal[
+        "markdown", "definition", "example", "procedure", "warning", "summary",
+        "table", "equation", "diagram",
+    ] = "markdown"
     title: str = Field(default="", max_length=140)
     content: str = Field(min_length=20, max_length=7000)
     source_chunk_ids: list[str] = Field(default_factory=list, min_length=1)
+    source_query: str = Field(default="", max_length=500)
 
 
 class DraftLesson(BaseModel):
@@ -148,6 +161,7 @@ class DraftLesson(BaseModel):
     learning_objectives: list[str] = Field(default_factory=list, max_length=5)
     source_chunk_ids: list[str] = Field(default_factory=list, min_length=1)
     blocks: list[DraftBlock] = Field(min_length=1, max_length=6)
+    lesson_stage: LessonStage = "content"
 
 
 class ChapterDraft(BaseModel):
@@ -257,12 +271,17 @@ class LocalCourseBuilderService:
                 outline = _outline_from_course(fallback)
             else:
                 try:
-                    outline = await _build_outline_with_llm(provider, chunks, fallback)
+                    outline = await asyncio.wait_for(
+                        _build_outline_with_llm(provider, chunks, fallback),
+                        timeout=max(10.0, float(provider.timeout_s)),
+                    )
                     quality_mode = "llm"
                 except Exception as exc:  # noqa: BLE001 - deterministic planning is the recovery boundary.
                     outline = _outline_from_course(fallback)
                     error = str(exc)[:500]
             outline = _ensure_outline_coverage(outline, chunks, None)
+            outline = _ensure_outline_chapter_arcs(outline)
+            outline = _ensure_outline_source_queries(outline, chunks, None)
             outline = _sequence_outline(outline)
             plan_payload = {
                 **planning_payload,
@@ -431,6 +450,12 @@ class LocalCourseBuilderService:
                 fallback_chapters = 0
                 previous_summary = ""
                 fallback_by_sources = _fallback_chapters_by_sources(fallback)
+                retrieval_totals = {
+                    "chapter_retrieval_count": 0,
+                    "lesson_retrieval_count": 0,
+                    "block_retrieval_count": 0,
+                    "weak_support_lesson_count": 0,
+                }
                 for index, chapter_outline in enumerate(outline.chapters):
                     self._save_job(
                         job_id,
@@ -460,6 +485,9 @@ class LocalCourseBuilderService:
                         )
                         fallback_chapters += 1
                     chapter["prerequisite_chapter_ids"] = [ready_chapters[-1]["id"]] if ready_chapters else []
+                    chapter_generation = chapter.get("generation_metadata", {})
+                    for key in retrieval_totals:
+                        retrieval_totals[key] += int(chapter_generation.get(key, 0) or 0)
                     ready_chapters.append(chapter)
                     previous_summary = chapter.get("summary", "")
                     payload["chapters"] = ready_chapters
@@ -468,6 +496,7 @@ class LocalCourseBuilderService:
                             "stage": "generating_chapter",
                             "ready_chapter_count": len(ready_chapters),
                             "total_chapter_count": len(outline.chapters),
+                            **retrieval_totals,
                         }
                     )
                     self._save_course(
@@ -493,6 +522,7 @@ class LocalCourseBuilderService:
                         "ready_chapter_count": len(ready_chapters),
                         "quality_mode": "mixed" if fallback_chapters or outline_mode == "fallback" else "llm",
                         "fallback_chapter_count": fallback_chapters,
+                        **retrieval_totals,
                     }
                 )
                 quality_mode = payload["metadata"]["quality_mode"]
@@ -912,9 +942,16 @@ async def _build_outline_with_llm(
         "material should follow context, causes, chronology, events, consequences, and interpretation. Chemistry should "
         "follow particles/structure, principles, reactions, mechanisms/calculation, procedure, application, and safety. "
         "Physics should follow quantities/foundations, mathematics, laws/models, derivations, experiments, and applications. "
+        "There is no maximum chapter count: create as many coherent chapters as the evidence requires and never merge "
+        "distinct topics merely to reduce chapter count. Every chapter must contain at least three ordered subchapters: "
+        "one lesson_stage=introduction for its purpose and prerequisites, one or more lesson_stage=content subchapters, "
+        "and one lesson_stage=conclusion that synthesizes the chapter and prepares the next foundation. "
         "Assign architecture_type, architecture_rationale, pedagogical_role, sequencing_reason, and prerequisite titles. "
+        "For every chapter and subchapter, add concise source_queries containing the original source headings, canonical "
+        "concepts, formulas, dates, or named processes that should retrieve its evidence after embedding. "
         "Use every supplied chunk ID at least once across the lessons. Merge duplicate teaching points, but never drop their "
-        "chunk IDs. Never add outside facts. Return JSON matching the schema with 1-12 chapters and 1-8 lessons per chapter."
+        "chunk IDs. Never add outside facts. Return JSON matching the schema with an unbounded chapter count and 3-14 "
+        "subchapters per chapter, including its introduction and conclusion."
     )
     user = (
         f"DETERMINISTIC ARCHITECTURE HINT: {architecture_hint}\n"
@@ -944,7 +981,209 @@ async def _build_outline_with_llm(
         if not chapter.source_chunk_ids or any(not lesson.source_chunk_ids for lesson in chapter.lessons):
             raise ValueError("outline contains an ungrounded chapter or lesson")
     outline = _ensure_outline_coverage(outline, chunks, graph)
+    outline = _ensure_outline_chapter_arcs(outline)
+    outline = _ensure_outline_source_queries(outline, chunks, graph)
     return _sequence_outline(outline)
+
+
+async def _retrieve_lesson_evidence(
+    conversation_id: str,
+    chapter: OutlineChapter,
+    lesson: OutlineLesson,
+    chapter_chunks: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], int]:
+    """Use the normal hybrid+graph retriever, constrained to the planned chapter."""
+    chapter_by_id = {str(chunk["id"]): chunk for chunk in chapter_chunks}
+    planned = [chapter_by_id[item] for item in lesson.source_chunk_ids if item in chapter_by_id]
+    pool = _dedupe_chunk_rows([*planned, *chapter_chunks])
+    query = "\n".join(
+        _clean_queries(
+            [
+                lesson.title,
+                *lesson.source_queries,
+                *lesson.learning_objectives,
+                chapter.title,
+                *chapter.source_queries,
+                "definition detailed explanation mechanism example contrast application",
+            ],
+            limit=16,
+        )
+    )
+    retrieved_ids: list[str] = []
+    retrieval_count = 0
+    try:
+        hits = await get_retrieval_service().retrieve_for(
+            conversation_id=conversation_id,
+            user_message=query,
+            output_type="text",
+            source_file_ids=_dedupe(chunk.get("source_file_id", "") for chunk in pool),
+            options={"top_k": MAX_LESSON_EVIDENCE_CHUNKS * 2, "hyde_enabled": False},
+        )
+        retrieval_count = 1
+        retrieved_ids = [str(hit.chunk_id) for hit in hits if str(hit.chunk_id) in chapter_by_id]
+    except Exception:  # noqa: BLE001 - deterministic lexical selection remains available offline.
+        retrieval_count = 1
+
+    retrieved = [chapter_by_id[item] for item in _dedupe(retrieved_ids) if item in chapter_by_id]
+    ranked_planned = [
+        chunk
+        for chunk in _rank_lesson_chunks(planned, chapter, lesson)
+        if not _looks_like_structure_only_chunk(chunk)
+    ]
+    if _has_rich_teaching_material(ranked_planned):
+        selected = _dedupe_chunk_rows(
+            [
+                *[chunk for chunk in ranked_planned if chunk["id"] in set(retrieved_ids)],
+                *ranked_planned,
+            ]
+        )
+        return selected[:MAX_LESSON_EVIDENCE_CHUNKS], retrieval_count
+
+    ranked = _rank_lesson_chunks(pool, chapter, lesson)
+    teaching = [
+        chunk
+        for chunk in _dedupe_chunk_rows([*ranked, *retrieved])
+        if not _looks_like_structure_only_chunk(chunk)
+    ]
+    if not teaching:
+        teaching = ranked or planned or chapter_chunks
+    return teaching[:MAX_LESSON_EVIDENCE_CHUNKS], retrieval_count
+
+
+def _rank_lesson_chunks(
+    chunks: list[dict[str, Any]],
+    chapter: OutlineChapter,
+    lesson: OutlineLesson,
+) -> list[dict[str, Any]]:
+    terms = set(
+        _norm(
+            " ".join(
+                [
+                    lesson.title,
+                    *lesson.source_queries,
+                    *lesson.learning_objectives,
+                    chapter.title,
+                    *chapter.source_queries,
+                ]
+            )
+        ).split()
+    )
+    planned_ids = set(lesson.source_chunk_ids)
+    scored: list[tuple[float, int, dict[str, Any]]] = []
+    for index, chunk in enumerate(chunks):
+        metadata = chunk.get("metadata", {})
+        haystack = _norm(
+            " ".join(
+                [
+                    str(metadata.get("heading_path") or ""),
+                    " ".join(str(item) for item in metadata.get("heading_path_list") or []),
+                    " ".join(str(item) for item in metadata.get("key_concepts") or []),
+                    str(chunk.get("text") or "")[:2400],
+                ]
+            )
+        )
+        overlap = len(terms.intersection(haystack.split()))
+        score = float(overlap * 2)
+        if str(chunk["id"]) in planned_ids:
+            score += 8.0
+        score += min(4.0, _word_count(str(chunk.get("text") or "")) / 90.0)
+        if _looks_like_structure_only_chunk(chunk):
+            score -= 20.0
+        scored.append((score, index, chunk))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [chunk for _, _, chunk in scored]
+
+
+def _planned_lesson_evidence(
+    outline: OutlineChapter,
+    evidence_by_lesson: dict[str, list[dict[str, Any]]],
+    *,
+    max_chars: int = 46_000,
+) -> str:
+    sections: list[str] = []
+    remaining = max_chars
+    lesson_count = max(1, len(outline.lessons))
+    per_lesson = max(1800, max_chars // lesson_count)
+    for lesson in outline.lessons:
+        chunks = evidence_by_lesson.get(_norm(lesson.title), [])
+        header = (
+            f"LESSON: {lesson.title}\n"
+            f"STAGE: {lesson.lesson_stage}\n"
+            f"SOURCE QUERIES: {' | '.join(lesson.source_queries)}\n"
+        )
+        body = _chapter_evidence(chunks, max_chars=min(per_lesson, max(0, remaining - len(header))))
+        section = f"{header}{body}".strip()
+        if not section or len(section) > remaining:
+            break
+        sections.append(section)
+        remaining -= len(section) + 2
+    return "\n\n".join(sections)
+
+
+def _dedupe_chunk_rows(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for chunk in chunks:
+        chunk_id = str(chunk.get("id") or "")
+        if not chunk_id or chunk_id in seen:
+            continue
+        seen.add(chunk_id)
+        rows.append(chunk)
+    return rows
+
+
+def _word_count(text: str) -> int:
+    return len(re.findall(r"\w+", str(text or ""), flags=re.UNICODE))
+
+
+def _looks_like_structure_only_chunk(chunk: dict[str, Any]) -> bool:
+    text = " ".join(str(chunk.get("text") or "").split()).strip()
+    if not text or _word_count(text) <= 4:
+        return True
+    folded = _norm(text)
+    if "source plan item" in folded:
+        return True
+    metadata = chunk.get("metadata", {})
+    heading = _norm(
+        f"{metadata.get('heading_path', '')} {' '.join(str(item) for item in metadata.get('heading_path_list') or [])}"
+    )
+    structure_terms = ("agenda", "contents", "outline", "table of contents", "table des matieres")
+    if any(term in heading or term in folded[:160] for term in structure_terms) and _word_count(text) < 90:
+        return True
+    lines = [line.strip(" -\t") for line in str(chunk.get("text") or "").splitlines() if line.strip()]
+    if len(lines) >= 3 and _word_count(text) < 120:
+        title_like = sum(len(line.split()) <= 9 and not re.search(r"[.!?:;]$", line) for line in lines)
+        if title_like / len(lines) >= 0.7:
+            return True
+    return False
+
+
+def _has_rich_teaching_material(chunks: list[dict[str, Any]]) -> bool:
+    teaching = [chunk for chunk in chunks if not _looks_like_structure_only_chunk(chunk)]
+    words = sum(min(_word_count(str(chunk.get("text") or "")), 320) for chunk in teaching[:MAX_LESSON_EVIDENCE_CHUNKS])
+    return words >= MIN_TEACHING_SOURCE_WORDS
+
+
+def _is_thin_teaching_block(block_type: str, content: str, title: str) -> bool:
+    if block_type not in {"markdown", "definition", "example", "procedure", "summary"}:
+        return not str(content or "").strip()
+    text = " ".join(str(content or "").split()).strip()
+    if not text or "source plan item" in _norm(text):
+        return True
+    normalized_text = _norm(text)
+    normalized_title = _norm(title)
+    if normalized_text == normalized_title:
+        return True
+    return _word_count(text) < MIN_RICH_BLOCK_WORDS
+
+
+def _fallback_content_for_block(block_type: str, chunks: list[dict[str, Any]]) -> str:
+    ordered = _example_first(chunks) if block_type == "example" else chunks
+    return _source_paragraphs(ordered, sentence_limit=10, max_chars=3000)
+
+
+def _insufficient_source_message() -> str:
+    return "The uploaded sources do not contain enough detailed material to teach this point reliably."
 
 
 async def _build_chapter_with_llm(
@@ -959,17 +1198,43 @@ async def _build_chapter_with_llm(
     chapter_chunks = [chunk_by_id[item] for item in outline.source_chunk_ids if item in chunk_by_id]
     if not chapter_chunks:
         raise ValueError("chapter has no valid evidence")
-    allowed_ids = {chunk["id"] for chunk in chapter_chunks}
+    lesson_evidence: dict[str, list[dict[str, Any]]] = {}
+    lesson_retrieval_count = 0
+    weak_support_count = 0
+    for planned_lesson in outline.lessons:
+        selected, retrieval_count = await _retrieve_lesson_evidence(
+            conversation_id,
+            outline,
+            planned_lesson,
+            chapter_chunks,
+        )
+        lesson_evidence[_norm(planned_lesson.title)] = selected
+        lesson_retrieval_count += retrieval_count
+        if not _has_rich_teaching_material(selected):
+            weak_support_count += 1
+    allowed_ids = {
+        chunk["id"]
+        for selected in lesson_evidence.values()
+        for chunk in selected
+    }
+    if not allowed_ids:
+        raise ValueError("chapter has no teachable evidence")
     lesson_plan = "\n".join(
-        f"- {lesson.title}: role={lesson.pedagogical_role}; prerequisites={lesson.prerequisite_lesson_titles}; "
+        f"- {lesson.title}: stage={lesson.lesson_stage}; role={lesson.pedagogical_role}; "
+        f"prerequisites={lesson.prerequisite_lesson_titles}; "
         f"chunk_ids={lesson.source_chunk_ids}; objectives={lesson.learning_objectives}"
         for lesson in outline.lessons
     )
-    evidence = _chapter_evidence(chapter_chunks)
+    evidence = _planned_lesson_evidence(outline, lesson_evidence)
     system = (
-        "Write a warm, rigorous chapter from only the supplied evidence. Preserve equations and technical notation. "
-        "Each block must cite one or more supplied chunk IDs. Use markdown for explanations, example for grounded worked "
-        "examples, and summary for takeaways. Do not invent examples, dates, equations, or claims. Return valid JSON."
+        "Write a warm, rigorous chapter from only the supplied, lesson-scoped evidence. Preserve equations, matrices, "
+        "chemical notation, dates, tables, and technical notation. Preserve the exact lesson titles and order from the "
+        "lesson plan. Every block must cite one or more chunk IDs shown under that same lesson; never cite evidence from "
+        "another lesson merely because it is in the chapter. Use definition or markdown for developed explanations, "
+        "example for grounded worked examples, procedure for supported steps, equation/table when the evidence contains "
+        "them, warning when the evidence is insufficient, and summary for synthesis. Rich prose blocks must contain "
+        "several connected explanatory sentences, not title repetition or plan markers. Put a focused retrieval phrase "
+        "in source_query for each block. Do not invent examples, dates, equations, or claims. Return valid JSON."
     )
     user = (
         f"CHAPTER: {outline.title}\nPEDAGOGICAL ROLE: {outline.pedagogical_role}\n"
@@ -986,7 +1251,13 @@ async def _build_chapter_with_llm(
     draft = ChapterDraft.model_validate(json.loads(raw))
     lessons: list[dict[str, Any]] = []
     for lesson_index, lesson in enumerate(draft.lessons[:MAX_LESSONS_PER_CHAPTER]):
-        lesson_ids = _valid_ids(lesson.source_chunk_ids, allowed_ids)
+        planned = next(
+            (item for item in outline.lessons if _norm(item.title) == _norm(lesson.title)),
+            outline.lessons[min(lesson_index, len(outline.lessons) - 1)],
+        )
+        planned_chunks = lesson_evidence.get(_norm(planned.title), [])
+        planned_ids = {chunk["id"] for chunk in planned_chunks}
+        lesson_ids = _valid_ids(lesson.source_chunk_ids, planned_ids)
         lesson_chunks = [chunk_by_id[item] for item in lesson_ids]
         if not lesson_chunks:
             raise ValueError("lesson synthesis is not grounded")
@@ -996,14 +1267,24 @@ async def _build_chapter_with_llm(
             if not source_ids:
                 raise ValueError("lesson block is not grounded")
             block_chunks = [chunk_by_id[item] for item in source_ids]
+            content = block.content
+            validation_status = "supported"
+            if _is_thin_teaching_block(block.block_type, content, block.title or lesson.title):
+                if _has_rich_teaching_material(block_chunks):
+                    content = _fallback_content_for_block(block.block_type, block_chunks)
+                else:
+                    content = _insufficient_source_message()
+                    validation_status = "insufficient_source_material"
             blocks.append(
                 _block(
                     lesson.title,
                     block_index,
                     block.block_type,
                     block.title or lesson.title,
-                    block.content,
+                    content,
                     block_chunks,
+                    validation_status=validation_status,
+                    source_query=block.source_query,
                 )
             )
         blocks.extend(_special_blocks(lesson.title, lesson_chunks, start_index=len(blocks)))
@@ -1017,16 +1298,26 @@ async def _build_chapter_with_llm(
                 "learning_objectives": lesson.learning_objectives,
                 "pedagogical_role": outline.lessons[min(lesson_index, len(outline.lessons) - 1)].pedagogical_role,
                 "sequencing_reason": outline.lessons[min(lesson_index, len(outline.lessons) - 1)].sequencing_reason,
+                "lesson_stage": outline.lessons[min(lesson_index, len(outline.lessons) - 1)].lesson_stage,
                 "prerequisite_lesson_ids": [lessons[-1]["id"]] if lessons else [],
                 "source_chunk_ids": lesson_ids,
                 "citations": _citations(lesson_chunks, lesson_ids),
                 "blocks": blocks[:MAX_BLOCKS_PER_LESSON],
+                "support_status": "supported" if _has_rich_teaching_material(lesson_chunks) else "insufficient_source_material",
+                "source_queries": planned.source_queries,
                 "content_fingerprint": _content_fingerprint(lesson_ids),
                 "generation_status": "ready",
             }
         )
     if not lessons:
         raise ValueError("chapter synthesis returned no lessons")
+    lessons = _align_generated_lessons_to_outline(
+        lessons,
+        outline,
+        chapter_chunks,
+        conversation_id,
+        chapter_index,
+    )
     _ensure_chapter_chunk_coverage(lessons, chapter_chunks)
     quiz_count = min(10, max(4, len(lessons) + 2))
     quiz = await _build_quiz_with_llm(provider, outline.title, chapter_chunks, quiz_count, "chapter")
@@ -1043,11 +1334,72 @@ async def _build_chapter_with_llm(
         "prerequisite_chapter_ids": [],
         "source_chunk_ids": outline.source_chunk_ids,
         "citations": _citations(chapter_chunks, outline.source_chunk_ids),
+        "source_queries": outline.source_queries,
         "lessons": lessons,
         "quiz": quiz,
         "content_fingerprint": _content_fingerprint(outline.source_chunk_ids),
         "generation_status": "ready",
+        "generation_metadata": {
+            "chapter_retrieval_count": 1,
+            "lesson_retrieval_count": lesson_retrieval_count,
+            "weak_support_lesson_count": weak_support_count,
+        },
     }
+
+
+def _align_generated_lessons_to_outline(
+    generated: list[dict[str, Any]],
+    outline: OutlineChapter,
+    chapter_chunks: list[dict[str, Any]],
+    conversation_id: str,
+    chapter_index: int,
+) -> list[dict[str, Any]]:
+    """Publish the exact planned subchapter arc even when synthesis omits an item."""
+    chunk_by_id = {chunk["id"]: chunk for chunk in chapter_chunks}
+    generated_by_title = {_norm(lesson.get("title", "")): lesson for lesson in generated}
+    aligned: list[dict[str, Any]] = []
+    for lesson_index, planned in enumerate(outline.lessons):
+        lesson = generated_by_title.get(_norm(planned.title))
+        planned_chunks = [chunk_by_id[item] for item in planned.source_chunk_ids if item in chunk_by_id]
+        if lesson is None:
+            lesson = _single_fallback_lesson(
+                conversation_id,
+                chapter_index,
+                {
+                    "title": planned.title,
+                    "chunks": planned_chunks or chapter_chunks[:1],
+                    "lesson_stage": planned.lesson_stage,
+                },
+            )
+            if planned.lesson_stage in {"introduction", "conclusion"}:
+                lesson["blocks"] = _boundary_lesson_blocks(
+                    planned.title,
+                    planned_chunks or chapter_chunks[:1],
+                    planned.lesson_stage,
+                )
+        source_ids = _dedupe([*lesson.get("source_chunk_ids", []), *planned.source_chunk_ids])
+        source_chunks = [chunk_by_id[item] for item in source_ids if item in chunk_by_id]
+        lesson.update(
+            {
+                "id": _stable_id(conversation_id, "lesson", chapter_index, lesson_index, planned.title),
+                "title": planned.title,
+                "order_index": lesson_index,
+                "summary": lesson.get("summary") or planned.summary,
+                "learning_objectives": planned.learning_objectives or lesson.get("learning_objectives", []),
+                "pedagogical_role": planned.pedagogical_role,
+                "sequencing_reason": planned.sequencing_reason,
+                "lesson_stage": planned.lesson_stage,
+                "prerequisite_lesson_ids": [aligned[-1]["id"]] if aligned else [],
+                "source_chunk_ids": source_ids,
+                "citations": _citations(source_chunks, source_ids),
+                "source_queries": planned.source_queries,
+                "support_status": "supported" if _has_rich_teaching_material(source_chunks) else "insufficient_source_material",
+                "content_fingerprint": _content_fingerprint(source_ids),
+                "generation_status": "ready",
+            }
+        )
+        aligned.append(lesson)
+    return aligned
 
 
 def _ensure_chapter_chunk_coverage(
@@ -1165,7 +1517,7 @@ def _build_fallback_course(
     architecture = _infer_course_architecture(chunks, graph)
     groups = _chapter_groups(chunks, architecture=architecture, graph=graph)
     chapters = []
-    for chapter_index, group in enumerate(groups[:MAX_CHAPTERS]):
+    for chapter_index, group in enumerate(groups):
         lessons = _lessons_for_group(conversation_id, chapter_index, group)
         source_chunk_ids = _dedupe(chunk["id"] for chunk in group["chunks"])
         chapter_id = _stable_id(conversation_id, "chapter", chapter_index, group["title"])
@@ -1182,6 +1534,10 @@ def _build_fallback_course(
                 "prerequisite_chapter_ids": [chapters[-1]["id"]] if chapters else [],
                 "source_chunk_ids": source_chunk_ids,
                 "citations": _citations(group["chunks"], source_chunk_ids),
+                "source_queries": _clean_queries(
+                    [group["title"], *(_concept_for_chunk(chunk) for chunk in group["chunks"])],
+                    limit=10,
+                ),
                 "lessons": lessons,
                 "quiz": _course_quiz(
                     group["title"],
@@ -1280,14 +1636,17 @@ def _outline_from_course(course: dict[str, Any]) -> CourseOutline:
                 source_chunk_ids=chapter.get("source_chunk_ids", []),
                 pedagogical_role=chapter.get("pedagogical_role", "core_concept"),
                 sequencing_reason=chapter.get("sequencing_reason", ""),
+                source_queries=chapter.get("source_queries", []),
                 lessons=[
                     OutlineLesson(
                         title=lesson["title"],
-                        summary=lesson.get("summary", ""),
+                        summary=str(lesson.get("summary", ""))[:500],
                         learning_objectives=lesson.get("learning_objectives", []),
                         source_chunk_ids=lesson.get("source_chunk_ids", []),
                         pedagogical_role=lesson.get("pedagogical_role", "core_concept"),
                         sequencing_reason=lesson.get("sequencing_reason", ""),
+                        lesson_stage=lesson.get("lesson_stage", "content"),
+                        source_queries=lesson.get("source_queries", []),
                     )
                     for lesson in chapter.get("lessons", [])
                 ],
@@ -1365,7 +1724,7 @@ def _infer_course_architecture(
         )
         for chunk in chunks
     )
-    haystack = _norm(f"{source} {graph_labels}")
+    haystack = _fold_text(f"{source} {graph_labels}")
     keyword_sets: dict[str, tuple[str, ...]] = {
         "historical": (
             "history", "historical", "century", "bce", "dynasty", "empire", "revolution", "war",
@@ -1396,11 +1755,39 @@ def _infer_course_architecture(
         architecture: sum(len(re.findall(rf"(?<!\w){re.escape(keyword)}(?!\w)", haystack)) for keyword in keywords)
         for architecture, keywords in keyword_sets.items()
     }
+    anchor_sets: dict[str, tuple[str, ...]] = {
+        "historical": ("history", "historical", "histoire", "dynasty", "empire", "colonial", "historiography"),
+        "chemistry": ("chemistry", "chimie", "chemical", "chimique", "atom", "atome", "molecule", "stoichiometry", "oxidation", "periodic table"),
+        "physics": ("physics", "physique", "newton", "thermodynamics", "quantum", "electromagnetic", "relativity"),
+        "mathematics": ("mathematics", "mathematique", "theorem", "theoreme", "proof", "lemma", "calculus", "algebra", "geometry", "topology"),
+        "life_science": ("biology", "biologie", "biological", "cell", "genetics", "organism", "protein", "enzyme", "dna", "rna"),
+        "procedural": ("step by step", "workflow", "installation", "configuration", "protocol", "tutorial", "laboratory method", "troubleshooting"),
+    }
+    anchor_counts = {
+        architecture: sum(len(re.findall(rf"(?<!\w){re.escape(keyword)}(?!\w)", haystack)) for keyword in keywords)
+        for architecture, keywords in anchor_sets.items()
+    }
+    conceptual_signals = (
+        "recommendation", "recommender", "systeme de recommandation", "machine learning",
+        "information retrieval", "software", "algorithm", "computer science",
+    )
+    conceptual_count = sum(
+        len(re.findall(rf"(?<!\w){re.escape(keyword)}(?!\w)", haystack))
+        for keyword in conceptual_signals
+    )
+    if conceptual_count >= max(4, max(anchor_counts.values(), default=0) * 2):
+        return "conceptual"
+    for architecture, anchor_count in anchor_counts.items():
+        if anchor_count == 0:
+            scores[architecture] = 0
+        else:
+            scores[architecture] += min(8, anchor_count * 2)
     dated_lines = sum(bool(re.search(r"\b(?:\d{3,4}(?:\s*(?:BCE|BC|CE|AD))?)\b", chunk.get("text", ""), re.I)) for chunk in chunks)
     if dated_lines >= max(3, len(chunks) // 3):
         scores["historical"] += 4
     chemical_equations = sum(any(_looks_chemical(line) for line in str(chunk.get("text", "")).splitlines()) for chunk in chunks)
-    scores["chemistry"] += chemical_equations * 3
+    if anchor_counts["chemistry"]:
+        scores["chemistry"] += chemical_equations * 3
     formula_chunks = sum(int(chunk.get("metadata", {}).get("equation_count") or 0) > 0 for chunk in chunks)
     if scores["physics"] > 0:
         scores["physics"] += min(4, formula_chunks)
@@ -1476,9 +1863,9 @@ def _infer_pedagogical_role(
     course_title: str = "",
     architecture: str = "conceptual",
 ) -> PedagogicalRole:
-    normalized_title = _norm(title)
-    normalized = _norm(f"{title} {text[:4000]}")
-    if any(term in normalized_title for term in ("what is", "definition", "terminology", "overview", "introduction")):
+    normalized_title = _fold_text(title)
+    normalized = _fold_text(f"{title} {text[:4000]}")
+    if any(term in normalized_title for term in ("what is", "qu est ce", "definition", "terminology", "overview", "introduction")):
         return "definition"
     if architecture == "historical":
         if any(term in normalized for term in ("background", "setting", "society", "political context", "economic context")):
@@ -1525,19 +1912,19 @@ def _infer_pedagogical_role(
             return "law"
         if any(term in normalized_title for term in ("proof", "derive", "derivation")):
             return "derivation"
-    if any(term in normalized_title for term in ("fundamental", "foundation", "prerequisite", "basic", "background")):
+    if any(term in normalized_title for term in ("fundamental", "fondement", "foundation", "prerequisite", "prerequis", "basic", "bases", "background")):
         return "foundation"
     if any(term in normalized_title for term in ("equation", "formula", "matrix", "mathematical", "derivation")):
         return "mathematical_formulation"
-    if any(term in normalized_title for term in ("collaborative filtering", "baseline", "standard method", "nearest neighbor")):
+    if any(term in normalized_title for term in ("collaborative filtering", "filtrage collaboratif", "baseline", "standard method", "nearest neighbor", "voisinage")):
         return "standard_method"
-    if any(term in normalized_title for term in ("content based", "content-based", "specialized", "variant")):
+    if any(term in normalized_title for term in ("content based", "filtrage base sur le contenu", "specialized", "variant")):
         return "specialized_method"
-    if any(term in normalized_title for term in ("hybrid", "integration", "combined", "fusion", "ensemble")):
+    if any(term in normalized_title for term in ("hybrid", "hybride", "integration", "combined", "fusion", "ensemble")):
         return "integration"
-    if any(term in normalized_title for term in ("deep learning", "neural", "advanced", "transformer", "representation learning")):
+    if any(term in normalized_title for term in ("deep learning", "apprentissage profond", "neural", "advanced", "avance", "transformer", "representation learning")):
         return "advanced"
-    if any(term in normalized_title for term in ("metric", "evaluation", "validation", "benchmark", "precision", "recall", "rmse", "mae")):
+    if any(term in normalized_title for term in ("metric", "metrique", "evaluation", "validation", "benchmark", "precision", "recall", "rappel", "rmse", "mae", "ndcg")):
         return "evaluation"
     if any(term in normalized_title for term in ("application", "case study", "use case")):
         return "application"
@@ -1574,6 +1961,7 @@ def _sequence_outline(outline: CourseOutline) -> CourseOutline:
             selected = min(
                 candidates,
                 key=lambda key: (
+                    _lesson_stage_rank(getattr(by_title[key], "lesson_stage", "content")),
                     _pedagogical_role_rank(by_title[key].pedagogical_role, architecture),
                     _historical_year_hint(by_title[key].title, getattr(by_title[key], "description", ""), architecture),
                     original[key],
@@ -1596,6 +1984,75 @@ def _sequence_outline(outline: CourseOutline) -> CourseOutline:
     return outline
 
 
+def _lesson_stage_rank(stage: str) -> int:
+    return {"introduction": 0, "content": 1, "conclusion": 2}.get(stage, 1)
+
+
+def _ensure_outline_chapter_arcs(outline: CourseOutline) -> CourseOutline:
+    """Guarantee introduction -> grounded content -> conclusion for every chapter."""
+    for chapter in outline.chapters:
+        for lesson in chapter.lessons:
+            normalized = _norm(lesson.title)
+            if lesson.lesson_stage == "content" and any(
+                term in normalized for term in ("introduction", "chapter overview", "orientation", "learning goals")
+            ):
+                lesson.lesson_stage = "introduction"
+            elif lesson.lesson_stage == "content" and any(
+                term in normalized for term in ("conclusion", "summary and transition", "chapter summary", "chapter review", "recap")
+            ):
+                lesson.lesson_stage = "conclusion"
+
+        introductions = [lesson for lesson in chapter.lessons if lesson.lesson_stage == "introduction"]
+        conclusions = [lesson for lesson in chapter.lessons if lesson.lesson_stage == "conclusion"]
+        content = [lesson for lesson in chapter.lessons if lesson.lesson_stage == "content"]
+        if not content:
+            source = next(iter(chapter.lessons), None)
+            if source is not None:
+                source.lesson_stage = "content"
+                content = [source]
+                introductions = [lesson for lesson in introductions if lesson is not source]
+                conclusions = [lesson for lesson in conclusions if lesson is not source]
+
+        source_ids = _dedupe(
+            [*chapter.source_chunk_ids, *(item for lesson in chapter.lessons for item in lesson.source_chunk_ids)]
+        )
+        if not source_ids:
+            continue
+        intro_role: PedagogicalRole = "context" if outline.architecture_type == "historical" else "definition"
+        introduction = introductions[0] if introductions else OutlineLesson(
+            title=f"Introduction to {chapter.title}",
+            summary=f"Orient the learner to the purpose, vocabulary, and prerequisites of {chapter.title}.",
+            learning_objectives=[f"Identify the purpose and prerequisites of {chapter.title}"],
+            source_chunk_ids=source_ids,
+            pedagogical_role=intro_role,
+            sequencing_reason="Introduces this chapter before its detailed content.",
+            lesson_stage="introduction",
+            source_queries=[chapter.title, f"{chapter.title} definitions prerequisites overview"],
+        )
+        conclusion = conclusions[-1] if conclusions else OutlineLesson(
+            title=f"{chapter.title}: Summary and transition",
+            summary=f"Synthesize {chapter.title} and connect it to the foundation needed next.",
+            learning_objectives=[f"Synthesize the key ideas in {chapter.title}"],
+            source_chunk_ids=source_ids,
+            pedagogical_role="synthesis",
+            sequencing_reason="Consolidates this chapter and prepares the next foundation.",
+            lesson_stage="conclusion",
+            source_queries=[chapter.title, f"{chapter.title} synthesis relationships transition"],
+        )
+        introduction.lesson_stage = "introduction"
+        conclusion.lesson_stage = "conclusion"
+        middle = [
+            *[lesson for lesson in introductions[1:] if lesson is not conclusion],
+            *content,
+            *[lesson for lesson in conclusions[:-1] if lesson is not introduction],
+        ]
+        for lesson in middle:
+            lesson.lesson_stage = "content"
+        chapter.lessons = [introduction, *middle, conclusion]
+        chapter.source_chunk_ids = source_ids
+    return outline
+
+
 def _validate_plan_with_graph(
     outline: CourseOutline,
     chunks: list[dict[str, Any]],
@@ -1613,6 +2070,8 @@ def _validate_plan_with_graph(
         )
     outline = _ensure_outline_coverage(outline, chunks, graph)
     _add_graph_prerequisites(outline, graph)
+    outline = _ensure_outline_chapter_arcs(outline)
+    outline = _ensure_outline_source_queries(outline, chunks, graph)
     return _sequence_outline(outline)
 
 
@@ -1768,6 +2227,78 @@ def _graph_chunk_neighbors(graph: dict[str, Any] | None) -> dict[str, set[str]]:
     return neighbors
 
 
+def _ensure_outline_source_queries(
+    outline: CourseOutline,
+    chunks: list[dict[str, Any]],
+    graph: dict[str, Any] | None,
+) -> CourseOutline:
+    """Make the saved outline an executable retrieval contract."""
+    chunk_by_id = {str(chunk["id"]): chunk for chunk in chunks}
+    graph_terms: dict[str, list[str]] = {}
+    for node in (graph or {}).get("nodes", []):
+        label = _clean_title(str(node.get("label") or ""))
+        if not label or node.get("node_type") in {"course", "file", "document", "chunk"}:
+            continue
+        for chunk_id in node.get("source_chunk_ids") or []:
+            graph_terms.setdefault(str(chunk_id), []).append(label)
+
+    for chapter in outline.chapters:
+        chapter_hints = _source_query_hints(chapter.source_chunk_ids, chunk_by_id, graph_terms)
+        chapter.source_queries = _clean_queries(
+            [chapter.title, *chapter.source_queries, *chapter_hints, *chapter.learning_objectives],
+            limit=10,
+        )
+        for lesson in chapter.lessons:
+            lesson_hints = _source_query_hints(lesson.source_chunk_ids, chunk_by_id, graph_terms)
+            lesson.source_queries = _clean_queries(
+                [
+                    lesson.title,
+                    *lesson.source_queries,
+                    *lesson_hints,
+                    *lesson.learning_objectives,
+                    f"{chapter.title} {lesson.pedagogical_role}",
+                ],
+                limit=8,
+            )
+    return outline
+
+
+def _source_query_hints(
+    source_chunk_ids: list[str],
+    chunk_by_id: dict[str, dict[str, Any]],
+    graph_terms: dict[str, list[str]],
+) -> list[str]:
+    hints: list[str] = []
+    for chunk_id in source_chunk_ids:
+        chunk = chunk_by_id.get(str(chunk_id))
+        if chunk is None:
+            continue
+        metadata = chunk.get("metadata", {})
+        path = metadata.get("heading_path_list") or []
+        if isinstance(path, list):
+            hints.extend(str(item) for item in path[-2:] if str(item).strip())
+        elif metadata.get("heading_path"):
+            hints.append(str(metadata["heading_path"]))
+        hints.extend(str(item) for item in metadata.get("key_concepts") or [])
+        hints.extend(graph_terms.get(str(chunk_id), []))
+    return hints
+
+
+def _clean_queries(values: list[str], *, limit: int) -> list[str]:
+    queries: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        query = re.sub(r"\s+", " ", str(value or "")).strip()[:500]
+        key = _norm(query)
+        if len(key) < 2 or key in seen:
+            continue
+        seen.add(key)
+        queries.append(query)
+        if len(queries) >= limit:
+            break
+    return queries
+
+
 def _graph_planning_context(graph: dict[str, Any] | None, allowed_chunk_ids: set[str]) -> str:
     if not graph:
         return ""
@@ -1826,6 +2357,31 @@ def _chapter_groups(
     graph: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     architecture = architecture or _infer_course_architecture(chunks, graph)
+    file_order = _dedupe(str(chunk.get("source_file_id") or "") for chunk in chunks)
+    if len(file_order) > 1:
+        grouped_by_file: dict[str, dict[str, Any]] = {}
+        for chunk in chunks:
+            file_id = str(chunk.get("source_file_id") or chunk.get("source_filename") or "source")
+            grouped_by_file.setdefault(file_id, {"title": "", "chunks": []})["chunks"].append(chunk)
+        groups = list(grouped_by_file.values())
+        for group in groups:
+            group["title"] = _course_unit_title(group["chunks"])
+    else:
+        groups = _chapter_groups_from_single_source(chunks)
+
+    for group in groups:
+        role = _infer_pedagogical_role(
+            group["title"],
+            " ".join(str(chunk.get("text", ""))[:800] for chunk in group["chunks"][:3]),
+            architecture=architecture,
+        )
+        group["pedagogical_role"] = role
+        group["sequencing_reason"] = _sequencing_reason(role, architecture)
+        group["architecture_type"] = architecture
+    return _sort_groups_with_graph(groups, graph, architecture)
+
+
+def _chapter_groups_from_single_source(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     root_titles = {
         _norm(str(path[0]))
         for chunk in chunks
@@ -1842,24 +2398,43 @@ def _chapter_groups(
         title = _clean_title(title) or chunk["source_filename"]
         key = title.casefold() if use_section_level else f"{chunk['source_file_id']}::{title.casefold()}"
         grouped.setdefault(key, {"title": title, "chunks": []})["chunks"].append(chunk)
-    groups = list(grouped.values())
-    for group in groups:
-        role = _infer_pedagogical_role(
-            group["title"],
-            " ".join(str(chunk.get("text", ""))[:800] for chunk in group["chunks"][:3]),
-            architecture=architecture,
-        )
-        group["pedagogical_role"] = role
-        group["sequencing_reason"] = _sequencing_reason(role, architecture)
-        group["architecture_type"] = architecture
-    groups = _sort_groups_with_graph(groups, graph, architecture)
-    if len(groups) <= MAX_CHAPTERS:
-        return groups
-    # Merge overflow chapters into the nearest preceding source group so no evidence is discarded.
-    kept = groups[:MAX_CHAPTERS]
-    for index, group in enumerate(groups[MAX_CHAPTERS:]):
-        kept[(MAX_CHAPTERS - 1) - (index % min(3, MAX_CHAPTERS))]["chunks"].extend(group["chunks"])
-    return kept
+    return list(grouped.values())
+
+
+def _course_unit_title(chunks: list[dict[str, Any]]) -> str:
+    candidates: list[str] = []
+    source_filename = str(chunks[0].get("source_filename") or "Course unit") if chunks else "Course unit"
+    filename_key = _norm(source_filename.rsplit(".", 1)[0].replace("_", " "))
+    for chunk in chunks:
+        metadata = chunk.get("metadata", {})
+        path = metadata.get("heading_path_list") or []
+        values = [*(path if isinstance(path, list) else []), metadata.get("section_title")]
+        for value in values:
+            title = _clean_title(str(value or ""))
+            key = _fold_text(title)
+            if not title or key == _fold_text(filename_key) or key == _fold_text(source_filename):
+                continue
+            if any(
+                term in key
+                for term in (
+                    "plan de la seance", "agenda", "outline", "table des matieres",
+                    "references", "bibliographie", "lectures recommandees", "conclusion",
+                )
+            ):
+                continue
+            if title not in candidates:
+                candidates.append(title)
+    for title in candidates:
+        key = _fold_text(title)
+        if any(term in key for term in ("semaine", "week", "chapter", "chapitre", "unit")):
+            return title
+    return candidates[0] if candidates else _clean_title(source_filename.rsplit(".", 1)[0].replace("_", " "))
+
+
+def _fold_text(value: Any) -> str:
+    normalized = unicodedata.normalize("NFKD", str(value or ""))
+    ascii_text = "".join(char for char in normalized if not unicodedata.combining(char))
+    return re.sub(r"\W+", " ", ascii_text.casefold()).strip()
 
 
 def _sort_groups_with_graph(
@@ -1892,10 +2467,20 @@ def _sort_groups_with_graph(
         target_groups = node_groups(nodes.get(str(edge.get("target_node_id"))))
         if relation in {"requires", "depends_on", "prerequisite_of"}:
             for source_group in source_groups:
-                dependencies[source_group].update(target_groups - {source_group})
+                dependencies[source_group].update(
+                    target_group
+                    for target_group in target_groups - {source_group}
+                    if _pedagogical_role_rank(groups[target_group]["pedagogical_role"], architecture)
+                    <= _pedagogical_role_rank(groups[source_group]["pedagogical_role"], architecture)
+                )
         elif relation in {"precedes", "causes", "leads_to", "foundation_for"}:
             for target_group in target_groups:
-                dependencies[target_group].update(source_groups - {target_group})
+                dependencies[target_group].update(
+                    source_group
+                    for source_group in source_groups - {target_group}
+                    if _pedagogical_role_rank(groups[source_group]["pedagogical_role"], architecture)
+                    <= _pedagogical_role_rank(groups[target_group]["pedagogical_role"], architecture)
+                )
 
     remaining = set(range(len(groups)))
     ordered: list[dict[str, Any]] = []
@@ -1950,10 +2535,11 @@ def _lessons_for_group(conversation_id: str, chapter_index: int, group: dict[str
             ),
         )
     ]
-    if len(items) > MAX_LESSONS_PER_CHAPTER:
-        base = items[:MAX_LESSONS_PER_CHAPTER]
-        for index, (_, overflow_chunks) in enumerate(items[MAX_LESSONS_PER_CHAPTER:]):
-            base[(MAX_LESSONS_PER_CHAPTER - 1) - (index % 2)][1].extend(overflow_chunks)
+    max_content_lessons = max(1, MAX_LESSONS_PER_CHAPTER - 2)
+    if len(items) > max_content_lessons:
+        base = items[:max_content_lessons]
+        for index, (_, overflow_chunks) in enumerate(items[max_content_lessons:]):
+            base[(max_content_lessons - 1) - (index % 2)][1].extend(overflow_chunks)
         items = base
     lessons = []
     for lesson_index, (section_key, section_chunks) in enumerate(items):
@@ -1975,15 +2561,104 @@ def _lessons_for_group(conversation_id: str, chapter_index: int, group: dict[str
                 "learning_objectives": [f"Explain {title}", f"Connect {title} to the course foundations"],
                 "pedagogical_role": role,
                 "sequencing_reason": _sequencing_reason(role, architecture),
+                "lesson_stage": "content",
                 "prerequisite_lesson_ids": [lessons[-1]["id"]] if lessons else [],
                 "source_chunk_ids": source_chunk_ids,
                 "citations": _citations(section_chunks, source_chunk_ids),
+                "source_queries": _clean_queries(
+                    [title, *(_concept_for_chunk(chunk) for chunk in section_chunks)],
+                    limit=8,
+                ),
+                "support_status": "supported" if _has_rich_teaching_material(section_chunks) else "insufficient_source_material",
                 "blocks": _lesson_blocks(title, section_chunks),
                 "content_fingerprint": _content_fingerprint(source_chunk_ids),
                 "generation_status": "ready",
             }
         )
-    return lessons or [_single_fallback_lesson(conversation_id, chapter_index, group)]
+    content_lessons = lessons or [_single_fallback_lesson(conversation_id, chapter_index, group)]
+    for lesson in content_lessons:
+        lesson["lesson_stage"] = "content"
+    introduction = _fallback_boundary_lesson(
+        conversation_id,
+        chapter_index,
+        group,
+        stage="introduction",
+    )
+    conclusion = _fallback_boundary_lesson(
+        conversation_id,
+        chapter_index,
+        group,
+        stage="conclusion",
+    )
+    chapter_lessons = [introduction, *content_lessons, conclusion]
+    for lesson_index, lesson in enumerate(chapter_lessons):
+        lesson["order_index"] = lesson_index
+        lesson["prerequisite_lesson_ids"] = [chapter_lessons[lesson_index - 1]["id"]] if lesson_index else []
+    return chapter_lessons
+
+
+def _fallback_boundary_lesson(
+    conversation_id: str,
+    chapter_index: int,
+    group: dict[str, Any],
+    *,
+    stage: Literal["introduction", "conclusion"],
+) -> dict[str, Any]:
+    chapter_title = str(group["title"])
+    title = (
+        f"Introduction to {chapter_title}"
+        if stage == "introduction"
+        else f"{chapter_title}: Summary and transition"
+    )
+    lesson = _single_fallback_lesson(
+        conversation_id,
+        chapter_index,
+        {**group, "title": title},
+    )
+    lesson["blocks"] = _boundary_lesson_blocks(title, group["chunks"], stage)
+    lesson.update(
+        {
+            "id": _stable_id(conversation_id, "lesson", chapter_index, stage, title),
+            "title": title,
+            "learning_objectives": [
+                f"Identify the purpose and prerequisites of {chapter_title}"
+                if stage == "introduction"
+                else f"Synthesize {chapter_title} and connect it to what follows"
+            ],
+            "pedagogical_role": "definition" if stage == "introduction" else "synthesis",
+            "sequencing_reason": (
+                "Introduces this chapter before its detailed content."
+                if stage == "introduction"
+                else "Consolidates this chapter and prepares the next foundation."
+            ),
+            "lesson_stage": stage,
+        }
+    )
+    return lesson
+
+
+def _boundary_lesson_blocks(
+    title: str,
+    chunks: list[dict[str, Any]],
+    stage: Literal["introduction", "conclusion"],
+) -> list[dict[str, Any]]:
+    content = _source_paragraphs(
+        chunks,
+        sentence_limit=4 if stage == "introduction" else 6,
+        max_chars=1400,
+    )
+    if not content:
+        content = "This subchapter is grounded in the chapter sources."
+    return [
+        _block(
+            title,
+            0,
+            "markdown" if stage == "introduction" else "summary",
+            "Chapter orientation" if stage == "introduction" else "Chapter synthesis",
+            content,
+            chunks,
+        )
+    ]
 
 
 def _single_fallback_lesson(conversation_id: str, chapter_index: int, group: dict[str, Any]) -> dict[str, Any]:
@@ -2002,9 +2677,15 @@ def _single_fallback_lesson(conversation_id: str, chapter_index: int, group: dic
         "learning_objectives": [f"Understand {group['title']}"],
         "pedagogical_role": role,
         "sequencing_reason": _sequencing_reason(role, architecture),
+        "lesson_stage": str(group.get("lesson_stage") or "content"),
         "prerequisite_lesson_ids": [],
         "source_chunk_ids": ids,
         "citations": _citations(group["chunks"], ids),
+        "source_queries": _clean_queries(
+            [group["title"], *(_concept_for_chunk(chunk) for chunk in group["chunks"])],
+            limit=8,
+        ),
+        "support_status": "supported" if _has_rich_teaching_material(group["chunks"]) else "insufficient_source_material",
         "blocks": _lesson_blocks(group["title"], group["chunks"]),
         "content_fingerprint": _content_fingerprint(ids),
         "generation_status": "ready",
@@ -2048,6 +2729,7 @@ def _special_blocks(title: str, chunks: list[dict[str, Any]], *, start_index: in
                     "data_json": {"expression": expression},
                     "source_chunk_ids": [chunk["id"]],
                     "citations": _citations([chunk], [chunk["id"]]),
+                    "validation_status": "supported",
                 }
             )
         for table in _markdown_tables(text):
@@ -2064,6 +2746,7 @@ def _special_blocks(title: str, chunks: list[dict[str, Any]], *, start_index: in
                     "data_json": table,
                     "source_chunk_ids": [chunk["id"]],
                     "citations": _citations([chunk], [chunk["id"]]),
+                    "validation_status": "supported",
                 }
             )
         events = _timeline_events(text)
@@ -2077,6 +2760,7 @@ def _special_blocks(title: str, chunks: list[dict[str, Any]], *, start_index: in
                     "data_json": {"events": events},
                     "source_chunk_ids": [chunk["id"]],
                     "citations": _citations([chunk], [chunk["id"]]),
+                    "validation_status": "supported",
                 }
             )
         if len(blocks) >= 5:
@@ -2091,8 +2775,13 @@ def _block(
     block_title: str,
     content: str,
     chunks: list[dict[str, Any]],
+    *,
+    validation_status: str | None = None,
+    source_query: str = "",
 ) -> dict[str, Any]:
     ids = _dedupe(chunk["id"] for chunk in chunks)[:8]
+    citations = _citations(chunks, ids)
+    status = validation_status or ("supported" if citations and str(content or "").strip() else "insufficient_source_material")
     return {
         "id": _stable_id(title, "block", index, block_type),
         "block_type": block_type,
@@ -2100,7 +2789,9 @@ def _block(
         "content": content,
         "data_json": {},
         "source_chunk_ids": ids,
-        "citations": _citations(chunks, ids),
+        "citations": citations,
+        "source_query": source_query,
+        "validation_status": status,
     }
 
 
@@ -2273,9 +2964,18 @@ def _fallback_chapter_for_outline(
                 "learning_objectives": lesson_outline.learning_objectives,
                 "pedagogical_role": lesson_outline.pedagogical_role,
                 "sequencing_reason": lesson_outline.sequencing_reason,
+                "lesson_stage": lesson_outline.lesson_stage,
+                "source_queries": lesson_outline.source_queries,
+                "support_status": "supported" if _has_rich_teaching_material(lesson_chunks) else "insufficient_source_material",
                 "prerequisite_lesson_ids": [lessons[-1]["id"]] if lessons else [],
             }
         )
+        if lesson_outline.lesson_stage in {"introduction", "conclusion"}:
+            lesson["blocks"] = _boundary_lesson_blocks(
+                lesson_outline.title,
+                lesson_chunks,
+                lesson_outline.lesson_stage,
+            )
         lessons.append(lesson)
     if not lessons:
         lessons = _lessons_for_group(conversation_id, index, {"title": outline.title, "chunks": selected})
@@ -2291,6 +2991,7 @@ def _fallback_chapter_for_outline(
         "prerequisite_chapter_ids": [],
         "source_chunk_ids": _dedupe(chunk["id"] for chunk in selected),
         "citations": _citations(selected, None),
+        "source_queries": outline.source_queries,
         "lessons": lessons,
         "quiz": _course_quiz(outline.title, selected, count=min(10, max(4, len(lessons) + 2)), scope="chapter"),
         "content_fingerprint": _content_fingerprint(chunk["id"] for chunk in selected),
@@ -2366,10 +3067,14 @@ def _equations(text: str) -> list[str]:
 
 def _looks_chemical(value: str) -> bool:
     text = str(value).strip().strip("$")
-    return bool(
-        re.search(r"(?:->|<-|<=>|=>|→|⇌|\\rightarrow|\\leftrightarrow)", text)
-        and len(re.findall(r"(?:\d*[A-Z][a-z]?\d*)+", text)) >= 2
-    )
+    if re.search(r"\\ce\s*\{", text):
+        return True
+    sides = re.split(r"(?:<=>|->|<-|=>|→|⇌|\\rightarrow|\\leftrightarrow)", text, maxsplit=1)
+    if len(sides) != 2:
+        return False
+    species = r"(?:\d+\s*)?(?:[A-Z][a-z]?(?:_?\{?\d+\}?)?)+(?:\^?\{?[+-]\}?)?(?:\((?:s|l|g|aq)\))?"
+    side_pattern = re.compile(rf"^\s*{species}(?:\s*\+\s*{species})*\s*$")
+    return all(side_pattern.fullmatch(side.strip()) for side in sides)
 
 
 def _markdown_tables(text: str) -> list[dict[str, Any]]:

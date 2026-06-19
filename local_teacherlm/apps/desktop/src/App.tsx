@@ -2155,6 +2155,11 @@ function CourseLessonView({
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
           <Badge variant="primary">Chapter {chapter.order_index !== undefined ? chapter.order_index + 1 : course.chapters.indexOf(chapter) + 1}</Badge>
           <span>Subchapter {lessonIndex + 1} of {chapter.lessons.length}</span>
+          {lesson.lesson_stage && (
+            <Badge variant="muted">
+              {lesson.lesson_stage === "introduction" ? "Introduction" : lesson.lesson_stage === "conclusion" ? "Conclusion" : "Core content"}
+            </Badge>
+          )}
           {lesson.is_completed && <Badge variant="success"><Check className="h-3 w-3" /> Completed</Badge>}
         </div>
         <h1 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">{lesson.title}</h1>
@@ -2176,7 +2181,7 @@ function CourseLessonView({
 
       <footer className="flex flex-col items-start gap-2 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs leading-5 text-muted-foreground">
-          Complete this foundation to unlock the next subchapter.
+          Complete this subchapter to unlock the next foundation.
         </p>
         <Button onClick={completeLesson} disabled={saving || lesson.is_completed}>
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}

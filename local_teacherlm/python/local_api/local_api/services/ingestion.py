@@ -316,20 +316,20 @@ def _parse_local_file(path: Path, filename: str) -> tuple[str, str]:
 
 async def _parse_with_llama_cloud(path: Path, filename: str, api_key: str) -> tuple[str, str]:
     try:
-        from llama_cloud import AsyncLlamaCloud
+        from llama_cloud import AsyncClient
     except ImportError as exc:
         raise RuntimeError("llama-cloud>=1.0 is required for LlamaParse mode") from exc
 
     settings = get_settings()
-    client = AsyncLlamaCloud(api_key=api_key, base_url=settings.llama_cloud_base_url)
-    result = await client.parsing.parse(
-        tier="cost_effective",
-        version="latest",
-        upload_file=(filename, path.read_bytes()),
-        expand=["markdown"],
-        polling_interval=settings.llama_cloud_poll_interval_s,
-        timeout=settings.llama_cloud_timeout_s,
-    )
+    async with AsyncClient(api_key=api_key, base_url=settings.llama_cloud_base_url) as client:
+        result = await client.parsing.parse(
+            tier="cost_effective",
+            version="latest",
+            upload_file=(filename, path.read_bytes()),
+            expand=["markdown"],
+            polling_interval=settings.llama_cloud_poll_interval_s,
+            timeout=settings.llama_cloud_timeout_s,
+        )
     markdown = _extract_llama_markdown(result)
     job_id = _extract_llama_job_id(result)
     return markdown, f"llamacloud:{job_id or 'latest'}"

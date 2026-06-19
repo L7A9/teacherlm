@@ -522,13 +522,19 @@ def test_llama_cloud_parser_mode_calls_llama_cloud(monkeypatch, tmp_path) -> Non
                 job=types.SimpleNamespace(id="job-123"),
             )
 
-    class FakeLlamaCloud:
+    class FakeAsyncClient:
         def __init__(self, *, api_key: str, base_url: str | None = None) -> None:
             self.api_key = api_key
             self.base_url = base_url
             self.parsing = FakeParsing()
 
-    monkeypatch.setitem(sys.modules, "llama_cloud", types.SimpleNamespace(AsyncLlamaCloud=FakeLlamaCloud))
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, _exc_type, _exc, _traceback):
+            return False
+
+    monkeypatch.setitem(sys.modules, "llama_cloud", types.SimpleNamespace(AsyncClient=FakeAsyncClient))
 
     client = _client(monkeypatch, tmp_path)
     parser = client.patch(
@@ -1504,7 +1510,8 @@ def test_coursebuilder_structured_synthesis_keeps_every_block_grounded(monkeypat
     )
     assert chapter["lessons"][0]["blocks"]
     assert chapter["lessons"][0]["blocks"][0]["source_chunk_ids"] == ["chunk-foundation", "chunk-application"]
-    assert len(chapter["quiz"]["questions"]) == 4
+    assert [lesson["lesson_stage"] for lesson in chapter["lessons"]] == ["introduction", "content", "conclusion"]
+    assert len(chapter["quiz"]["questions"]) == 5
     assert all(question["source_chunk_ids"] == ["chunk-application"] for question in chapter["quiz"]["questions"])
 
 
@@ -1588,6 +1595,118 @@ def test_coursebuilder_uses_domain_specific_architectures() -> None:
         assert architecture == expected_architecture
         assert [group["title"] for group in groups] == expected_titles
         assert {chunk["id"] for group in groups for chunk in group["chunks"]} == {chunk["id"] for chunk in chunks}
+
+
+def test_coursebuilder_has_no_chapter_cap_and_every_chapter_has_a_subchapter_arc() -> None:
+    import local_api.services.coursebuilder as coursebuilder
+
+    chunks = [
+        {
+            "id": f"chunk-{index}",
+            "conversation_id": "conv-unbounded",
+            "source_file_id": "file-unbounded",
+            "source_filename": "large-course.md",
+            "chunk_index": index,
+            "text": f"Topic {index + 1} contains distinct grounded material and prepares the following topic.",
+            "metadata": {
+                "heading_path": f"Large Course > Topic {index + 1}",
+                "heading_path_list": ["Large Course", f"Topic {index + 1}"],
+                "section_title": f"Topic {index + 1}",
+                "key_concepts": [f"Topic {index + 1}"],
+            },
+        }
+        for index in range(15)
+    ]
+
+    course = coursebuilder._build_fallback_course("conv-unbounded", chunks, "fingerprint")
+
+    assert len(course["chapters"]) == 15
+    assert [chapter["title"] for chapter in course["chapters"]] == [f"Topic {index + 1}" for index in range(15)]
+    for chapter in course["chapters"]:
+        stages = [lesson["lesson_stage"] for lesson in chapter["lessons"]]
+        assert len(stages) >= 3
+        assert stages[0] == "introduction"
+        assert stages[-1] == "conclusion"
+        assert "content" in stages[1:-1]
+        content_ids = {
+            chunk_id
+            for lesson in chapter["lessons"]
+            if lesson["lesson_stage"] == "content"
+            for chunk_id in lesson["source_chunk_ids"]
+        }
+        assert content_ids == set(chapter["source_chunk_ids"])
+
+
+def test_coursebuilder_uses_multi_file_units_as_chapters_and_sections_as_subchapters() -> None:
+    import local_api.services.coursebuilder as coursebuilder
+
+    chunks = []
+    for file_index, (filename, unit_title, sections) in enumerate(
+        [
+            ("lecture-1.pdf", "Week 1: Foundations", ["Definitions", "Feedback data"]),
+            ("lecture-2.pdf", "Week 2: Collaborative Filtering", ["Neighborhoods", "Matrix factorization"]),
+            ("lecture-3.pdf", "Week 3: Evaluation", ["Precision and recall", "nDCG"]),
+        ]
+    ):
+        for section_index, section in enumerate(sections):
+            chunks.append(
+                {
+                    "id": f"chunk-{file_index}-{section_index}",
+                    "conversation_id": "conv-units",
+                    "source_file_id": f"file-{file_index}",
+                    "source_filename": filename,
+                    "chunk_index": section_index,
+                    "text": " ".join([f"{section} contains detailed grounded teaching material."] * 10),
+                    "metadata": {
+                        "heading_path": f"{unit_title} > {section}",
+                        "heading_path_list": [unit_title, section],
+                        "section_title": section,
+                        "key_concepts": [section],
+                    },
+                }
+            )
+
+    course = coursebuilder._build_fallback_course("conv-units", chunks, "fingerprint")
+
+    assert len(course["chapters"]) == 3
+    assert {chapter["title"] for chapter in course["chapters"]} == {
+        "Week 1: Foundations",
+        "Week 2: Collaborative Filtering",
+        "Week 3: Evaluation",
+    }
+    assert all(len(chapter["lessons"]) == 4 for chapter in course["chapters"])
+    assert {
+        lesson["title"]
+        for chapter in course["chapters"]
+        for lesson in chapter["lessons"]
+        if lesson["lesson_stage"] == "content"
+    } == {"Definitions", "Feedback data", "Neighborhoods", "Matrix factorization", "Precision and recall", "nDCG"}
+
+
+def test_coursebuilder_fallback_outline_clamps_long_lesson_summaries() -> None:
+    import local_api.services.coursebuilder as coursebuilder
+
+    outline = coursebuilder._outline_from_course(
+        {
+            "title": "Long source course",
+            "metadata": {"architecture_type": "conceptual"},
+            "chapters": [
+                {
+                    "title": "Long chapter",
+                    "source_chunk_ids": ["chunk-long"],
+                    "lessons": [
+                        {
+                            "title": "Long lesson",
+                            "summary": "grounded " * 100,
+                            "source_chunk_ids": ["chunk-long"],
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+
+    assert len(outline.chapters[0].lessons[0].summary) == 500
 
 
 def test_coursebuilder_graph_planning_repairs_omitted_chunk_coverage(monkeypatch) -> None:
@@ -1742,6 +1861,152 @@ def test_course_plan_graph_validation_repairs_prerequisite_order() -> None:
     assert "Collaborative Filtering" in validated.chapters[1].prerequisite_chapter_titles
 
 
+def test_course_plan_persists_source_queries_from_headings_concepts_and_graph() -> None:
+    import local_api.services.coursebuilder as coursebuilder
+
+    chunks = [
+        {
+            "id": "chunk-svd",
+            "source_file_id": "file-course",
+            "source_filename": "recommenders.md",
+            "chunk_index": 0,
+            "text": "Singular value decomposition factorizes the user-item interaction matrix.",
+            "metadata": {
+                "heading_path": "Collaborative Filtering > Matrix Factorization",
+                "heading_path_list": ["Collaborative Filtering", "Matrix Factorization"],
+                "key_concepts": ["SVD", "latent factors"],
+            },
+        }
+    ]
+    outline = coursebuilder.CourseOutline.model_validate(
+        {
+            "title": "Recommendation Systems",
+            "chapters": [
+                {
+                    "title": "Collaborative Filtering",
+                    "source_chunk_ids": ["chunk-svd"],
+                    "lessons": [
+                        {
+                            "title": "Matrix factorization",
+                            "source_chunk_ids": ["chunk-svd"],
+                            "source_queries": ["original source phrase"],
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+    graph = {
+        "nodes": [
+            {
+                "id": "concept-svd",
+                "node_type": "concept",
+                "label": "Low-rank approximation",
+                "source_chunk_ids": ["chunk-svd"],
+            }
+        ],
+        "edges": [],
+    }
+
+    enriched = coursebuilder._ensure_outline_source_queries(outline, chunks, graph)
+    queries = enriched.chapters[0].lessons[0].source_queries
+
+    assert "original source phrase" in queries
+    assert "matrix factorization" in {query.casefold() for query in queries}
+    assert "SVD" in queries
+    assert "Low-rank approximation" in queries
+
+
+def test_coursebuilder_lesson_retrieval_stays_in_planned_scope(monkeypatch) -> None:
+    import local_api.services.coursebuilder as coursebuilder
+
+    detailed_svd = " ".join(
+        ["SVD decomposes the interaction matrix into grounded latent user and item factors."] * 24
+    )
+    chunks = [
+        {
+            "id": "chunk-plan",
+            "source_file_id": "file-course",
+            "source_filename": "course.md",
+            "chunk_index": 0,
+            "text": "Source plan item: Matrix factorization",
+            "metadata": {"heading_path_list": ["CF", "Outline"]},
+        },
+        {
+            "id": "chunk-svd",
+            "source_file_id": "file-course",
+            "source_filename": "course.md",
+            "chunk_index": 1,
+            "text": detailed_svd,
+            "metadata": {
+                "heading_path_list": ["CF", "Matrix factorization"],
+                "key_concepts": ["SVD"],
+            },
+        },
+        {
+            "id": "chunk-cbf",
+            "source_file_id": "file-course",
+            "source_filename": "course.md",
+            "chunk_index": 2,
+            "text": " ".join(["Content-based filtering uses item feature profiles."] * 24),
+            "metadata": {"heading_path_list": ["CBF", "Feature profiles"]},
+        },
+    ]
+    chapter = coursebuilder.OutlineChapter.model_validate(
+        {
+            "title": "Filtering Methods",
+            "source_chunk_ids": [chunk["id"] for chunk in chunks],
+            "source_queries": ["filtering methods"],
+            "lessons": [
+                {
+                    "title": "Matrix factorization",
+                    "source_chunk_ids": ["chunk-plan", "chunk-svd"],
+                    "source_queries": ["SVD latent factors"],
+                }
+            ],
+        }
+    )
+
+    class FakeRetrieval:
+        async def retrieve_for(self, **_kwargs):
+            return [
+                types.SimpleNamespace(chunk_id="chunk-cbf"),
+                types.SimpleNamespace(chunk_id="chunk-plan"),
+                types.SimpleNamespace(chunk_id="chunk-svd"),
+            ]
+
+    monkeypatch.setattr(coursebuilder, "get_retrieval_service", lambda: FakeRetrieval())
+    selected, count = asyncio.run(
+        coursebuilder._retrieve_lesson_evidence(
+            "conv-course",
+            chapter,
+            chapter.lessons[0],
+            chunks,
+        )
+    )
+
+    assert count == 1
+    assert [chunk["id"] for chunk in selected] == ["chunk-svd"]
+
+
+def test_coursebuilder_rejects_thin_rich_blocks_and_marks_unsupported_content() -> None:
+    import local_api.services.coursebuilder as coursebuilder
+
+    assert coursebuilder._is_thin_teaching_block("definition", "Matrix factorization.", "Matrix factorization")
+    block = coursebuilder._block(
+        "Thin lesson",
+        0,
+        "warning",
+        "Insufficient source material",
+        coursebuilder._insufficient_source_message(),
+        [],
+    )
+    assert block["validation_status"] == "insufficient_source_material"
+    assert block["citations"] == []
+    assert coursebuilder._looks_chemical("2H2 + O2 -> 2H2O")
+    assert not coursebuilder._looks_chemical("Frontend sends the user ID -> API returns JSON recommendations")
+
+
 def test_course_plan_is_saved_before_embedding_and_reused_for_generation(monkeypatch, tmp_path) -> None:
     client = _client(monkeypatch, tmp_path)
     conversation = client.post("/api/conversations", json={"title": "Two-stage planning"}).json()
@@ -1858,7 +2123,14 @@ Neural recommenders learn advanced user and item representations.
     assert plan["status"] == "validated"
     assert plan["metadata"]["stage"] == "validated_with_knowledge_graph"
     assert plan["metadata"]["chunk_coverage_ratio"] == 1.0
-    assert plan["chapters"][0]["subchapters"][0]["title"] == "Definitions and foundations"
+    assert [item["lesson_stage"] for item in plan["chapters"][0]["subchapters"]] == [
+        "introduction",
+        "content",
+        "conclusion",
+    ]
+    assert plan["chapters"][0]["subchapters"][1]["title"] == "Definitions and foundations"
+    assert plan["chapters"][0]["source_queries"]
+    assert all(item["source_queries"] for item in plan["chapters"][0]["subchapters"])
     assert "blocks" not in json.dumps(plan["outline"])
     assert "final_quiz" not in json.dumps(plan["outline"])
 
@@ -1866,7 +2138,9 @@ Neural recommenders learn advanced user and item representations.
     assert course["status"] == "ready"
     assert course["metadata"]["plan_id"] == plan["plan_id"]
     assert course["chapters"][0]["title"] == plan["chapters"][0]["title"]
-    assert course["chapters"][0]["lessons"][0]["title"] == plan["chapters"][0]["subchapters"][0]["title"]
+    assert [lesson["title"] for lesson in course["chapters"][0]["lessons"]] == [
+        item["title"] for item in plan["chapters"][0]["subchapters"]
+    ]
 
     deleted = client.delete(
         f"/api/conversations/{conversation['id']}/files/{upload.json()['files'][1]['id']}"
