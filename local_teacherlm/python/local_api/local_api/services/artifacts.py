@@ -20,7 +20,7 @@ class ArtifactService:
         conversation_id: str,
         artifact_type: str,
         filename: str,
-        payload: bytes | str | dict[str, Any] | list[Any],
+        payload: bytes | bytearray | memoryview | str | dict[str, Any] | list[Any],
         *,
         mime_type: str = "application/octet-stream",
         source_message_id: str | None = None,
@@ -56,9 +56,9 @@ class ArtifactService:
         return get_settings().data_dir / row["local_key"]
 
 
-def _to_bytes(payload: bytes | str | dict[str, Any] | list[Any]) -> bytes:
-    if isinstance(payload, bytes):
-        return payload
+def _to_bytes(payload: bytes | bytearray | memoryview | str | dict[str, Any] | list[Any]) -> bytes:
+    if isinstance(payload, (bytes, bytearray, memoryview)):
+        return bytes(payload)
     if isinstance(payload, str):
         return payload.encode("utf-8")
     return json.dumps(payload, indent=2, ensure_ascii=False).encode("utf-8")

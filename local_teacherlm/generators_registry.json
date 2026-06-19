@@ -58,7 +58,7 @@
     {
       "generator_id": "podcast_gen",
       "display_name": "Podcast",
-      "contract_version": "1.0.0",
+      "contract_version": "1.1.0",
       "output_type": "podcast",
       "enabled": true,
       "transport": "local_inprocess",
@@ -69,9 +69,9 @@
         "read_context": true,
         "read_learner_state": true,
         "write_artifacts": true,
-        "network": false
+        "network": true
       },
-      "capabilities": ["streaming", "grounded_generation", "artifact_output"]
+      "capabilities": ["streaming", "grounded_generation", "artifact_output", "local_tts", "model_download"]
     },
     {
       "generator_id": "presentation_gen",

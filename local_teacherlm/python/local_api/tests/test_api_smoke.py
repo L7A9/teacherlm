@@ -5,6 +5,8 @@ import types
 import json
 import re
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "teacherlm_core"))
 sys.path.insert(0, str(ROOT / "local_api"))
@@ -21,6 +23,7 @@ def _client(monkeypatch, tmp_path):
     import local_api.services.generators as generators_module
     import local_api.services.ingestion as ingestion_module
     import local_api.services.knowledge_graph as graph_module
+    import local_api.services.podcast_audio as podcast_audio_module
     import local_api.services.retrieval as retrieval_module
     import local_api.services.secrets as secrets_module
     import local_api.services.settings as settings_module
@@ -39,11 +42,18 @@ def _client(monkeypatch, tmp_path):
     graph_module._knowledge_graph_service = None
     retrieval_module._retrieval_service = None
     generators_module._generator_service = None
+    podcast_audio_module.get_podcast_audio_service.cache_clear()
 
     async def offline_generator_llm(*_args, **_kwargs):
         raise RuntimeError("LLM disabled in API smoke tests")
 
     monkeypatch.setattr(generators_module, "complete_text", offline_generator_llm)
+
+    class OfflinePodcastAudio:
+        async def synthesize(self, *_args, **_kwargs):
+            raise podcast_audio_module.PodcastAudioError("tts_unavailable", "TTS disabled in API smoke tests")
+
+    monkeypatch.setattr(generators_module, "get_podcast_audio_service", lambda: OfflinePodcastAudio())
     store.initialize()
     return TestClient(create_app())
 
@@ -271,6 +281,81 @@ def test_quiz_calls_structured_llm_with_full_chunks_graph_type_and_count(monkeyp
     assert first["title"] != second["title"]
     assert first_meta["backend"] == "llm_structured_fresh_generation"
     assert second_meta["backend"] == "llm_structured_fresh_generation"
+
+
+def test_quiz_returns_grounded_fallback_when_generation_and_repair_are_invalid(monkeypatch) -> None:
+    from teacherlm_core.llm.providers import LLMProviderConfig
+    from teacherlm_core.schemas import GeneratorInput, LearnerState
+    import local_api.services.generators as generators
+
+    provider = LLMProviderConfig(
+        provider_id="quiz-provider",
+        display_name="Quiz provider",
+        provider_type="ollama",
+        model_name="quiz-model",
+    )
+    monkeypatch.setattr(
+        generators,
+        "get_settings_service",
+        lambda: types.SimpleNamespace(get_default_chat_provider_config=lambda: provider),
+    )
+    calls: list[dict] = []
+
+    async def invalid_complete_text(_provider, messages, *, json_schema=None, temperature=0.2):
+        calls.append({"messages": messages, "json_schema": json_schema, "temperature": temperature})
+        return "not valid quiz json"
+
+    monkeypatch.setattr(generators, "complete_text", invalid_complete_text)
+    source_chunks = [
+        generators.Chunk(
+            text=(
+                "Dense retrieval uses vector similarity to represent semantic meaning and identify relevant "
+                "documents for a search query."
+            ),
+            source="search.md",
+            score=1.0,
+            chunk_id="dense-chunk",
+            metadata={"section_title": "Dense retrieval"},
+        ),
+        generators.Chunk(
+            text=(
+                "Reciprocal rank fusion combines multiple ranked result lists to improve the final ordering of "
+                "retrieved documents."
+            ),
+            source="search.md",
+            score=1.0,
+            chunk_id="fusion-chunk",
+            metadata={"section_title": "Reciprocal rank fusion"},
+        ),
+    ]
+    payload = GeneratorInput(
+        conversation_id="quiz-fallback",
+        user_message="Test search concepts",
+        context_chunks=source_chunks,
+        learner_state=LearnerState(conversation_id="quiz-fallback"),
+        chat_history=[],
+        options={"generation_run_id": "fallback-run", "question_type": "mcq", "question_count": 2},
+    )
+
+    quiz, metadata = asyncio.run(
+        generators._build_fresh_quiz(
+            payload,
+            source_chunks=source_chunks,
+            graph_chunks=[],
+            question_type="mcq",
+            question_count=2,
+        )
+    )
+
+    assert len(calls) == 2
+    assert calls[1]["temperature"] == 0.45
+    assert source_chunks[0].text not in calls[1]["messages"][-1].content
+    assert metadata["backend"] == "deterministic_grounded_fallback"
+    assert metadata["reason"] == "structured_generation_failed"
+    assert metadata["repair_attempted"] is True
+    assert len(quiz["questions"]) == 2
+    assert {question["source_chunk_id"] for question in quiz["questions"]} == {"dense-chunk", "fusion-chunk"}
+    assert all(len(question["options"]) == 4 for question in quiz["questions"])
 
 
 def test_quiz_accepts_mistral_nested_option_objects_without_repair() -> None:
@@ -795,13 +880,16 @@ A good podcast follows a narrative arc: introduction, key points, examples, and 
     podcast_done = _done_event(
         client.post(
             f"/api/conversations/{conversation['id']}/generate",
-            json={"output_type": "podcast", "prompt": "Generate podcast", "source_file_ids": [], "options": {}},
+            json={"output_type": "podcast", "prompt": "Generate podcast", "source_file_ids": [file_id], "options": {}},
         ).text
     )
     assert podcast_done["output_type"] == "podcast"
     assert podcast_done["metadata"]["narrative_arc"]["key_points"]
     assert podcast_done["metadata"]["podcast"]["transcript"]
     assert podcast_done["metadata"]["podcast"]["tts_skipped"] is True
+    assert podcast_done["metadata"]["podcast"]["audio_status"] == "failed"
+    assert podcast_done["metadata"]["podcast"]["audio_error_code"] == "tts_unavailable"
+    assert [artifact["type"] for artifact in podcast_done["artifacts"]] == ["transcript"]
 
 
 def test_mindmap_rebuilds_from_all_selected_file_chunks(monkeypatch, tmp_path) -> None:
@@ -921,6 +1009,14 @@ Recall measures how many relevant items were found.
         ).text
     )
     assert "Select at least one ready source file" in empty_scope_error["message"]
+
+    empty_podcast_error = _error_event(
+        client.post(
+            f"/api/conversations/{conversation['id']}/generate",
+            json={"output_type": "podcast", "prompt": "Generate podcast", "source_file_ids": [], "options": {}},
+        ).text
+    )
+    assert "Select at least one ready source file" in empty_podcast_error["message"]
 
     request = {
         "output_type": "mindmap",
@@ -1098,6 +1194,31 @@ def test_mindmap_fresh_rebuild_calls_structured_model_every_time(monkeypatch) ->
     assert first["central_topic"] != second["central_topic"]
     assert first_meta["backend"] == "llm_structured_fresh_rebuild"
     assert second_meta["backend"] == "llm_structured_fresh_rebuild"
+
+
+def test_mindmap_rejects_low_coverage_output_when_sources_support_more() -> None:
+    import local_api.services.generators as generators
+
+    raw = json.dumps(
+        {
+            "central_topic": "Recommendation Systems",
+            "branches": [
+                {
+                    "text": f"Branch {branch_index}",
+                    "children": [
+                        {"text": f"Concept {branch_index}.{child_index}", "children": []}
+                        for child_index in range(1, 4)
+                    ],
+                }
+                for branch_index in range(1, 6)
+            ],
+        }
+    )
+
+    compact = generators._validated_llm_mindmap(raw, max_nodes=110, min_nodes=8)
+    assert generators._count_mindmap_nodes(compact) == 21
+    with pytest.raises(ValueError, match="too shallow"):
+        generators._validated_llm_mindmap(raw, max_nodes=110, min_nodes=35)
 
 
 def _done_event(raw_sse: str) -> dict:

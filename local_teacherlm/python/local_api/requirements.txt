@@ -14,6 +14,9 @@ anthropic>=0.39
 llama-cloud>=1.0
 httpx>=0.28
 numpy>=2.1
+sherpa-onnx==1.13.3
+lameenc==1.8.2
+langdetect==1.0.9
 beautifulsoup4>=4.12
 pypdf>=5.0
 python-docx>=1.1
