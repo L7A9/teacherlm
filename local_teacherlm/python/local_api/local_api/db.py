@@ -962,6 +962,12 @@ CREATE TABLE IF NOT EXISTS parser_settings (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS coursebuilder_settings (
+  id TEXT PRIMARY KEY CHECK (id = 'default'),
+  sequential_unlocking_enabled INTEGER NOT NULL DEFAULT 1,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS retrieval_settings (
   id TEXT PRIMARY KEY CHECK (id = 'default'),
   embedding_model TEXT NOT NULL,

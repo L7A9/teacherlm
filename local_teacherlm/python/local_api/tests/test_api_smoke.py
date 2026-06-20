@@ -1229,6 +1229,96 @@ def test_mindmap_rejects_low_coverage_output_when_sources_support_more() -> None
         generators._validated_llm_mindmap(raw, max_nodes=110, min_nodes=35)
 
 
+def test_coursebuilder_progression_setting_switches_lock_policy_without_losing_progress(monkeypatch, tmp_path) -> None:
+    client = _client(monkeypatch, tmp_path)
+    from local_api.services.coursebuilder import get_coursebuilder_service
+
+    course = {
+        "id": "course_progression_test",
+        "conversation_id": "conversation_progression_test",
+        "status": "ready",
+        "source_fingerprint": "progression-test",
+        "title": "Progression test",
+        "chapters": [
+            {
+                "id": "chapter_1",
+                "title": "Chapter 1",
+                "generation_status": "ready",
+                "content_fingerprint": "chapter-1",
+                "lessons": [
+                    {"id": "lesson_1_1", "generation_status": "ready"},
+                    {"id": "lesson_1_2", "generation_status": "ready"},
+                ],
+                "quiz": {"id": "quiz_1", "questions": [], "pass_score": 0.7},
+            },
+            {
+                "id": "chapter_2",
+                "title": "Chapter 2",
+                "generation_status": "ready",
+                "content_fingerprint": "chapter-2",
+                "lessons": [
+                    {"id": "lesson_2_1", "generation_status": "ready"},
+                    {"id": "lesson_2_2", "generation_status": "ready"},
+                ],
+                "quiz": {"id": "quiz_2", "questions": [], "pass_score": 0.7},
+            },
+        ],
+        "final_quiz": {"id": "quiz_final", "questions": [], "pass_score": 0.7},
+        "metadata": {},
+    }
+    service = get_coursebuilder_service()
+    service._save_course(course, build_id="build_progression_test", quality_mode="fallback")
+
+    settings = client.get("/api/settings/coursebuilder")
+    assert settings.status_code == 200
+    assert settings.json() == {"sequential_unlocking_enabled": True}
+
+    strict = service._public_course(course)
+    assert strict["chapters"][0]["is_locked"] is False
+    assert strict["chapters"][0]["lessons"][0]["is_locked"] is False
+    assert strict["chapters"][0]["lessons"][1]["is_locked"] is True
+    assert strict["chapters"][1]["is_locked"] is True
+
+    opened = client.patch(
+        "/api/settings/coursebuilder",
+        json={"sequential_unlocking_enabled": False},
+    )
+    assert opened.status_code == 200
+    assert opened.json() == {"sequential_unlocking_enabled": False}
+
+    free = service._public_course(course)
+    assert all(not chapter["is_locked"] for chapter in free["chapters"])
+    assert all(
+        not lesson["is_locked"]
+        for chapter in free["chapters"]
+        for lesson in chapter["lessons"]
+    )
+    assert all(chapter["quiz"]["is_locked"] for chapter in free["chapters"])
+    assert free["final_quiz"]["is_locked"] is True
+
+    progress = service._load_progress(course["conversation_id"], course)
+    progress["completed_lesson_ids"] = ["lesson_2_1", "lesson_2_2"]
+    service._save_progress(course["conversation_id"], course, progress)
+    free_with_progress = service._public_course(course)
+    assert free_with_progress["chapters"][1]["quiz"]["is_locked"] is False
+
+    relocked = client.patch(
+        "/api/settings/coursebuilder",
+        json={"sequential_unlocking_enabled": True},
+    )
+    assert relocked.status_code == 200
+    strict_with_progress = service._public_course(course)
+    assert strict_with_progress["chapters"][1]["is_locked"] is False
+    assert all(not lesson["is_locked"] for lesson in strict_with_progress["chapters"][1]["lessons"])
+    assert strict_with_progress["chapters"][1]["quiz"]["is_locked"] is True
+
+    progress["passed_quiz_ids"] = ["quiz_1", "quiz_2"]
+    service._save_progress(course["conversation_id"], course, progress)
+    completed = service._public_course(course)
+    assert completed["final_quiz"]["is_locked"] is False
+    assert client.get("/api/settings/coursebuilder").json() == {"sequential_unlocking_enabled": True}
+
+
 def test_coursebuilder_mastery_gates_final_quiz_and_rich_blocks(monkeypatch, tmp_path) -> None:
     client = _client(monkeypatch, tmp_path)
     conversation = client.post("/api/conversations", json={"title": "Cumulative science history"}).json()

@@ -1,6 +1,12 @@
 from fastapi import APIRouter, HTTPException
 
-from local_api.schemas import ParserSettingsUpdate, ProviderPatch, ProviderWrite, RetrievalSettingsUpdate
+from local_api.schemas import (
+    CourseBuilderSettingsUpdate,
+    ParserSettingsUpdate,
+    ProviderPatch,
+    ProviderWrite,
+    RetrievalSettingsUpdate,
+)
 from local_api.services.settings import get_settings_service
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -54,6 +60,16 @@ async def parser_settings() -> dict:
 @router.patch("/parse")
 async def update_parser_settings(payload: ParserSettingsUpdate) -> dict:
     return get_settings_service().update_parser_settings(payload).model_dump()
+
+
+@router.get("/coursebuilder")
+async def coursebuilder_settings() -> dict:
+    return get_settings_service().get_coursebuilder_settings().model_dump()
+
+
+@router.patch("/coursebuilder")
+async def update_coursebuilder_settings(payload: CourseBuilderSettingsUpdate) -> dict:
+    return get_settings_service().update_coursebuilder_settings(payload).model_dump()
 
 
 @router.get("/retrieval")

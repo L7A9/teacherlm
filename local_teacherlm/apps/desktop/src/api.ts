@@ -2,6 +2,7 @@ import type {
   Artifact,
   Conversation,
   CourseBuilderRead,
+  CourseBuilderSettings,
   CourseQuizSubmissionResult,
   GeneratorManifest,
   LearnerState,
@@ -106,6 +107,12 @@ export const api = {
   parserSettings: () => request<ParserSettings>("/settings/parse"),
   updateParserSettings: (payload: Record<string, unknown>) =>
     request<ParserSettings>("/settings/parse", {
+      method: "PATCH",
+      body: JSON.stringify(payload)
+    }),
+  coursebuilderSettings: () => request<CourseBuilderSettings>("/settings/coursebuilder"),
+  updateCoursebuilderSettings: (payload: Partial<CourseBuilderSettings>) =>
+    request<CourseBuilderSettings>("/settings/coursebuilder", {
       method: "PATCH",
       body: JSON.stringify(payload)
     }),

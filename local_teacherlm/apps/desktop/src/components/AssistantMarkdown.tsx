@@ -9,6 +9,8 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import type { PluggableList } from "unified";
 
+import { normalizeMathMarkdown } from "./mathMarkdown";
+
 const markdownComponents: Components = {
   h1: ({ node, ...props }) => <h1 className="mb-4 mt-6 text-2xl font-bold text-foreground" {...props} />,
   h2: ({ node, ...props }) => (
@@ -77,17 +79,22 @@ const markdownComponents: Components = {
 const markdownRemarkPlugins: PluggableList = [remarkGfm, remarkMath];
 const markdownRehypePlugins: PluggableList = [[rehypeKatex, { strict: false, throwOnError: false }]];
 
-export function AssistantMarkdown({ content, className = "" }: { content: string; className?: string }) {
-  const normalized = normalizeDisplayMath(
-    normalizeLeakedLatexMatrices(
-      degradeMalformedTables(
-        repairMalformedMathFences(normalizeLatexDelimiters(repairDamagedLatexCommands(content))),
-      ),
-    ),
-  );
+export function AssistantMarkdown({
+  content,
+  className = "",
+  variant = "assistant",
+}: {
+  content: string;
+  className?: string;
+  variant?: "assistant" | "user";
+}) {
+  const normalized = normalizeMathMarkdown(content);
+  const variantClass = variant === "user"
+    ? "math-markdown-user text-primary-foreground [&_p]:whitespace-pre-wrap"
+    : "math-markdown-assistant";
 
   return (
-    <div className={`prose prose-slate max-w-none dark:prose-invert ${className}`.trim()}>
+    <div className={`math-markdown prose prose-slate min-w-0 max-w-none dark:prose-invert ${variantClass} ${className}`.trim()}>
       <ReactMarkdown
         remarkPlugins={markdownRemarkPlugins}
         rehypePlugins={markdownRehypePlugins}

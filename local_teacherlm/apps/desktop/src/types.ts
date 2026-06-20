@@ -105,6 +105,10 @@ export type ParserSettings = {
   status: string;
 };
 
+export type CourseBuilderSettings = {
+  sequential_unlocking_enabled: boolean;
+};
+
 export type RetrievalSettings = {
   embedding_model: string;
   embedding_dim: number;

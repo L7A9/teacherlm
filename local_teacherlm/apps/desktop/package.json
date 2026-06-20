@@ -8,6 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 1420",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "tauri:dev": "tauri dev --config ../../rust/tauri_shell/tauri.conf.json",
     "tauri:build": "tauri build --config ../../rust/tauri_shell/tauri.conf.json"
   },
@@ -38,6 +39,7 @@
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.14",
     "typescript": "^5.7.2",
-    "vite": "^8.0.16"
+    "vite": "^8.0.16",
+    "vitest": "^4.1.9"
   }
 }

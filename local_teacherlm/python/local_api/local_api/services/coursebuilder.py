@@ -882,20 +882,45 @@ class LocalCourseBuilderService:
         completed_lessons = set(progress.get("completed_lesson_ids", []))
         passed_quizzes = set(progress.get("passed_quiz_ids", []))
         attempt_counts = progress.get("quiz_attempt_counts", {})
+        sequential_unlocking = get_settings_service().get_coursebuilder_settings().sequential_unlocking_enabled
         previous_passed = True
         for chapter in public.get("chapters", []):
             chapter_ready = chapter.get("generation_status", "ready") == "ready"
-            chapter_unlocked = previous_passed and chapter_ready
-            chapter["is_locked"] = not chapter_unlocked
-            prior_lessons_complete = chapter_unlocked
+            quiz = chapter.get("quiz")
+            quiz_passed = bool(quiz and quiz["id"] in passed_quizzes)
+            chapter_completed_lessons = {
+                lesson["id"]
+                for lesson in chapter.get("lessons", [])
+                if lesson["id"] in completed_lessons
+            }
+            can_advance_in_chapter = chapter_ready and (previous_passed or not sequential_unlocking)
+            has_reviewable_progress = bool(chapter_completed_lessons) or quiz_passed
+            chapter["is_locked"] = not (
+                chapter_ready and (can_advance_in_chapter or has_reviewable_progress)
+            )
+            prior_lessons_complete = can_advance_in_chapter
             for lesson in chapter.get("lessons", []):
                 lesson["is_completed"] = lesson["id"] in completed_lessons
-                lesson["is_locked"] = not prior_lessons_complete
+                lesson_ready = lesson.get("generation_status", "ready") == "ready"
+                lesson["is_locked"] = not (
+                    lesson_ready
+                    and (
+                        lesson["is_completed"]
+                        or not sequential_unlocking
+                        or prior_lessons_complete
+                    )
+                )
                 prior_lessons_complete = prior_lessons_complete and lesson["is_completed"]
-            quiz = chapter.get("quiz")
             if quiz:
-                quiz["is_locked"] = not (chapter_unlocked and prior_lessons_complete)
-                quiz["is_passed"] = quiz["id"] in passed_quizzes
+                all_lessons_complete = all(
+                    lesson["id"] in completed_lessons
+                    for lesson in chapter.get("lessons", [])
+                )
+                quiz["is_locked"] = not (
+                    quiz_passed
+                    or (chapter_ready and all_lessons_complete and (previous_passed or not sequential_unlocking))
+                )
+                quiz["is_passed"] = quiz_passed
                 quiz["attempt_count"] = int(attempt_counts.get(quiz["id"], 0))
                 _sanitize_and_shuffle_quiz(quiz)
                 chapter["is_complete"] = quiz["is_passed"]

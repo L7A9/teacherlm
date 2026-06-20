@@ -8,6 +8,8 @@ from teacherlm_core.llm.providers import LLMProviderConfig
 from local_api.config import get_settings
 from local_api.db import get_store, new_id, utc_now
 from local_api.schemas import (
+    CourseBuilderSettingsRead,
+    CourseBuilderSettingsUpdate,
     ParserSettingsRead,
     ParserSettingsUpdate,
     ProviderPatch,
@@ -192,6 +194,43 @@ class SettingsService:
             (api_key_ciphertext, 1 if local_only else 0, status, utc_now()),
         )
         return self.get_parser_settings()
+
+    def get_coursebuilder_settings(self) -> CourseBuilderSettingsRead:
+        row = get_store().one("SELECT * FROM coursebuilder_settings WHERE id = 'default'")
+        if row is None:
+            get_store().execute(
+                """
+                INSERT INTO coursebuilder_settings (id, sequential_unlocking_enabled, updated_at)
+                VALUES ('default', 1, ?)
+                """,
+                (utc_now(),),
+            )
+            return CourseBuilderSettingsRead()
+        return CourseBuilderSettingsRead(
+            sequential_unlocking_enabled=bool(row.get("sequential_unlocking_enabled")),
+        )
+
+    def update_coursebuilder_settings(
+        self,
+        payload: CourseBuilderSettingsUpdate,
+    ) -> CourseBuilderSettingsRead:
+        current = self.get_coursebuilder_settings()
+        enabled = (
+            current.sequential_unlocking_enabled
+            if payload.sequential_unlocking_enabled is None
+            else payload.sequential_unlocking_enabled
+        )
+        get_store().execute(
+            """
+            INSERT INTO coursebuilder_settings (id, sequential_unlocking_enabled, updated_at)
+            VALUES ('default', ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              sequential_unlocking_enabled = excluded.sequential_unlocking_enabled,
+              updated_at = excluded.updated_at
+            """,
+            (1 if enabled else 0, utc_now()),
+        )
+        return self.get_coursebuilder_settings()
 
     def get_retrieval_settings(self) -> RetrievalSettingsRead:
         row = self._retrieval_row()
