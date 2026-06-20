@@ -85,6 +85,14 @@ class ParserSettingsUpdate(BaseModel):
     use_local_parsers_only: bool | None = None
 
 
+class CourseBuilderSettingsRead(BaseModel):
+    sequential_unlocking_enabled: bool = True
+
+
+class CourseBuilderSettingsUpdate(BaseModel):
+    sequential_unlocking_enabled: bool | None = None
+
+
 class RetrievalSettingsRead(BaseModel):
     embedding_model: str
     embedding_dim: int

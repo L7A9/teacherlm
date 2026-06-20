@@ -59,6 +59,7 @@ import type {
   Artifact,
   Conversation,
   CourseBuilderRead,
+  CourseBuilderSettings,
   CourseChapter,
   CourseLesson,
   CourseLessonBlock,
@@ -155,6 +156,7 @@ export default function App() {
   const [generators, setGenerators] = useState<GeneratorManifest[]>([]);
   const [providers, setProviders] = useState<ProviderRead[]>([]);
   const [parser, setParser] = useState<ParserSettings | null>(null);
+  const [courseBuilderSettings, setCourseBuilderSettings] = useState<CourseBuilderSettings | null>(null);
   const [retrieval, setRetrieval] = useState<RetrievalSettings | null>(null);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [course, setCourse] = useState<CourseBuilderRead | null>(null);
@@ -171,6 +173,8 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>(() => readSavedTheme());
   const [parserKey, setParserKey] = useState("");
   const [retrievalBusy, setRetrievalBusy] = useState(false);
+  const [courseBuilderSettingsBusy, setCourseBuilderSettingsBusy] = useState(false);
+  const [courseBuilderSettingsError, setCourseBuilderSettingsError] = useState("");
   const [settingsConversationId, setSettingsConversationId] = useState<string | null>(null);
   const [sourcesCollapsed, setSourcesCollapsed] = useState(false);
   const [progressCollapsed, setProgressCollapsed] = useState(false);
@@ -221,11 +225,12 @@ export default function App() {
   async function bootstrap() {
     setStatus("Connecting");
     await api.health();
-    const [conversationResponse, generatorResponse, providerResponse, parserResponse, retrievalResponse] = await Promise.all([
+    const [conversationResponse, generatorResponse, providerResponse, parserResponse, courseBuilderResponse, retrievalResponse] = await Promise.all([
       api.listConversations(),
       api.generators(),
       api.providers(),
       api.parserSettings(),
+      api.coursebuilderSettings(),
       api.retrievalSettings(),
     ]);
     setConversations(conversationResponse.conversations);
@@ -233,6 +238,7 @@ export default function App() {
     setGenerators(generatorResponse.generators);
     setProviders(providerResponse.providers);
     setParser(parserResponse);
+    setCourseBuilderSettings(courseBuilderResponse);
     setRetrieval(retrievalResponse);
     setStatus("Ready");
     setBootstrapped(true);
@@ -661,6 +667,21 @@ export default function App() {
     setParserKey("");
   }
 
+  async function setSequentialCourseUnlocking(enabled: boolean) {
+    setCourseBuilderSettingsBusy(true);
+    setCourseBuilderSettingsError("");
+    try {
+      const updated = await api.updateCoursebuilderSettings({
+        sequential_unlocking_enabled: enabled,
+      });
+      setCourseBuilderSettings(updated);
+    } catch (error) {
+      setCourseBuilderSettingsError(error instanceof Error ? error.message : "Could not save course progression.");
+    } finally {
+      setCourseBuilderSettingsBusy(false);
+    }
+  }
+
   async function rebuildIndexes() {
     if (!settingsConversationId) return;
     setRetrievalBusy(true);
@@ -691,11 +712,14 @@ export default function App() {
       <SettingsPage
         providers={providers}
         parser={parser}
+        courseBuilderSettings={courseBuilderSettings}
         retrieval={retrieval}
         providerForm={providerForm}
         editingProviderId={editingProviderId}
         parserKey={parserKey}
         retrievalBusy={retrievalBusy}
+        courseBuilderSettingsBusy={courseBuilderSettingsBusy}
+        courseBuilderSettingsError={courseBuilderSettingsError}
         canRebuildIndexes={Boolean(settingsConversationId)}
         theme={theme}
         onBack={() => navigateHome()}
@@ -711,6 +735,7 @@ export default function App() {
         onClearParserKey={() => void clearParserKey()}
         onTestProvider={(providerId) => void testProvider(providerId)}
         onSetParserMode={(useLocalParsersOnly) => void setParserMode(useLocalParsersOnly)}
+        onSetSequentialCourseUnlocking={(enabled) => void setSequentialCourseUnlocking(enabled)}
         onRebuildIndexes={() => void rebuildIndexes()}
       />
     );
@@ -2529,7 +2554,7 @@ function MessageBubble({
     <div className={cn("flex gap-3", isUser ? "flex-row-reverse" : "flex-row")}>
       <Avatar role={message.role} />
 
-      <div className={cn("flex max-w-[min(88%,760px)] flex-col gap-2", isUser ? "items-end" : "items-start")}>
+      <div className={cn("flex min-w-0 max-w-[min(88%,760px)] flex-col gap-2", isUser ? "items-end" : "items-start")}>
         <div
           ref={messageBodyRef}
           className={cn(
@@ -2538,11 +2563,7 @@ function MessageBubble({
           )}
         >
           {message.content ? (
-            isUser ? (
-              <p className="whitespace-pre-wrap leading-7">{message.content}</p>
-            ) : (
-              <AssistantMarkdown content={message.content} />
-            )
+            <AssistantMarkdown content={message.content} variant={isUser ? "user" : "assistant"} />
           ) : streaming ? (
             <TypingIndicator />
           ) : (
@@ -3490,11 +3511,14 @@ function normalizeArtifactKind(artifact: Artifact): string {
 function SettingsPage({
   providers,
   parser,
+  courseBuilderSettings,
   retrieval,
   providerForm,
   editingProviderId,
   parserKey,
   retrievalBusy,
+  courseBuilderSettingsBusy,
+  courseBuilderSettingsError,
   canRebuildIndexes,
   theme,
   onBack,
@@ -3510,15 +3534,19 @@ function SettingsPage({
   onClearParserKey,
   onTestProvider,
   onSetParserMode,
+  onSetSequentialCourseUnlocking,
   onRebuildIndexes,
 }: {
   providers: ProviderRead[];
   parser: ParserSettings | null;
+  courseBuilderSettings: CourseBuilderSettings | null;
   retrieval: RetrievalSettings | null;
   providerForm: ProviderForm;
   editingProviderId: string | null;
   parserKey: string;
   retrievalBusy: boolean;
+  courseBuilderSettingsBusy: boolean;
+  courseBuilderSettingsError: string;
   canRebuildIndexes: boolean;
   theme: Theme;
   onBack: () => void;
@@ -3534,6 +3562,7 @@ function SettingsPage({
   onClearParserKey: () => void;
   onTestProvider: (providerId: string) => void;
   onSetParserMode: (useLocalParsersOnly: boolean) => void;
+  onSetSequentialCourseUnlocking: (enabled: boolean) => void;
   onRebuildIndexes: () => void;
 }) {
   const [providerToDelete, setProviderToDelete] = useState<ProviderRead | null>(null);
@@ -3599,6 +3628,40 @@ function SettingsPage({
                 );
               })}
             </div>
+          </div>
+        </section>
+
+        <section className="rounded-md border border-border bg-surface">
+          <header className="app-chrome flex items-center justify-between gap-3 border-b border-border px-5 py-3">
+            <div className="flex items-center gap-2">
+              <BookOpen className="h-4 w-4 text-primary" />
+              <h2 className="text-sm font-semibold">Course progression</h2>
+            </div>
+            <StatusPill active={Boolean(courseBuilderSettings?.sequential_unlocking_enabled)}>
+              {courseBuilderSettings?.sequential_unlocking_enabled ? "Sequential" : "Open"}
+            </StatusPill>
+          </header>
+          <div className="px-5 py-4">
+            <label className="flex cursor-pointer items-start justify-between gap-4 rounded-md border border-border bg-background px-3 py-3">
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">Lock course content until previous work is passed</span>
+                <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                  When enabled, subchapters unlock in order and the next chapter opens after its previous chapter quiz is passed. When disabled, every generated chapter and subchapter is available; assessments keep their prerequisites.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                checked={courseBuilderSettings?.sequential_unlocking_enabled ?? true}
+                disabled={!courseBuilderSettings || courseBuilderSettingsBusy}
+                onChange={(event) => onSetSequentialCourseUnlocking(event.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+              />
+            </label>
+            {courseBuilderSettingsError && (
+              <p className="mt-2 text-xs text-[hsl(var(--danger))]" role="alert">
+                {courseBuilderSettingsError}
+              </p>
+            )}
           </div>
         </section>
 

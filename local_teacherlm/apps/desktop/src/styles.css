@@ -160,9 +160,36 @@
 
   .prose .katex-display,
   .course-markdown .katex-display {
+    max-width: 100%;
     overflow-x: auto;
     overflow-y: hidden;
-    padding-bottom: 0.25rem;
+    padding: 0.25rem 0 0.5rem;
+    scrollbar-width: thin;
+  }
+
+  .math-markdown {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .math-markdown .katex-display > .katex {
+    display: inline-block;
+    min-width: max-content;
+    max-width: none;
+    text-align: initial;
+  }
+
+  .math-markdown-user,
+  .math-markdown-user :where(h1, h2, h3, h4, h5, h6, p, ul, ol, li, blockquote, table, th, td, a, strong, em, code) {
+    color: inherit !important;
+  }
+
+  .math-markdown-user :where(code) {
+    background: hsl(var(--primary-foreground) / 0.14) !important;
+  }
+
+  .math-markdown-user :where(blockquote, table, th, td) {
+    border-color: hsl(var(--primary-foreground) / 0.28) !important;
   }
 }
 

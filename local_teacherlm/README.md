@@ -898,6 +898,7 @@ The local API can stay close to the current backend routes:
 - `/api/conversations/{id}/knowledge-graph`,
 - `/api/conversations/{id}/review-tests`,
 - `/api/settings/runtime`,
+- `/api/settings/coursebuilder`,
 - `/api/artifacts/{id}`,
 - `/api/mcp/generators`,
 - `/api/mcp/permissions`.
@@ -939,6 +940,10 @@ reaches 100%. Adding, retrying, or deleting a file invalidates the saved plan.
   advances sequential lesson progress.
 - `POST /api/conversations/{id}/coursebuilder/quizzes/{quiz_id}/submit` grades
   option IDs server-side and applies the 70% mastery gate.
+- `GET/PATCH /api/settings/coursebuilder` reads or updates the global
+  `sequential_unlocking_enabled` preference. It defaults to `true`; disabling
+  it opens every generated chapter and subchapter while keeping chapter and
+  final assessment prerequisites in place.
 
 When structured model output is unavailable or invalid, the service keeps a
 cited source-extracted course and reports `fallback` or `mixed` quality instead
