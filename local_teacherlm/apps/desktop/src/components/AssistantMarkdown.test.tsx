@@ -40,6 +40,28 @@ describe("normalizeMathMarkdown", () => {
 
     expect(normalizeMathMarkdown(markdown)).toBe(markdown);
   });
+
+  it("converts parser HTML tables and removes page markers", () => {
+    const normalized = normalizeMathMarkdown(`Before
+<table><tr><th>Item</th><th>Value</th></tr><tr><td>Alpha</td><td>5</td></tr></table>
+<page_number>8</page_number>
+After`);
+
+    expect(normalized).toContain("| Item | Value |");
+    expect(normalized).toContain("| Alpha | 5 |");
+    expect(normalized).not.toContain("page_number");
+    expect(normalized).not.toContain("<table>");
+  });
+
+  it("repairs bold labels damaged while stripping source bullets", () => {
+    const normalized = normalizeMathMarkdown(
+      "En contexte : choisir la bonne mesure** Objectif :** Le résultat est solide. Pourquoi ce résultat ?** La source explique la raison.",
+    );
+
+    expect(normalized).toBe(
+      "**En contexte : choisir la bonne mesure** Objectif : Le résultat est solide. **Pourquoi ce résultat ?** La source explique la raison.",
+    );
+  });
 });
 
 describe("AssistantMarkdown", () => {
@@ -60,5 +82,15 @@ describe("AssistantMarkdown", () => {
     expect(user).toContain("math-markdown-user");
     expect(assistant).toContain("class=\"katex\"");
     expect(user).toContain("class=\"katex\"");
+  });
+
+  it("renders extracted source tables as semantic tables", () => {
+    const html = renderToStaticMarkup(
+      <AssistantMarkdown content="<table><tr><th>Term</th><th>Meaning</th></tr><tr><td>A</td><td>General value</td></tr></table>" />,
+    );
+
+    expect(html).toContain("<table");
+    expect(html).toContain("<th");
+    expect(html).not.toContain("&lt;table&gt;");
   });
 });

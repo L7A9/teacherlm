@@ -37,6 +37,7 @@ import {
   Palette,
   PanelLeft,
   PanelRight,
+  Play,
   Plus,
   Presentation,
   RotateCcw,
@@ -46,6 +47,7 @@ import {
   Server,
   Settings,
   Sparkles,
+  Square,
   Sun,
   Trash2,
   UploadCloud,
@@ -54,6 +56,11 @@ import {
 } from "lucide-react";
 import { api, streamChat, streamGenerate } from "./api";
 import { AssistantMarkdown } from "./components/AssistantMarkdown";
+import {
+  cleanCourseCitationSnippet,
+  dedupeCourseBlocks,
+  shouldShowLessonSummary,
+} from "./components/courseContent";
 import { MindmapRenderer } from "./components/MindmapRenderer";
 import type {
   Artifact,
@@ -163,6 +170,7 @@ export default function App() {
   const [input, setInput] = useState("");
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const [chatStreaming, setChatStreaming] = useState(false);
   const [status, setStatus] = useState("Starting");
   const [bootstrapped, setBootstrapped] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -183,6 +191,7 @@ export default function App() {
   const [quizForm, setQuizForm] = useState<QuizForm>(DEFAULT_QUIZ_FORM);
   const [podcastDialogOpen, setPodcastDialogOpen] = useState(false);
   const [podcastForm, setPodcastForm] = useState<PodcastForm>(DEFAULT_PODCAST_FORM);
+  const activeChatController = useRef<AbortController | null>(null);
 
   const routeConversationId = route.kind === "conversation" ? route.conversationId : null;
 
@@ -273,6 +282,9 @@ export default function App() {
   }
 
   function clearConversationData() {
+    activeChatController.current?.abort();
+    activeChatController.current = null;
+    setChatStreaming(false);
     setConversation(null);
     setTitleDraft("");
     setEditingTitle(false);
@@ -452,20 +464,36 @@ export default function App() {
     const message = input.trim();
     setInput("");
     setBusy(true);
+    setChatStreaming(true);
     setDraft("");
     setMessages((current) => [
       ...current,
       optimisticMessage(conversation.id, "user", message, "text"),
     ]);
+    const controller = new AbortController();
+    activeChatController.current = controller;
     try {
-      await streamChat(conversation.id, message, selectedFiles, handleStreamEvent);
+      await streamChat(conversation.id, message, selectedFiles, handleStreamEvent, controller.signal);
       await loadConversation(conversation.id);
       setDraft("");
     } catch (error) {
-      setDraft(error instanceof Error ? error.message : "Chat failed");
+      if (isAbortError(error)) {
+        setDraft("");
+        await loadConversation(conversation.id);
+      } else {
+        setDraft(error instanceof Error ? error.message : "Chat failed");
+      }
     } finally {
+      if (activeChatController.current === controller) {
+        activeChatController.current = null;
+      }
+      setChatStreaming(false);
       setBusy(false);
     }
+  }
+
+  function stopChat() {
+    activeChatController.current?.abort();
   }
 
   function handleGeneratorSelect(outputType: string) {
@@ -778,6 +806,7 @@ export default function App() {
         draft={draft}
         input={input}
         busy={busy}
+        chatStreaming={chatStreaming}
         artifacts={artifacts}
         course={course}
         onCourseChange={setCourse}
@@ -801,6 +830,7 @@ export default function App() {
           setSelectedFiles((current) => (checked ? [...current, fileId] : current.filter((id) => id !== fileId)));
         }}
         onSubmitChat={(event) => void submitChat(event)}
+        onStopChat={stopChat}
         onInputChange={setInput}
         onRunGenerator={handleGeneratorSelect}
       />
@@ -1010,6 +1040,7 @@ function WorkspacePage({
   draft,
   input,
   busy,
+  chatStreaming,
   artifacts,
   course,
   onCourseChange,
@@ -1031,6 +1062,7 @@ function WorkspacePage({
   onRetryFile,
   onToggleFile,
   onSubmitChat,
+  onStopChat,
   onInputChange,
   onRunGenerator,
 }: {
@@ -1043,6 +1075,7 @@ function WorkspacePage({
   draft: string;
   input: string;
   busy: boolean;
+  chatStreaming: boolean;
   artifacts: Artifact[];
   course: CourseBuilderRead | null;
   onCourseChange: (course: CourseBuilderRead) => void;
@@ -1064,6 +1097,7 @@ function WorkspacePage({
   onRetryFile: (fileId: string) => void;
   onToggleFile: (fileId: string, checked: boolean) => void;
   onSubmitChat: (event?: FormEvent) => void;
+  onStopChat: () => void;
   onInputChange: (value: string) => void;
   onRunGenerator: (outputType: string) => void;
 }) {
@@ -1172,6 +1206,7 @@ function WorkspacePage({
                   draft={draft}
                   input={input}
                   busy={busy}
+                  chatStreaming={chatStreaming}
                   hint={hint}
                   outputs={outputs}
                   disabled={actionsDisabled}
@@ -1179,6 +1214,7 @@ function WorkspacePage({
                   inputRef={inputRef}
                   onInputChange={onInputChange}
                   onSubmitChat={onSubmitChat}
+                  onStopChat={onStopChat}
                   onRunGenerator={onRunGenerator}
                 />
               ) : (
@@ -1212,6 +1248,7 @@ function WorkspacePage({
                   draft={draft}
                   input={input}
                   busy={busy}
+                  chatStreaming={chatStreaming}
                   hint={hint}
                   outputs={outputs}
                   disabled={actionsDisabled}
@@ -1219,6 +1256,7 @@ function WorkspacePage({
                   inputRef={inputRef}
                   onInputChange={onInputChange}
                   onSubmitChat={onSubmitChat}
+                  onStopChat={onStopChat}
                   onRunGenerator={onRunGenerator}
                 />
               </div>
@@ -1929,6 +1967,36 @@ function CourseBuilderLikePanel({
   const readyFiles = files.filter((file) => file.status === "ready");
   const pending = files.filter((file) => file.status !== "ready" && file.status !== "error" && file.status !== "failed").length;
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [courseAction, setCourseAction] = useState<"build" | "stop" | null>(null);
+  const [rebuildError, setRebuildError] = useState("");
+
+  async function rebuildWithImprovedQuality() {
+    setCourseAction("build");
+    setRebuildError("");
+    try {
+      const improvedQuality = course?.status === "ready";
+      const updated = await api.rebuildCoursebuilder(conversationId, improvedQuality);
+      setSelectedItemId(null);
+      onCourseChange(updated);
+    } catch (error) {
+      setRebuildError(error instanceof Error ? error.message : "Could not rebuild the course.");
+    } finally {
+      setCourseAction(null);
+    }
+  }
+
+  async function stopCourseBuild() {
+    setCourseAction("stop");
+    setRebuildError("");
+    try {
+      const updated = await api.stopCoursebuilder(conversationId);
+      onCourseChange(updated);
+    } catch (error) {
+      setRebuildError(error instanceof Error ? error.message : "Could not stop course building.");
+    } finally {
+      setCourseAction(null);
+    }
+  }
 
   if (files.length === 0) {
     return (
@@ -1967,7 +2035,7 @@ function CourseBuilderLikePanel({
     );
   }
 
-  if (!course || (!course.chapters.length && course.status !== "ready")) {
+  if (!course || (!course.chapters.length && !["ready", "stopped"].includes(course.status))) {
     const buildStage = String(course?.metadata?.stage || "planning").replace(/_/g, " ");
     return (
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
@@ -1977,6 +2045,32 @@ function CourseBuilderLikePanel({
           title="Building course"
           body={`TeacherLM is ${buildStage}: organizing the ready sources into a cumulative course.`}
         />
+        {course?.status === "building" && (
+          <Button variant="secondary" onClick={stopCourseBuild} disabled={courseAction !== null}>
+            {courseAction === "stop" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-3.5 w-3.5 fill-current" />}
+            Stop building
+          </Button>
+        )}
+        {rebuildError && <p role="alert" className="text-xs text-[hsl(var(--danger))]">{rebuildError}</p>}
+        </div>
+      </div>
+    );
+  }
+
+  if (course.status === "stopped" && !course.chapters.length) {
+    return (
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <div className="flex flex-col gap-3">
+          <StateCard
+            icon={<Square className="h-4 w-4 text-[hsl(var(--warning))]" />}
+            title="Course building stopped"
+            body="No chapters were completed yet. Build again whenever you are ready."
+          />
+          <Button onClick={rebuildWithImprovedQuality} disabled={courseAction !== null}>
+            {courseAction === "build" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+            Build course
+          </Button>
+          {rebuildError && <p role="alert" className="text-xs text-[hsl(var(--danger))]">{rebuildError}</p>}
         </div>
       </div>
     );
@@ -2009,6 +2103,10 @@ function CourseBuilderLikePanel({
   const buildReady = Number(course.metadata?.ready_chapter_count ?? course.chapters.length);
   const buildTotal = Number(course.metadata?.total_chapter_count ?? course.chapters.length);
   const qualityMode = String(course.metadata?.quality_mode || "fallback");
+  const buildProfile = String(course.metadata?.build_profile || "fast");
+  const qualityUpgradeAvailable = !course.metadata?.quality_pipeline_version;
+  const isBuilding = course.status === "building";
+  const isStopped = course.status === "stopped";
 
   return (
     <div className={cn(
@@ -2022,10 +2120,41 @@ function CourseBuilderLikePanel({
         <div className="mb-3">
           <div className="flex items-start justify-between gap-2">
             <h3 className="text-sm font-semibold leading-5">{course.title || "Generated course"}</h3>
-            <Badge variant={course.status === "ready" ? "success" : "primary"}>
-              {course.status === "ready" ? "Ready" : `${buildReady}/${buildTotal}`}
+            <Badge variant={course.status === "ready" ? "success" : isStopped ? "muted" : "primary"}>
+              {course.status === "ready" ? "Ready" : isStopped ? "Stopped" : `${buildReady}/${buildTotal}`}
             </Badge>
           </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            className={cn("mt-2 w-full justify-center", isBuilding && "text-[hsl(var(--danger))]")}
+            onClick={isBuilding ? stopCourseBuild : rebuildWithImprovedQuality}
+            disabled={courseAction !== null}
+            title={
+              isBuilding
+                ? "Stop course building"
+                : isStopped
+                  ? "Resume building from completed compatible chapters"
+                  : "Replan from the uploaded source structure and regenerate each teaching block with validation"
+            }
+          >
+            {courseAction ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : isBuilding ? (
+              <Square className="h-3.5 w-3.5 fill-current" />
+            ) : isStopped ? (
+              <Play className="h-3.5 w-3.5" />
+            ) : (
+              <RotateCcw className="h-3.5 w-3.5" />
+            )}
+            {isBuilding ? "Stop building" : isStopped ? "Build course" : "Rebuild with improved quality"}
+          </Button>
+          {rebuildError && <p role="alert" className="mt-1 text-[10px] text-[hsl(var(--danger))]">{rebuildError}</p>}
+          {qualityUpgradeAvailable && course.status === "ready" && (
+            <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
+              This existing course can be manually upgraded without deleting matching progress.
+            </p>
+          )}
           <p className="mt-1 line-clamp-3 text-[11px] leading-4 text-muted-foreground">{course.description}</p>
           <div className="mt-3">
             <div className="mb-1 flex justify-between text-[10px] text-muted-foreground">
@@ -2040,9 +2169,18 @@ function CourseBuilderLikePanel({
               Publishing chapter {Math.min(buildReady + 1, buildTotal)} of {buildTotal}
             </div>
           )}
+          {isStopped && (
+            <div className="mt-2 rounded-md border border-[hsl(var(--warning)/0.35)] bg-[hsl(var(--warning)/0.1)] p-2 text-[10px] leading-4 text-foreground">
+              Building is stopped. Completed chapters are kept and will be reused when you continue.
+            </div>
+          )}
           {qualityMode !== "llm" && (
             <div className="mt-2 rounded-md border border-[hsl(var(--warning)/0.35)] bg-[hsl(var(--warning)/0.1)] p-2 text-[10px] leading-4 text-foreground">
-              {qualityMode === "mixed" ? "Some sections use source-extracted fallback content." : "Source-extracted course; configure a chat model for deeper synthesis."}
+              {buildProfile === "fast"
+                ? "Fast grounded build is ready. Use Rebuild with improved quality only when you want deeper synthesis."
+                : qualityMode === "mixed"
+                  ? "Some sections use source-extracted fallback content."
+                  : "Source-extracted course; configure a chat model for deeper synthesis."}
             </div>
           )}
         </div>
@@ -2130,7 +2268,11 @@ function CourseBuilderLikePanel({
           />
         ) : (
           <div className="flex min-h-full items-center justify-center p-8 text-center text-sm text-muted-foreground">
-            {course.status === "building" ? "The first chapter is being prepared." : "Select an unlocked subchapter to begin."}
+            {isBuilding
+              ? "The first chapter is being prepared."
+              : isStopped
+                ? "Building is stopped. Select Build course when you want to continue."
+                : "Select an unlocked subchapter to begin."}
           </div>
         )}
       </main>
@@ -2156,6 +2298,14 @@ function CourseLessonView({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lessonIndex = chapter.lessons.findIndex((item) => item.id === lesson.id);
+  const visibleBlocks = useMemo(() => dedupeCourseBlocks(lesson.blocks), [lesson.blocks]);
+  const showSummary = shouldShowLessonSummary(lesson.summary, visibleBlocks);
+  const remainingLessonCitations = useMemo(() => {
+    const visibleCitationIds = new Set(
+      visibleBlocks.flatMap((block) => block.citations.map((citation) => citation.chunk_id)),
+    );
+    return lesson.citations.filter((citation) => !visibleCitationIds.has(citation.chunk_id));
+  }, [lesson.citations, visibleBlocks]);
 
   async function completeLesson() {
     setSaving(true);
@@ -2188,7 +2338,7 @@ function CourseLessonView({
           {lesson.is_completed && <Badge variant="success"><Check className="h-3 w-3" /> Completed</Badge>}
         </div>
         <h1 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">{lesson.title}</h1>
-        {lesson.summary && (
+        {showSummary && (
           <div className="course-markdown mt-2 text-sm text-muted-foreground">
             <AssistantMarkdown content={lesson.summary} />
           </div>
@@ -2200,9 +2350,9 @@ function CourseLessonView({
         )}
       </header>
 
-      {lesson.blocks.map((block) => <CourseBlockRenderer key={block.id} block={block} />)}
+      {visibleBlocks.map((block) => <CourseBlockRenderer key={block.id} block={block} />)}
 
-      <CourseCitations citations={lesson.citations} />
+      <CourseCitations citations={remainingLessonCitations} />
 
       <footer className="flex flex-col items-start gap-2 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs leading-5 text-muted-foreground">
@@ -2220,6 +2370,7 @@ function CourseLessonView({
 
 function CourseBlockRenderer({ block }: { block: CourseLessonBlock }) {
   const special = ["equation", "matrix", "chemical_equation", "table", "timeline"].includes(block.block_type);
+  const insufficient = block.validation_status === "insufficient_source_material";
   if (block.block_type === "table" && block.data_json?.headers && block.data_json?.rows) {
     return (
       <section className="rounded-lg border border-border bg-surface p-4">
@@ -2255,10 +2406,15 @@ function CourseBlockRenderer({ block }: { block: CourseLessonBlock }) {
     );
   }
   return (
-    <section className={cn("course-markdown", special && "rounded-lg border border-primary/20 bg-primary/5 p-4")}>
+    <section className={cn(
+      "course-markdown",
+      special && "rounded-lg border border-primary/20 bg-primary/5 p-4",
+      insufficient && "rounded-lg border border-[hsl(var(--warning)/0.35)] bg-[hsl(var(--warning)/0.08)] p-4",
+    )}>
       {block.title && block.block_type !== "markdown" && <h2 className="mb-2 text-sm font-semibold">{block.title}</h2>}
+      {insufficient && <Badge variant="muted">Insufficient source support</Badge>}
       <AssistantMarkdown content={block.content} />
-      {special && <CourseCitations citations={block.citations} compact />}
+      <CourseCitations citations={block.citations} compact />
     </section>
   );
 }
@@ -2274,7 +2430,7 @@ function CourseCitations({ citations, compact = false }: { citations: CourseLess
         {citations.map((citation) => (
           <li key={citation.chunk_id} className="text-[11px] leading-4 text-muted-foreground">
             <strong className="text-foreground">{citation.source}</strong>{citation.section ? ` · ${citation.section}` : ""}
-            {citation.snippet && <p className="mt-0.5 line-clamp-3">{citation.snippet}</p>}
+            {citation.snippet && <p className="mt-0.5 line-clamp-3">{cleanCourseCitationSnippet(citation.snippet)}</p>}
           </li>
         ))}
       </ul>
@@ -2425,6 +2581,7 @@ function ChatPanel({
   draft,
   input,
   busy,
+  chatStreaming,
   hint,
   outputs,
   disabled,
@@ -2432,6 +2589,7 @@ function ChatPanel({
   inputRef,
   onInputChange,
   onSubmitChat,
+  onStopChat,
   onRunGenerator,
 }: {
   conversationId: string;
@@ -2439,6 +2597,7 @@ function ChatPanel({
   draft: string;
   input: string;
   busy: boolean;
+  chatStreaming: boolean;
   hint: string | null;
   outputs: GeneratorManifest[];
   disabled: boolean;
@@ -2446,6 +2605,7 @@ function ChatPanel({
   inputRef: React.RefObject<HTMLTextAreaElement>;
   onInputChange: (value: string) => void;
   onSubmitChat: (event?: FormEvent) => void;
+  onStopChat: () => void;
   onRunGenerator: (outputType: string) => void;
 }) {
   return (
@@ -2476,10 +2636,12 @@ function ChatPanel({
           ref={inputRef}
           value={input}
           busy={busy}
+          streaming={chatStreaming}
           disabled={disabled}
           disabledReason={disabledReason}
           onValueChange={onInputChange}
           onSubmit={onSubmitChat}
+          onStop={onStopChat}
         />
       </footer>
     </section>
@@ -2703,12 +2865,14 @@ const ChatInput = React.forwardRef<
   {
     value: string;
     busy: boolean;
+    streaming: boolean;
     disabled: boolean;
     disabledReason: string;
     onValueChange: (value: string) => void;
     onSubmit: (event?: FormEvent) => void;
+    onStop: () => void;
   }
->(function ChatInput({ value, busy, disabled, disabledReason, onValueChange, onSubmit }, ref) {
+>(function ChatInput({ value, busy, streaming, disabled, disabledReason, onValueChange, onSubmit, onStop }, ref) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
@@ -2753,14 +2917,22 @@ const ChatInput = React.forwardRef<
         aria-label="Chat message"
       />
       <Button
-        type="submit"
-        variant="primary"
+        type={streaming ? "button" : "submit"}
+        variant={streaming ? "secondary" : "primary"}
         size="icon"
-        disabled={busy || disabled || !value.trim()}
-        aria-label="Send message"
-        title={disabled ? disabledReason : "Send (Enter)"}
+        onClick={streaming ? onStop : undefined}
+        disabled={streaming ? false : busy || disabled || !value.trim()}
+        aria-label={streaming ? "Stop response" : "Send message"}
+        title={streaming ? "Stop response" : disabled ? disabledReason : "Send (Enter)"}
+        className={streaming ? "text-[hsl(var(--danger))]" : undefined}
       >
-        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+        {streaming ? (
+          <Square className="h-3.5 w-3.5 fill-current" />
+        ) : busy ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Send className="h-4 w-4" />
+        )}
       </Button>
     </form>
   );
@@ -4241,6 +4413,12 @@ function optimisticMessage(conversationId: string, role: string, content: string
 
 function cn(...classes: Array<string | false | null | undefined>): string {
   return classes.filter(Boolean).join(" ");
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException
+    ? error.name === "AbortError"
+    : error instanceof Error && error.name === "AbortError";
 }
 
 function readSavedTheme(): Theme {

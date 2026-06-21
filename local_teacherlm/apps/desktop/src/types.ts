@@ -156,6 +156,8 @@ export type CourseLessonBlock = {
   };
   source_chunk_ids: string[];
   citations: CourseCitation[];
+  source_query?: string;
+  validation_status?: "supported" | "insufficient_source_material" | string;
 };
 
 export type CourseQuizOption = {
@@ -196,6 +198,7 @@ export type CourseLesson = {
   content_fingerprint?: string;
   generation_status?: "pending" | "building" | "ready" | string;
   lesson_stage?: "introduction" | "content" | "conclusion" | string;
+  support_status?: "supported" | "insufficient_source_material" | string;
   is_locked?: boolean;
   is_completed?: boolean;
 };

@@ -29,7 +29,9 @@ function normalizeUnfencedMarkdown(content: string): string {
     return token;
   });
 
-  let normalized = repairDamagedLatexCommands(protectedContent);
+  let normalized = normalizeExtractedSourceMarkup(protectedContent);
+  normalized = repairOrphanStrongMarkers(normalized);
+  normalized = repairDamagedLatexCommands(normalized);
   normalized = normalizeLatexDelimiters(normalized);
   normalized = wrapBareMathEnvironments(normalized);
   normalized = canonicalizeDisplayMath(normalized);
@@ -40,6 +42,94 @@ function normalizeUnfencedMarkdown(content: string): string {
   return normalized.replace(/\uE000TEACHERLM_CODE_(\d+)\uE001/g, (_match, index: string) => (
     inlineCode[Number(index)] ?? ""
   ));
+}
+
+export function normalizeExtractedSourceMarkup(content: string): string {
+  let normalized = content
+    .replace(
+      /<\s*(?:page_number|page_header|page_footer|page_break)\b[^>]*>[\s\S]*?<\s*\/\s*(?:page_number|page_header|page_footer|page_break)\s*>/gi,
+      "\n",
+    )
+    .replace(/<\s*(?:page_number|page_header|page_footer|page_break)\b[^>]*\/\s*>/gi, "\n")
+    .replace(/&nbsp;?/gi, " ");
+
+  normalized = normalized.replace(/<table\b[^>]*>[\s\S]*?<\/table\s*>/gi, (table) => {
+    const markdown = htmlTableToMarkdown(table);
+    return markdown ? `\n\n${markdown}\n\n` : "\n";
+  });
+  return normalized.replace(/\n{3,}/g, "\n\n");
+}
+
+function repairOrphanStrongMarkers(content: string): string {
+  const repaired = content.replace(
+    /(^|\n+)(?!\*\*)([\p{Lu}\p{Lt}][^*\n]{2,90})\*\*(?=\s|$)/gu,
+    (_match, prefix: string, label: string) => `${prefix}**${label}**`,
+  );
+  return repaired.replace(
+    /(^|[.!?]\s+|\n+)([\p{Lu}\p{Lt}][^*\n]{2,90}[?:])\*\*(?=\s|$)/gu,
+    (_match, prefix: string, label: string) => `${prefix}**${label}**`,
+  ).replace(
+    /(?<!\*)\b([\p{Lu}\p{Lt}][\p{L}\p{N}\s'’()@%+./-]{1,60}[?:])\*\*(?=\s|$)/gu,
+    "$1",
+  );
+}
+
+function htmlTableToMarkdown(table: string): string {
+  const rows = [...table.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr\s*>/gi)]
+    .map((row) => [...String(row[1] ?? "").matchAll(/<t([hd])\b[^>]*>([\s\S]*?)<\/t\1\s*>/gi)]
+      .map((cell) => ({ header: String(cell[1]).toLowerCase() === "h", value: cleanHtmlCell(String(cell[2] ?? "")) })))
+    .filter((row) => row.length > 0);
+  if (!rows.length) return "";
+
+  const width = Math.max(...rows.map((row) => row.length));
+  const values = rows.map((row) => [
+    ...row.map((cell) => cell.value),
+    ...Array.from({ length: Math.max(0, width - row.length) }, () => ""),
+  ]);
+  if (!rows[0]?.every((cell) => cell.header)) {
+    values.unshift(Array.from({ length: width }, (_, index) => `Column ${index + 1}`));
+  }
+  const [headers = [], ...body] = values;
+  return [
+    markdownTableRow(headers),
+    markdownTableRow(Array.from({ length: width }, () => "---")),
+    ...body.map(markdownTableRow),
+  ].join("\n");
+}
+
+function cleanHtmlCell(value: string): string {
+  return decodeHtmlEntities(
+    value
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<[^>]+>/g, " "),
+  )
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\|/g, "\\|");
+}
+
+function decodeHtmlEntities(value: string): string {
+  const named: Record<string, string> = {
+    amp: "&",
+    apos: "'",
+    gt: ">",
+    lt: "<",
+    nbsp: " ",
+    quot: '"',
+  };
+  return value.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (entity, code: string) => {
+    if (code[0] !== "#") return named[code.toLowerCase()] ?? entity;
+    const numeric = code[1]?.toLowerCase() === "x"
+      ? Number.parseInt(code.slice(2), 16)
+      : Number.parseInt(code.slice(1), 10);
+    return Number.isFinite(numeric) && numeric >= 0 && numeric <= 0x10FFFF
+      ? String.fromCodePoint(numeric)
+      : entity;
+  });
+}
+
+function markdownTableRow(cells: string[]): string {
+  return `| ${cells.join(" | ")} |`;
 }
 
 function splitFencedCode(content: string): MarkdownSegment[] {
