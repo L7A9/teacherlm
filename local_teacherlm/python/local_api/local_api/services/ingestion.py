@@ -133,7 +133,15 @@ class IngestionService:
                     section_index,
                 )
                 section_chunk_index = 0
-                for chunk_text in _chunk_text(section["text"], get_settings().chunk_max_chars, get_settings().chunk_overlap_chars):
+                chunk_drafts = await _hybrid_chunk_text(
+                    section["text"],
+                    max_chars=get_settings().chunk_max_chars,
+                    overlap_chars=get_settings().chunk_overlap_chars,
+                    min_semantic_chars=get_settings().chunk_semantic_min_chars,
+                    similarity_threshold=get_settings().chunk_semantic_similarity_threshold,
+                )
+                for chunk_draft in chunk_drafts:
+                    chunk_text = chunk_draft["text"]
                     concepts = _extract_concepts(chunk_text)
                     questions = _generated_questions(concepts, section["heading_path"], get_settings().generated_questions_per_chunk)
                     equations = _extract_equations(chunk_text)
@@ -150,7 +158,10 @@ class IngestionService:
                             "text": chunk_text,
                             "source_filename": file_record["filename"],
                             "metadata": {
-                                "chunker": "structured-section-v1",
+                                "chunker": "hybrid-structure-semantic-v2",
+                                "chunking_strategy": "heading_then_semantic",
+                                "chunk_boundary_type": chunk_draft["boundary_type"],
+                                "boundary_similarity": chunk_draft["boundary_similarity"],
                                 "document_id": document_id,
                                 "section_id": section_id,
                                 "parent_section_id": "",
@@ -579,21 +590,274 @@ def _split_sections(text: str, fallback_title: str) -> list[dict]:
     return [section for section in sections if section["text"].strip()]
 
 
+async def _hybrid_chunk_text(
+    text: str,
+    *,
+    max_chars: int,
+    overlap_chars: int,
+    min_semantic_chars: int,
+    similarity_threshold: float,
+) -> list[dict[str, Any]]:
+    """Preserve source structure, then use embeddings to choose boundaries in long sections."""
+    units = _semantic_units(text, max_chars=max_chars)
+    if not units:
+        return []
+    if len(text) <= max_chars:
+        return [
+            {
+                "text": text.strip(),
+                "boundary_type": "section_end",
+                "boundary_similarity": None,
+            }
+        ]
+
+    similarities: list[float]
+    threshold = similarity_threshold
+    try:
+        vectors = await get_vector_service().embed_passages([unit["text"] for unit in units])
+        if len(vectors) != len(units):
+            raise ValueError("semantic chunking returned an incomplete embedding batch")
+        similarities = [
+            _vector_cosine(vectors[index], vectors[index + 1])
+            for index in range(len(vectors) - 1)
+        ]
+    except Exception:  # noqa: BLE001 - lexical cohesion is a safe offline boundary fallback.
+        similarities = [
+            _lexical_cohesion(units[index]["text"], units[index + 1]["text"])
+            for index in range(len(units) - 1)
+        ]
+        threshold = min(threshold, 0.12)
+
+    return _assemble_semantic_chunks(
+        units,
+        similarities,
+        max_chars=max_chars,
+        overlap_chars=overlap_chars,
+        min_semantic_chars=min_semantic_chars,
+        similarity_threshold=threshold,
+    )
+
+
 def _chunk_text(text: str, max_chars: int, overlap_chars: int) -> list[str]:
-    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
-    chunks: list[str] = []
-    current = ""
-    for paragraph in paragraphs:
-        if len(current) + len(paragraph) + 2 <= max_chars:
-            current = f"{current}\n\n{paragraph}".strip()
+    """Synchronous compatibility wrapper using lexical cohesion instead of embeddings."""
+    units = _semantic_units(text, max_chars=max_chars)
+    similarities = [
+        _lexical_cohesion(units[index]["text"], units[index + 1]["text"])
+        for index in range(max(0, len(units) - 1))
+    ]
+    drafts = _assemble_semantic_chunks(
+        units,
+        similarities,
+        max_chars=max_chars,
+        overlap_chars=overlap_chars,
+        min_semantic_chars=max(120, min(600, max_chars // 3)),
+        similarity_threshold=0.12,
+    )
+    return [draft["text"] for draft in drafts]
+
+
+def _semantic_units(text: str, *, max_chars: int) -> list[dict[str, Any]]:
+    units: list[dict[str, Any]] = []
+    for paragraph in (part.strip() for part in re.split(r"\n\s*\n", str(text or ""))):
+        if not paragraph:
             continue
-        if current:
-            chunks.append(current)
-        prefix = current[-overlap_chars:] if current and overlap_chars > 0 else ""
-        current = f"{prefix}\n\n{paragraph}".strip()
+        structured = _is_structured_unit(paragraph)
+        pieces = [paragraph] if structured or len(paragraph) <= max_chars else _split_oversized_prose(paragraph, max_chars)
+        units.extend({"text": piece, "structured": structured} for piece in pieces if piece.strip())
+    if not units and str(text or "").strip():
+        units = [{"text": piece, "structured": False} for piece in _split_oversized_prose(text, max_chars)]
+    return units
+
+
+def _split_oversized_prose(text: str, max_chars: int) -> list[str]:
+    fragments = [part.strip() for part in text.splitlines() if part.strip()]
+    if len(fragments) <= 1:
+        fragments = [
+            part.strip()
+            for part in re.split(r"(?<=[.!?…])\s+", " ".join(text.split()))
+            if part.strip()
+        ]
+    pieces: list[str] = []
+    current = ""
+    for fragment in fragments or [text.strip()]:
+        for part in _hard_wrap_text(fragment, max_chars):
+            candidate = f"{current}\n{part}".strip()
+            if current and len(candidate) > max_chars:
+                pieces.append(current)
+                current = part
+            else:
+                current = candidate
     if current:
-        chunks.append(current[:max_chars])
-    return chunks or [text[:max_chars]]
+        pieces.append(current)
+    return pieces
+
+
+def _hard_wrap_text(text: str, max_chars: int) -> list[str]:
+    remaining = str(text or "").strip()
+    if not remaining:
+        return []
+    parts: list[str] = []
+    while len(remaining) > max_chars:
+        cut = max(remaining.rfind("\n", 0, max_chars + 1), remaining.rfind(" ", 0, max_chars + 1))
+        if cut < max(1, max_chars // 2):
+            cut = max_chars
+        parts.append(remaining[:cut].strip())
+        remaining = remaining[cut:].strip()
+    if remaining:
+        parts.append(remaining)
+    return parts
+
+
+def _is_structured_unit(text: str) -> bool:
+    stripped = text.strip()
+    lines = [line.strip() for line in stripped.splitlines() if line.strip()]
+    table_lines = sum(line.startswith("|") and line.endswith("|") for line in lines)
+    return bool(
+        (stripped.startswith("```") and stripped.endswith("```"))
+        or (stripped.startswith("$$") and stripped.endswith("$$"))
+        or (stripped.startswith(r"\[") and stripped.endswith(r"\]"))
+        or (len(lines) >= 2 and table_lines / len(lines) >= 0.8)
+    )
+
+
+def _assemble_semantic_chunks(
+    units: list[dict[str, Any]],
+    similarities: list[float],
+    *,
+    max_chars: int,
+    overlap_chars: int,
+    min_semantic_chars: int,
+    similarity_threshold: float,
+) -> list[dict[str, Any]]:
+    if not units:
+        return []
+    if len(similarities) != max(0, len(units) - 1):
+        similarities = [1.0] * max(0, len(units) - 1)
+
+    spans: list[tuple[int, int, str, float | None]] = []
+    start = 0
+    while start < len(units):
+        budget = max_chars if start == 0 else max(200, max_chars - overlap_chars)
+        end = start
+        size = 0
+        candidates: list[tuple[int, int, float]] = []
+        while end < len(units):
+            unit_size = len(units[end]["text"]) + (2 if end > start else 0)
+            if end > start and size + unit_size > budget:
+                break
+            size += unit_size
+            end += 1
+            if end < len(units) and size >= min_semantic_chars:
+                candidates.append((end, size, similarities[end - 1]))
+
+        if end >= len(units):
+            spans.append((start, len(units), "section_end", None))
+            break
+        if end == start:
+            end = start + 1
+
+        safe_candidates = [
+            candidate
+            for candidate in candidates
+            if _safe_semantic_boundary(units, candidate[0])
+        ]
+        semantic_candidates: list[tuple[int, int, float]] = []
+        if safe_candidates:
+            local_scores = sorted(candidate[2] for candidate in safe_candidates)
+            median = local_scores[len(local_scores) // 2]
+            semantic_candidates = [
+                candidate
+                for candidate in safe_candidates
+                if candidate[2] <= similarity_threshold or candidate[2] <= median - 0.08
+            ]
+        if semantic_candidates:
+            chosen = min(semantic_candidates, key=lambda item: (item[2], -item[0]))
+            cut, boundary_similarity = chosen[0], chosen[2]
+            boundary_type = "semantic"
+        else:
+            hard_candidates = safe_candidates or candidates
+            cut = (hard_candidates[-1][0] if hard_candidates else end)
+            boundary_similarity = similarities[cut - 1] if cut - 1 < len(similarities) else None
+            boundary_type = "size"
+        spans.append((start, cut, boundary_type, boundary_similarity))
+        start = cut
+
+    drafts: list[dict[str, Any]] = []
+    previous_text = ""
+    for start, end, boundary_type, boundary_similarity in spans:
+        body = "\n\n".join(unit["text"] for unit in units[start:end]).strip()
+        prefix = ""
+        if previous_text and overlap_chars > 0 and len(body) < max_chars:
+            prefix = _safe_prose_overlap(previous_text, min(overlap_chars, max_chars - len(body) - 2))
+        combined = f"{prefix}\n\n{body}".strip() if prefix else body
+        drafts.append(
+            {
+                "text": combined,
+                "boundary_type": boundary_type,
+                "boundary_similarity": round(boundary_similarity, 4) if boundary_similarity is not None else None,
+            }
+        )
+        previous_text = body
+    return drafts
+
+
+def _safe_semantic_boundary(units: list[dict[str, Any]], end: int) -> bool:
+    return bool(
+        0 < end < len(units)
+        and not units[end - 1].get("structured")
+        and not units[end].get("structured")
+    )
+
+
+def _safe_prose_overlap(text: str, limit: int) -> str:
+    if limit < 40:
+        return ""
+    prose = re.sub(r"\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]", " ", text)
+    prose = "\n".join(
+        line for line in prose.splitlines()
+        if not (line.strip().startswith("|") and line.strip().endswith("|"))
+    )
+    sentences = [part.strip() for part in re.split(r"(?<=[.!?…])\s+|\n+", prose) if part.strip()]
+    selected: list[str] = []
+    size = 0
+    for sentence in reversed(sentences):
+        addition = len(sentence) + (1 if selected else 0)
+        if selected and size + addition > limit:
+            break
+        if addition > limit:
+            continue
+        selected.append(sentence)
+        size += addition
+    return " ".join(reversed(selected)).strip()
+
+
+def _vector_cosine(left: list[float], right: list[float]) -> float:
+    if not left or not right or len(left) != len(right):
+        return 0.0
+    dot = sum(float(a) * float(b) for a, b in zip(left, right, strict=True))
+    left_norm = sum(float(value) ** 2 for value in left) ** 0.5
+    right_norm = sum(float(value) ** 2 for value in right) ** 0.5
+    return dot / (left_norm * right_norm) if left_norm and right_norm else 0.0
+
+
+def _lexical_cohesion(left: str, right: str) -> float:
+    left_terms = _chunk_terms(left)
+    right_terms = _chunk_terms(right)
+    if not left_terms or not right_terms:
+        return 0.0
+    return len(left_terms.intersection(right_terms)) / len(left_terms.union(right_terms))
+
+
+def _chunk_terms(text: str) -> set[str]:
+    stopwords = {
+        "about", "after", "also", "avec", "dans", "elle", "elles", "from", "have", "pour",
+        "that", "their", "there", "these", "this", "those", "une", "which", "with", "sont",
+    }
+    return {
+        token
+        for token in re.findall(r"[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ0-9_-]{2,}", text.casefold())
+        if token not in stopwords
+    }
 
 
 def _stable_chunk_id(source_file_id: str, section_id: str, section_chunk_index: int, text: str) -> str:

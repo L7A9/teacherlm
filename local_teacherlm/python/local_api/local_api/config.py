@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     retrieval_graph_enabled: bool = True
     chunk_max_chars: int = 1800
     chunk_overlap_chars: int = 180
+    chunk_semantic_min_chars: int = 600
+    chunk_semantic_similarity_threshold: float = 0.72
     generated_questions_per_chunk: int = 4
     llama_cloud_api_key: str = ""
     llama_cloud_base_url: str | None = None
