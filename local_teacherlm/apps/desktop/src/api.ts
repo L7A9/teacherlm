@@ -5,6 +5,7 @@ import type {
   CourseBuilderSettings,
   CourseQuizSubmissionResult,
   GeneratorManifest,
+  GeneratorSettings,
   LearnerState,
   Message,
   ParserSettings,
@@ -118,6 +119,12 @@ export const api = {
   coursebuilderSettings: () => request<CourseBuilderSettings>("/settings/coursebuilder"),
   updateCoursebuilderSettings: (payload: Partial<CourseBuilderSettings>) =>
     request<CourseBuilderSettings>("/settings/coursebuilder", {
+      method: "PATCH",
+      body: JSON.stringify(payload)
+    }),
+  generatorSettings: () => request<GeneratorSettings>("/settings/generators"),
+  updateGeneratorSettings: (payload: Partial<GeneratorSettings>) =>
+    request<GeneratorSettings>("/settings/generators", {
       method: "PATCH",
       body: JSON.stringify(payload)
     }),

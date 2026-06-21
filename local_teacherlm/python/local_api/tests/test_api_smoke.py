@@ -483,6 +483,17 @@ def test_app_factory_smoke(monkeypatch, tmp_path) -> None:
     assert parser["use_local_parsers_only"] is False
     parser = client.patch("/api/settings/parse", json={"clear_llama_cloud_api_key": True}).json()
     assert parser["llama_cloud_api_key_set"] is False
+
+    generator_settings = client.get("/api/settings/generators")
+    assert generator_settings.status_code == 200
+    assert generator_settings.json() == {"podcast_audio_enabled": True}
+    transcript_only = client.patch(
+        "/api/settings/generators",
+        json={"podcast_audio_enabled": False},
+    )
+    assert transcript_only.status_code == 200
+    assert transcript_only.json() == {"podcast_audio_enabled": False}
+    assert client.get("/api/settings/generators").json() == {"podcast_audio_enabled": False}
     assert parser["use_local_parsers_only"] is True
 
 

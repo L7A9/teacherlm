@@ -93,6 +93,14 @@ class CourseBuilderSettingsUpdate(BaseModel):
     sequential_unlocking_enabled: bool | None = None
 
 
+class GeneratorSettingsRead(BaseModel):
+    podcast_audio_enabled: bool = True
+
+
+class GeneratorSettingsUpdate(BaseModel):
+    podcast_audio_enabled: bool | None = None
+
+
 class RetrievalSettingsRead(BaseModel):
     embedding_model: str
     embedding_dim: int

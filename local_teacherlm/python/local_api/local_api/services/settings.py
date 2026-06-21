@@ -10,6 +10,8 @@ from local_api.db import get_store, new_id, utc_now
 from local_api.schemas import (
     CourseBuilderSettingsRead,
     CourseBuilderSettingsUpdate,
+    GeneratorSettingsRead,
+    GeneratorSettingsUpdate,
     ParserSettingsRead,
     ParserSettingsUpdate,
     ProviderPatch,
@@ -231,6 +233,43 @@ class SettingsService:
             (1 if enabled else 0, utc_now()),
         )
         return self.get_coursebuilder_settings()
+
+    def get_generator_settings(self) -> GeneratorSettingsRead:
+        row = get_store().one("SELECT * FROM generator_settings WHERE id = 'default'")
+        if row is None:
+            get_store().execute(
+                """
+                INSERT INTO generator_settings (id, podcast_audio_enabled, updated_at)
+                VALUES ('default', 1, ?)
+                """,
+                (utc_now(),),
+            )
+            return GeneratorSettingsRead()
+        return GeneratorSettingsRead(
+            podcast_audio_enabled=bool(row.get("podcast_audio_enabled")),
+        )
+
+    def update_generator_settings(
+        self,
+        payload: GeneratorSettingsUpdate,
+    ) -> GeneratorSettingsRead:
+        current = self.get_generator_settings()
+        audio_enabled = (
+            current.podcast_audio_enabled
+            if payload.podcast_audio_enabled is None
+            else payload.podcast_audio_enabled
+        )
+        get_store().execute(
+            """
+            INSERT INTO generator_settings (id, podcast_audio_enabled, updated_at)
+            VALUES ('default', ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              podcast_audio_enabled = excluded.podcast_audio_enabled,
+              updated_at = excluded.updated_at
+            """,
+            (1 if audio_enabled else 0, utc_now()),
+        )
+        return self.get_generator_settings()
 
     def get_retrieval_settings(self) -> RetrievalSettingsRead:
         row = self._retrieval_row()

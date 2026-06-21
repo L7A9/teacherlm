@@ -40,3 +40,22 @@ describe("CourseBuilder profiles", () => {
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("improved_quality=true");
   });
 });
+
+describe("generator settings", () => {
+  it("persists transcript-only podcast mode through the settings endpoint", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => new Response(JSON.stringify({ podcast_audio_enabled: false }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+    globalThis.fetch = fetchMock;
+
+    const updated = await api.updateGeneratorSettings({ podcast_audio_enabled: false });
+
+    expect(updated.podcast_audio_enabled).toBe(false);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/settings/generators");
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: "PATCH",
+      body: JSON.stringify({ podcast_audio_enabled: false }),
+    });
+  });
+});
