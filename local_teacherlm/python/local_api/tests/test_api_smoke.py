@@ -596,6 +596,8 @@ The cross encoder reranker scores candidate chunks after RRF fusion.
     assert all(chunk["embedding"] for chunk in chunks)
     assert {chunk["metadata"]["embedding_model"] for chunk in chunks} == {"intfloat/multilingual-e5-large"}
     assert {chunk["metadata"]["embedding_dim"] for chunk in chunks} == {1024}
+    assert {chunk["metadata"]["chunker"] for chunk in chunks} == {"hybrid-structure-semantic-v2"}
+    assert {chunk["metadata"]["chunking_strategy"] for chunk in chunks} == {"heading_then_semantic"}
     assert all(chunk["metadata"]["generated_questions"] for chunk in chunks)
 
     graph = client.get(f"/api/conversations/{conversation['id']}/knowledge-graph").json()
