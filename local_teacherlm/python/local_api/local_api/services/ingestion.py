@@ -12,9 +12,11 @@ from fastapi import UploadFile
 
 from local_api.config import get_settings
 from local_api.db import get_store, new_id, utc_now
+from local_api.services.course_intake import normalize_course_intake, section_intake_metadata
 from local_api.services.coursebuilder import get_coursebuilder_service
 from local_api.services.knowledge_graph import get_knowledge_graph_service
 from local_api.services.settings import get_settings_service
+from local_api.services.source_markup import normalize_extracted_markup
 from local_api.services.vector_service import get_vector_service
 
 
@@ -95,13 +97,33 @@ class IngestionService:
             cleaned_key.parent.mkdir(parents=True, exist_ok=True)
             parsed_key.write_text(text, encoding="utf-8")
             cleaned = _clean_text(text)
+            intake = normalize_course_intake(
+                raw_markdown=text,
+                cleaned_markdown=cleaned,
+                source_filename=file_record["filename"],
+            )
+            cleaned = intake.markdown
             cleaned_key.write_text(cleaned, encoding="utf-8")
+            document_id = self._insert_document(
+                conversation_id,
+                file_id,
+                file_record["filename"],
+                metadata=intake.metadata,
+            )
+            get_store().update_file(file_id, status="planning_course", parser_used=parser_used)
+            plan = await get_coursebuilder_service().prepare_plan_async(conversation_id)
+            if plan.get("status") not in {"draft", "validated"}:
+                raise ValueError("course plan could not be prepared from parser Markdown before chunking")
             get_store().update_file(file_id, status="chunking", parser_used=parser_used)
-            document_id = self._insert_document(conversation_id, file_id, file_record["filename"])
             sections = _split_sections(cleaned, file_record["filename"])
             chunks = []
             chunk_index = 0
             for section_index, section in enumerate(sections):
+                intake_section_metadata = section_intake_metadata(
+                    section["heading_path"],
+                    section["heading_path"][-1] if section["heading_path"] else file_record["filename"],
+                    intake.metadata,
+                )
                 section_id = self._insert_section(
                     conversation_id,
                     document_id,
@@ -150,6 +172,7 @@ class IngestionService:
                                 "equations": equations,
                                 "tables": tables,
                                 "timeline_events": timeline_events,
+                                **intake_section_metadata,
                             },
                         }
                     )
@@ -160,10 +183,6 @@ class IngestionService:
             get_store().replace_chunks_for_file(file_id, chunks)
             self._store_content_features(conversation_id, file_id, chunks)
             self._upsert_concepts(conversation_id, chunks)
-            get_store().update_file(file_id, status="planning_course", chunk_count=len(chunks))
-            plan = await get_coursebuilder_service().prepare_plan_async(conversation_id)
-            if plan.get("status") not in {"draft", "validated"}:
-                raise ValueError("course plan could not be prepared before embedding")
             get_store().update_file(file_id, status="embedding", chunk_count=len(chunks))
             embeddings = await get_vector_service().embed_chunks(chunks)
             retrieval_settings = get_settings_service().effective_retrieval_settings()
@@ -194,14 +213,21 @@ class IngestionService:
             return await _parse_with_llama_cloud(path, filename, api_key)
         return _parse_local_file(path, filename)
 
-    def _insert_document(self, conversation_id: str, file_id: str, title: str) -> str:
+    def _insert_document(
+        self,
+        conversation_id: str,
+        file_id: str,
+        title: str,
+        *,
+        metadata: dict[str, Any] | None = None,
+    ) -> str:
         document_id = new_id("doc")
         get_store().execute(
             """
             INSERT INTO course_documents (id, conversation_id, source_file_id, title, metadata_json, created_at)
-            VALUES (?, ?, ?, ?, '{}', ?)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (document_id, conversation_id, file_id, title, utc_now()),
+            (document_id, conversation_id, file_id, title, json.dumps(metadata or {}, ensure_ascii=False), utc_now()),
         )
         return document_id
 
@@ -443,7 +469,7 @@ _NOISE_PHRASES = (
 
 
 def _clean_text(text: str) -> str:
-    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = normalize_extracted_markup(text)
     text = _HTML_COMMENT_RE.sub(" ", text)
     text = _MARKDOWN_IMAGE_RE.sub(" ", text)
     text = _HTML_IMAGE_RE.sub(" ", text)

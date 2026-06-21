@@ -1319,6 +1319,224 @@ def test_coursebuilder_progression_setting_switches_lock_policy_without_losing_p
     assert client.get("/api/settings/coursebuilder").json() == {"sequential_unlocking_enabled": True}
 
 
+def test_coursebuilder_rebuild_reconciles_progress_by_stable_item_fingerprint(monkeypatch, tmp_path) -> None:
+    _client(monkeypatch, tmp_path)
+    from local_api.services.coursebuilder import get_coursebuilder_service
+
+    service = get_coursebuilder_service()
+    old_course = {
+        "id": "course_progress_rebuild",
+        "conversation_id": "conversation_progress_rebuild",
+        "source_fingerprint": "source-old",
+        "status": "ready",
+        "chapters": [
+            {
+                "id": "chapter-stable",
+                "content_fingerprint": "chapter-old",
+                "lessons": [
+                    {"id": "lesson-stable", "content_fingerprint": "lesson-fingerprint-stable"},
+                    {"id": "lesson-changed", "content_fingerprint": "lesson-fingerprint-old"},
+                ],
+                "quiz": {
+                    "id": "quiz-stable",
+                    "questions": [{"prompt": "Stable question", "source_chunk_ids": ["chunk-stable"]}],
+                },
+            }
+        ],
+        "final_quiz": None,
+    }
+    progress = service._load_progress(old_course["conversation_id"], old_course)
+    progress.update(
+        {
+            "completed_lesson_ids": ["lesson-stable", "lesson-changed"],
+            "passed_quiz_ids": ["quiz-stable"],
+            "quiz_scores": {"quiz-stable": 1.0},
+            "quiz_attempt_counts": {"quiz-stable": 2},
+        }
+    )
+    service._save_progress(old_course["conversation_id"], old_course, progress)
+
+    rebuilt = json.loads(json.dumps(old_course))
+    rebuilt["source_fingerprint"] = "source-new"
+    rebuilt["chapters"][0]["content_fingerprint"] = "chapter-new"
+    rebuilt["chapters"][0]["lessons"][1]["content_fingerprint"] = "lesson-fingerprint-new"
+    service._reconcile_progress(rebuilt)
+    reconciled = service._load_progress(rebuilt["conversation_id"], rebuilt)
+
+    assert reconciled["completed_lesson_ids"] == ["lesson-stable"]
+    assert reconciled["passed_quiz_ids"] == ["quiz-stable"]
+    assert reconciled["quiz_scores"] == {"quiz-stable": 1.0}
+    assert reconciled["quiz_attempt_counts"] == {"quiz-stable": 2}
+
+
+def test_manual_coursebuilder_rebuild_forces_a_fresh_structural_plan(monkeypatch, tmp_path) -> None:
+    _client(monkeypatch, tmp_path)
+    import local_api.services.coursebuilder as coursebuilder
+
+    service = coursebuilder.get_coursebuilder_service()
+    chunks = [
+        {
+            "id": "chunk-manual-rebuild",
+            "source_file_id": "file-manual-rebuild",
+            "source_filename": "manual.md",
+            "chunk_index": 0,
+            "text": "A grounded lesson explains the concept and its supported relationships in sufficient detail.",
+            "metadata": {"heading_path": "Chapter > Lesson", "heading_path_list": ["Chapter", "Lesson"]},
+        }
+    ]
+    files = [{"id": "file-manual-rebuild", "status": "ready", "created_at": "2026-01-01"}]
+    fingerprint = coursebuilder._source_fingerprint(files, chunks)
+    outline = coursebuilder.CourseOutline(
+        title="Manual rebuild",
+        chapters=[
+            coursebuilder.OutlineChapter(
+                title="Chapter",
+                source_chunk_ids=["chunk-manual-rebuild"],
+                lessons=[coursebuilder.OutlineLesson(title="Lesson", source_chunk_ids=["chunk-manual-rebuild"])],
+            )
+        ],
+    )
+    seen_force: list[bool] = []
+    seen_improved_quality: list[bool] = []
+
+    async def prepared(
+        _conversation_id: str,
+        *,
+        force: bool = False,
+        improved_quality: bool = False,
+    ):
+        seen_force.append(force)
+        seen_improved_quality.append(improved_quality)
+        return {
+            "id": "courseplan_conversation-manual-rebuild",
+            "plan_id": "plan-manual-rebuild",
+            "conversation_id": "conversation-manual-rebuild",
+            "contract_version": coursebuilder.COURSE_PLAN_CONTRACT_VERSION,
+            "source_fingerprint": fingerprint,
+            "status": "draft",
+            "outline": outline.model_dump(mode="json"),
+            "metadata": {"quality_mode": "fallback", "structure_mode": "source_exact"},
+        }
+
+    class OfflineSettings:
+        def get_default_chat_provider_config(self):
+            return None
+
+        def get_coursebuilder_settings(self):
+            return types.SimpleNamespace(sequential_unlocking_enabled=True)
+
+    monkeypatch.setattr(service, "_ready_material", lambda _conversation_id: (files, chunks, fingerprint))
+    monkeypatch.setattr(service, "prepare_plan_async", prepared)
+    monkeypatch.setattr(coursebuilder, "_course_graph", lambda _conversation_id: {"nodes": [], "edges": []})
+    monkeypatch.setattr(coursebuilder, "get_settings_service", lambda: OfflineSettings())
+
+    result = asyncio.run(
+        service.rebuild_async(
+            "conversation-manual-rebuild",
+            force=True,
+            improved_quality=True,
+        )
+    )
+
+    assert seen_force == [True]
+    assert seen_improved_quality == [True]
+    assert result["status"] == "ready"
+    assert result["chapters"][0]["title"] == "Chapter"
+
+
+def test_coursebuilder_stop_cancels_active_work_and_persists_stopped_state(monkeypatch, tmp_path) -> None:
+    client = _client(monkeypatch, tmp_path)
+    import local_api.services.coursebuilder as coursebuilder
+
+    conversation = client.post("/api/conversations", json={"title": "Stop build"}).json()
+    service = coursebuilder.get_coursebuilder_service()
+    chunks = [
+        {
+            "id": "chunk-stop-build",
+            "conversation_id": conversation["id"],
+            "source_file_id": "file-stop-build",
+            "source_filename": "course.md",
+            "chunk_index": 0,
+            "text": "Grounded source material for a cancellable course build.",
+            "metadata": {"heading_path_list": ["Chapter", "Lesson"], "section_title": "Lesson"},
+        }
+    ]
+    payload = coursebuilder._build_fallback_course(conversation["id"], chunks, "fingerprint-stop")
+    payload["status"] = "building"
+    payload["metadata"]["stage"] = "generating_chapter"
+    service._save_course(payload, build_id="build-stop", quality_mode="fallback")
+    started = asyncio.Event()
+
+    async def slow_build(
+        _conversation_id: str,
+        *,
+        force: bool,
+        improved_quality: bool,
+        cancel_event: asyncio.Event,
+    ):
+        del force, improved_quality, cancel_event
+        started.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(service, "_rebuild_async_impl", slow_build)
+
+    async def scenario() -> tuple[dict, dict]:
+        cancel_event = service.begin_build(conversation["id"], force=False)
+        task = asyncio.create_task(
+            service.rebuild_async(conversation["id"], force=False, _cancel_event=cancel_event)
+        )
+        await started.wait()
+        stopped = service.stop_build(conversation["id"])
+        result = await asyncio.wait_for(task, timeout=2)
+        return stopped, result
+
+    stopped, result = asyncio.run(scenario())
+
+    assert stopped["status"] == "stopped"
+    assert result["status"] == "stopped"
+    assert result["metadata"]["stopped_from_stage"] == "generating_chapter"
+    assert result["chapters"]
+    assert client.post(f"/api/conversations/{conversation['id']}/coursebuilder/stop").json()["status"] == "stopped"
+    stored = service._private_course(conversation["id"])
+    assert stored["status"] == "stopped"
+
+    service.begin_build(conversation["id"], force=False)
+    queued = service.mark_build_queued(conversation["id"], resuming=True)
+    assert queued["status"] == "building"
+    stopped_before_task_start = service.stop_build(conversation["id"])
+    assert stopped_before_task_start["status"] == "stopped"
+    assert stopped_before_task_start["metadata"]["stopped_from_stage"] == "generating_chapter"
+
+
+def test_coursebuilder_resume_keeps_matching_completed_chapter_prefix() -> None:
+    import local_api.services.coursebuilder as coursebuilder
+
+    chunks = [
+        {
+            "id": "chunk-resume",
+            "conversation_id": "conversation-resume",
+            "source_file_id": "file-resume",
+            "source_filename": "resume.md",
+            "chunk_index": 0,
+            "text": "A detailed grounded explanation supports resuming this completed chapter.",
+            "metadata": {"heading_path_list": ["Chapter", "Lesson"], "section_title": "Lesson"},
+        }
+    ]
+    course = coursebuilder._build_fallback_course("conversation-resume", chunks, "fingerprint")
+    outline = coursebuilder._outline_from_course(course)
+
+    resumed = coursebuilder._resumable_chapter_prefix(
+        "conversation-resume",
+        outline,
+        course["chapters"],
+    )
+
+    assert [chapter["id"] for chapter in resumed] == [course["chapters"][0]["id"]]
+    changed = json.loads(json.dumps(course["chapters"]))
+    changed[0]["content_fingerprint"] = "changed"
+    assert coursebuilder._resumable_chapter_prefix("conversation-resume", outline, changed) == []
+
+
 def test_coursebuilder_mastery_gates_final_quiz_and_rich_blocks(monkeypatch, tmp_path) -> None:
     client = _client(monkeypatch, tmp_path)
     conversation = client.post("/api/conversations", json={"title": "Cumulative science history"}).json()
@@ -2097,7 +2315,7 @@ def test_coursebuilder_rejects_thin_rich_blocks_and_marks_unsupported_content() 
     assert not coursebuilder._looks_chemical("Frontend sends the user ID -> API returns JSON recommendations")
 
 
-def test_course_plan_is_saved_before_embedding_and_reused_for_generation(monkeypatch, tmp_path) -> None:
+def test_course_plan_is_generated_from_parser_markdown_before_chunking(monkeypatch, tmp_path) -> None:
     client = _client(monkeypatch, tmp_path)
     conversation = client.post("/api/conversations", json={"title": "Two-stage planning"}).json()
 
@@ -2107,40 +2325,50 @@ def test_course_plan_is_saved_before_embedding_and_reused_for_generation(monkeyp
 
     events: list[str] = []
     outline_calls = 0
+    content_calls = 0
 
     async def planning_llm(_provider, messages, *, json_schema=None, temperature=0.2):
-        nonlocal outline_calls
+        nonlocal content_calls, outline_calls
         properties = (json_schema or {}).get("properties", {})
         if "chapters" not in properties:
+            content_calls += 1
             raise RuntimeError("chapter and quiz synthesis disabled for lifecycle test")
         outline_calls += 1
         events.append("plan_llm")
         files = get_store().list_files(conversation["id"])
         assert files and all(file["status"] == "planning_course" for file in files)
+        assert get_store().list_chunks(conversation["id"]) == []
         prompt = messages[-1].content
-        chunk_ids = _dedupe_test_ids(
-            item
-            for group in re.findall(r"chunk_ids=([^\s|]+)", prompt)
-            for item in group.split(",")
-        )
-        assert chunk_ids
+        assert "PARSER MARKDOWN SOURCES" in prompt
+        assert "## Fundamentals" in prompt
+        assert "## Hybrid Recommenders" in prompt
+        lesson_titles = [
+            "Fundamentals",
+            "Collaborative Filtering",
+            "Evaluation Metrics",
+            "Hybrid Recommenders",
+            "Deep Learning",
+        ] if "## Hybrid Recommenders" in prompt else [
+            "Fundamentals",
+            "Collaborative Filtering",
+            "Evaluation Metrics",
+        ]
         return json.dumps(
             {
                 "title": "Recommendation Systems",
-                "description": "A cumulative plan prepared before vector indexing.",
+                "description": "A cumulative plan prepared from parser Markdown before chunking.",
                 "architecture_type": "conceptual",
                 "architecture_rationale": "Foundations precede methods and evaluation.",
                 "chapters": [
                     {
                         "title": "Foundations and Methods",
-                        "source_chunk_ids": chunk_ids,
                         "pedagogical_role": "foundation",
                         "lessons": [
                             {
-                                "title": "Definitions and foundations",
-                                "source_chunk_ids": chunk_ids,
+                                "title": title,
                                 "pedagogical_role": "definition",
                             }
+                            for title in lesson_titles
                         ],
                     }
                 ],
@@ -2206,19 +2434,25 @@ Neural recommenders learn advanced user and item representations.
     for uploaded_file in upload.json()["files"]:
         stored = client.get(f"/api/conversations/{conversation['id']}/files/{uploaded_file['id']}").json()
         assert stored["status"] == "ready"
-    assert events.index("plan_llm") < events.index("embedding")
+    assert events == ["plan_llm", "embedding", "embedding"]
     assert outline_calls == 1
+    assert content_calls > 0
 
     plan = client.get(f"/api/conversations/{conversation['id']}/coursebuilder/plan").json()
     assert plan["status"] == "validated"
     assert plan["metadata"]["stage"] == "validated_with_knowledge_graph"
     assert plan["metadata"]["chunk_coverage_ratio"] == 1.0
-    assert [item["lesson_stage"] for item in plan["chapters"][0]["subchapters"]] == [
-        "introduction",
-        "content",
-        "conclusion",
+    assert plan["metadata"]["planning_basis"] == "parser_markdown"
+    assert plan["metadata"]["structure_mode"] == "markdown_llm"
+    assert plan["metadata"]["evidence_bound_after_chunking"] is True
+    assert [item["title"] for item in plan["chapters"][0]["subchapters"]] == [
+        "Fundamentals",
+        "Collaborative Filtering",
+        "Evaluation Metrics",
+        "Hybrid Recommenders",
+        "Deep Learning",
     ]
-    assert plan["chapters"][0]["subchapters"][1]["title"] == "Definitions and foundations"
+    assert all(item["lesson_stage"] == "content" for item in plan["chapters"][0]["subchapters"])
     assert plan["chapters"][0]["source_queries"]
     assert all(item["source_queries"] for item in plan["chapters"][0]["subchapters"])
     assert "blocks" not in json.dumps(plan["outline"])
@@ -2226,6 +2460,8 @@ Neural recommenders learn advanced user and item representations.
 
     course = client.get(f"/api/conversations/{conversation['id']}/coursebuilder").json()
     assert course["status"] == "ready"
+    assert course["metadata"]["build_profile"] == "standard"
+    assert course["metadata"]["quality_pipeline_version"] == coursebuilder.QUALITY_PIPELINE_VERSION
     assert course["metadata"]["plan_id"] == plan["plan_id"]
     assert course["chapters"][0]["title"] == plan["chapters"][0]["title"]
     assert [lesson["title"] for lesson in course["chapters"][0]["lessons"]] == [
@@ -2240,10 +2476,6 @@ Neural recommenders learn advanced user and item representations.
     assert replanned["status"] == "validated"
     assert replanned["plan_id"] != plan["plan_id"]
     assert replanned["metadata"]["chunk_coverage_ratio"] == 1.0
-
-
-def _dedupe_test_ids(values) -> list[str]:
-    return list(dict.fromkeys(value for value in values if value))
 
 
 def _done_event(raw_sse: str) -> dict:

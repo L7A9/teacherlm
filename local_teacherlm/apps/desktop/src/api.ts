@@ -77,8 +77,13 @@ export const api = {
     request<{ artifacts: Artifact[] }>(`/conversations/${conversationId}/artifacts`),
   coursebuilder: (conversationId: string) =>
     request<CourseBuilderRead>(`/conversations/${conversationId}/coursebuilder`),
-  rebuildCoursebuilder: (conversationId: string) =>
-    request<CourseBuilderRead>(`/conversations/${conversationId}/coursebuilder/rebuild`, { method: "POST" }),
+  rebuildCoursebuilder: (conversationId: string, improvedQuality = false) =>
+    request<CourseBuilderRead>(
+      `/conversations/${conversationId}/coursebuilder/rebuild?improved_quality=${improvedQuality}`,
+      { method: "POST" },
+    ),
+  stopCoursebuilder: (conversationId: string) =>
+    request<CourseBuilderRead>(`/conversations/${conversationId}/coursebuilder/stop`, { method: "POST" }),
   completeCourseLesson: (conversationId: string, lessonId: string) =>
     request<CourseBuilderRead>(`/conversations/${conversationId}/coursebuilder/lessons/${lessonId}/complete`, {
       method: "POST"
@@ -133,13 +138,14 @@ export async function streamChat(
   conversationId: string,
   message: string,
   sourceFileIds: string[],
-  onEvent: (event: StreamEvent) => void
+  onEvent: (event: StreamEvent) => void,
+  signal?: AbortSignal,
 ) {
   await streamPost(`/conversations/${conversationId}/chat`, {
     message,
     source_file_ids: sourceFileIds,
     options: {}
-  }, onEvent);
+  }, onEvent, signal);
 }
 
 export async function streamGenerate(
@@ -158,11 +164,17 @@ export async function streamGenerate(
   }, onEvent);
 }
 
-async function streamPost(path: string, payload: unknown, onEvent: (event: StreamEvent) => void) {
+async function streamPost(
+  path: string,
+  payload: unknown,
+  onEvent: (event: StreamEvent) => void,
+  signal?: AbortSignal,
+) {
   const response = await fetch(`${API_BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
+    signal,
   });
   if (!response.ok || !response.body) {
     throw new Error(await response.text());

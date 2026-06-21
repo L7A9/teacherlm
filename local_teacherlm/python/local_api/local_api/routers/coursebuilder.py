@@ -22,17 +22,40 @@ async def get_coursebuilder_plan(conversation_id: str) -> dict:
 
 
 @router.post("/rebuild", status_code=202)
-async def rebuild_coursebuilder(conversation_id: str, background_tasks: BackgroundTasks) -> dict:
+async def rebuild_coursebuilder(
+    conversation_id: str,
+    background_tasks: BackgroundTasks,
+    improved_quality: bool = False,
+) -> dict:
     if get_store().get_conversation(conversation_id) is None:
         raise HTTPException(status_code=404, detail="conversation not found")
     service = get_coursebuilder_service()
     current = service.get_or_build(conversation_id)
     if current.get("status") in {"empty", "waiting_for_files"}:
         return current
-    background_tasks.add_task(service.rebuild_async, conversation_id, force=True)
-    current["status"] = "building"
-    current.setdefault("metadata", {})["stage"] = "queued"
-    return current
+    stopped = current.get("status") == "stopped"
+    force = not stopped or bool(current.get("metadata", {}).get("resume_requires_fresh_plan"))
+    cancel_event = service.begin_build(conversation_id, force=force)
+    queued = service.mark_build_queued(
+        conversation_id,
+        resuming=stopped and not force,
+        improved_quality=improved_quality,
+    )
+    background_tasks.add_task(
+        service.rebuild_async,
+        conversation_id,
+        force=force,
+        improved_quality=improved_quality,
+        _cancel_event=cancel_event,
+    )
+    return queued
+
+
+@router.post("/stop")
+async def stop_coursebuilder(conversation_id: str) -> dict:
+    if get_store().get_conversation(conversation_id) is None:
+        raise HTTPException(status_code=404, detail="conversation not found")
+    return get_coursebuilder_service().stop_build(conversation_id)
 
 
 @router.post("/lessons/{lesson_id}/complete")
