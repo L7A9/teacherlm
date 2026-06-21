@@ -564,10 +564,9 @@ async def _mindmap(payload: GeneratorInput) -> AsyncIterator[GeneratorEvent]:
 
 
 async def _podcast(payload: GeneratorInput) -> AsyncIterator[GeneratorEvent]:
-    from local_api.services.podcast_audio import PodcastAudioError
-
     chunks = [chunk for chunk in payload.context_chunks if chunk.text.strip()]
     options = _podcast_options(payload.options)
+    audio_enabled = get_settings_service().get_generator_settings().podcast_audio_enabled
     topic = options.topic.strip()
     language = _detect_podcast_language(chunks, topic)
     generation_run_id = str(payload.options.get("generation_run_id") or "podcast-default-run")
@@ -619,19 +618,23 @@ async def _podcast(payload: GeneratorInput) -> AsyncIterator[GeneratorEvent]:
     yield _event("artifact", transcript_artifact.model_dump())
 
     artifacts = [transcript_artifact]
-    audio_status = "failed"
+    audio_status = "failed" if audio_enabled else "disabled"
     audio_error_code: str | None = None
     actual_duration_ms = 0
     voice_metadata: dict[str, Any] = {
-        "backend": "sherpa-onnx",
+        "backend": "sherpa-onnx" if audio_enabled else None,
         "model": None,
-        "speaker_ids": [0, 0] if language == "fr" else [0, 1],
+        "speaker_ids": ([] if not audio_enabled else [0, 0] if language == "fr" else [0, 1]),
         "cache_hit": None,
     }
-    if language not in {"en", "fr"}:
+    if not audio_enabled:
+        pass
+    elif language not in {"en", "fr"}:
         audio_status = "unsupported_language"
         audio_error_code = "unsupported_language"
     else:
+        from local_api.services.podcast_audio import PodcastAudioError
+
         yield _event("progress", {"stage": "podcast_preparing_voices", "language": language})
         try:
             audio = await get_podcast_audio_service().synthesize(script["turns"], language)
@@ -671,6 +674,11 @@ async def _podcast(payload: GeneratorInput) -> AsyncIterator[GeneratorEvent]:
         response = (
             f"Your two-host podcast about \"{script['title']}\" is ready, with the full transcript attached."
         )
+    elif audio_status == "disabled":
+        response = (
+            f"I created the complete two-host transcript for \"{script['title']}\". "
+            "Podcast audio is disabled in Settings, so no voice model was loaded."
+        )
     else:
         response = (
             f"I created the complete two-host transcript for \"{script['title']}\". "
@@ -693,6 +701,7 @@ async def _podcast(payload: GeneratorInput) -> AsyncIterator[GeneratorEvent]:
                 "word_count": word_count,
                 "segment_count": len(script["turns"]),
                 "transcript": transcript,
+                "audio_requested": audio_enabled,
                 "used_fallback_tts": False,
                 "tts_skipped": audio_status != "ready",
                 "audio_status": audio_status,

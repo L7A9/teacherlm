@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import io
+import sys
 import tarfile
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "teacherlm_core"))
+sys.path.insert(0, str(ROOT / "local_api"))
 
 
 def _chunks():
@@ -130,7 +136,10 @@ def test_fallback_script_is_grounded_alternating_and_near_target(monkeypatch) ->
     monkeypatch.setattr(
         generators,
         "get_settings_service",
-        lambda: SimpleNamespace(get_default_chat_provider_config=lambda: None),
+        lambda: SimpleNamespace(
+            get_default_chat_provider_config=lambda: None,
+            get_generator_settings=lambda: SimpleNamespace(podcast_audio_enabled=True),
+        ),
     )
     chunks = _chunks()
     options = generators._podcast_options({"topic": "Plant energy", "duration_minutes": 3})
@@ -200,7 +209,10 @@ def test_audio_failure_returns_completed_transcript(monkeypatch) -> None:
     monkeypatch.setattr(
         generators,
         "get_settings_service",
-        lambda: SimpleNamespace(get_default_chat_provider_config=lambda: None),
+        lambda: SimpleNamespace(
+            get_default_chat_provider_config=lambda: None,
+            get_generator_settings=lambda: SimpleNamespace(podcast_audio_enabled=True),
+        ),
     )
     chunks = _chunks()
     payload = GeneratorInput(
@@ -261,7 +273,10 @@ def test_audio_success_returns_mp3_before_transcript(monkeypatch) -> None:
     monkeypatch.setattr(
         generators,
         "get_settings_service",
-        lambda: SimpleNamespace(get_default_chat_provider_config=lambda: None),
+        lambda: SimpleNamespace(
+            get_default_chat_provider_config=lambda: None,
+            get_generator_settings=lambda: SimpleNamespace(podcast_audio_enabled=True),
+        ),
     )
     chunks = _chunks()
     payload = GeneratorInput(
@@ -283,6 +298,64 @@ def test_audio_success_returns_mp3_before_transcript(monkeypatch) -> None:
     assert done["metadata"]["podcast"]["audio_status"] == "ready"
     assert done["metadata"]["podcast"]["duration_ms"] == 181_000
     assert [artifact["type"] for artifact in done["artifacts"]] == ["podcast", "transcript"]
+
+
+def test_disabled_audio_returns_transcript_without_loading_voice_service(monkeypatch) -> None:
+    from teacherlm_core.schemas import GeneratorArtifact, GeneratorInput, LearnerState
+    from local_api.services import generators
+
+    created: list[dict] = []
+
+    class FakeArtifacts:
+        def create_artifact(self, _conversation_id, artifact_type, filename, payload, **kwargs):
+            created.append({"type": artifact_type, "filename": filename, "payload": payload, **kwargs})
+            return GeneratorArtifact(
+                type=artifact_type,
+                url=f"teacherlm-local://artifact/{artifact_type}",
+                filename=filename,
+                key=f"artifact-{artifact_type}",
+            )
+
+    monkeypatch.setattr(generators, "get_artifact_service", lambda: FakeArtifacts())
+    monkeypatch.setattr(
+        generators,
+        "get_podcast_audio_service",
+        lambda: pytest.fail("voice service must not load in transcript-only mode"),
+    )
+    monkeypatch.setattr(
+        generators,
+        "get_settings_service",
+        lambda: SimpleNamespace(
+            get_default_chat_provider_config=lambda: None,
+            get_generator_settings=lambda: SimpleNamespace(podcast_audio_enabled=False),
+        ),
+    )
+    payload = GeneratorInput(
+        conversation_id="podcast-test",
+        user_message="Plant energy",
+        context_chunks=_chunks(),
+        learner_state=LearnerState(conversation_id="podcast-test"),
+        chat_history=[],
+        options={"topic": "Plant energy", "duration_minutes": 3},
+    )
+
+    async def collect():
+        return [event async for event in generators._podcast(payload)]
+
+    events = asyncio.run(collect())
+    done = next(event["data"] for event in events if event["event"] == "done")
+
+    assert [item["type"] for item in created] == ["transcript"]
+    assert not any(
+        isinstance(event.get("data"), dict)
+        and event["data"].get("stage") == "podcast_preparing_voices"
+        for event in events
+    )
+    assert done["metadata"]["podcast"]["audio_requested"] is False
+    assert done["metadata"]["podcast"]["audio_status"] == "disabled"
+    assert done["metadata"]["podcast"]["audio_error_code"] is None
+    assert [artifact["type"] for artifact in done["artifacts"]] == ["transcript"]
+    assert "no voice model was loaded" in done["response"]
 
 
 def test_model_cache_and_archive_safety(monkeypatch, tmp_path: Path) -> None:

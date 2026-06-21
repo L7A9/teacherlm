@@ -73,6 +73,7 @@ import type {
   CourseQuiz,
   CourseQuizSubmissionResult,
   GeneratorManifest,
+  GeneratorSettings,
   LearnerState,
   Message,
   MindmapPayload,
@@ -164,6 +165,7 @@ export default function App() {
   const [providers, setProviders] = useState<ProviderRead[]>([]);
   const [parser, setParser] = useState<ParserSettings | null>(null);
   const [courseBuilderSettings, setCourseBuilderSettings] = useState<CourseBuilderSettings | null>(null);
+  const [generatorSettings, setGeneratorSettings] = useState<GeneratorSettings | null>(null);
   const [retrieval, setRetrieval] = useState<RetrievalSettings | null>(null);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [course, setCourse] = useState<CourseBuilderRead | null>(null);
@@ -183,6 +185,8 @@ export default function App() {
   const [retrievalBusy, setRetrievalBusy] = useState(false);
   const [courseBuilderSettingsBusy, setCourseBuilderSettingsBusy] = useState(false);
   const [courseBuilderSettingsError, setCourseBuilderSettingsError] = useState("");
+  const [generatorSettingsBusy, setGeneratorSettingsBusy] = useState(false);
+  const [generatorSettingsError, setGeneratorSettingsError] = useState("");
   const [settingsConversationId, setSettingsConversationId] = useState<string | null>(null);
   const [sourcesCollapsed, setSourcesCollapsed] = useState(false);
   const [progressCollapsed, setProgressCollapsed] = useState(false);
@@ -234,12 +238,13 @@ export default function App() {
   async function bootstrap() {
     setStatus("Connecting");
     await api.health();
-    const [conversationResponse, generatorResponse, providerResponse, parserResponse, courseBuilderResponse, retrievalResponse] = await Promise.all([
+    const [conversationResponse, generatorResponse, providerResponse, parserResponse, courseBuilderResponse, generatorSettingsResponse, retrievalResponse] = await Promise.all([
       api.listConversations(),
       api.generators(),
       api.providers(),
       api.parserSettings(),
       api.coursebuilderSettings(),
+      api.generatorSettings(),
       api.retrievalSettings(),
     ]);
     setConversations(conversationResponse.conversations);
@@ -248,6 +253,7 @@ export default function App() {
     setProviders(providerResponse.providers);
     setParser(parserResponse);
     setCourseBuilderSettings(courseBuilderResponse);
+    setGeneratorSettings(generatorSettingsResponse);
     setRetrieval(retrievalResponse);
     setStatus("Ready");
     setBootstrapped(true);
@@ -710,6 +716,21 @@ export default function App() {
     }
   }
 
+  async function setPodcastAudioEnabled(enabled: boolean) {
+    setGeneratorSettingsBusy(true);
+    setGeneratorSettingsError("");
+    try {
+      const updated = await api.updateGeneratorSettings({
+        podcast_audio_enabled: enabled,
+      });
+      setGeneratorSettings(updated);
+    } catch (error) {
+      setGeneratorSettingsError(error instanceof Error ? error.message : "Could not save podcast audio preference.");
+    } finally {
+      setGeneratorSettingsBusy(false);
+    }
+  }
+
   async function rebuildIndexes() {
     if (!settingsConversationId) return;
     setRetrievalBusy(true);
@@ -741,6 +762,7 @@ export default function App() {
         providers={providers}
         parser={parser}
         courseBuilderSettings={courseBuilderSettings}
+        generatorSettings={generatorSettings}
         retrieval={retrieval}
         providerForm={providerForm}
         editingProviderId={editingProviderId}
@@ -748,6 +770,8 @@ export default function App() {
         retrievalBusy={retrievalBusy}
         courseBuilderSettingsBusy={courseBuilderSettingsBusy}
         courseBuilderSettingsError={courseBuilderSettingsError}
+        generatorSettingsBusy={generatorSettingsBusy}
+        generatorSettingsError={generatorSettingsError}
         canRebuildIndexes={Boolean(settingsConversationId)}
         theme={theme}
         onBack={() => navigateHome()}
@@ -764,6 +788,7 @@ export default function App() {
         onTestProvider={(providerId) => void testProvider(providerId)}
         onSetParserMode={(useLocalParsersOnly) => void setParserMode(useLocalParsersOnly)}
         onSetSequentialCourseUnlocking={(enabled) => void setSequentialCourseUnlocking(enabled)}
+        onSetPodcastAudioEnabled={(enabled) => void setPodcastAudioEnabled(enabled)}
         onRebuildIndexes={() => void rebuildIndexes()}
       />
     );
@@ -3684,6 +3709,7 @@ function SettingsPage({
   providers,
   parser,
   courseBuilderSettings,
+  generatorSettings,
   retrieval,
   providerForm,
   editingProviderId,
@@ -3691,6 +3717,8 @@ function SettingsPage({
   retrievalBusy,
   courseBuilderSettingsBusy,
   courseBuilderSettingsError,
+  generatorSettingsBusy,
+  generatorSettingsError,
   canRebuildIndexes,
   theme,
   onBack,
@@ -3707,11 +3735,13 @@ function SettingsPage({
   onTestProvider,
   onSetParserMode,
   onSetSequentialCourseUnlocking,
+  onSetPodcastAudioEnabled,
   onRebuildIndexes,
 }: {
   providers: ProviderRead[];
   parser: ParserSettings | null;
   courseBuilderSettings: CourseBuilderSettings | null;
+  generatorSettings: GeneratorSettings | null;
   retrieval: RetrievalSettings | null;
   providerForm: ProviderForm;
   editingProviderId: string | null;
@@ -3719,6 +3749,8 @@ function SettingsPage({
   retrievalBusy: boolean;
   courseBuilderSettingsBusy: boolean;
   courseBuilderSettingsError: string;
+  generatorSettingsBusy: boolean;
+  generatorSettingsError: string;
   canRebuildIndexes: boolean;
   theme: Theme;
   onBack: () => void;
@@ -3735,6 +3767,7 @@ function SettingsPage({
   onTestProvider: (providerId: string) => void;
   onSetParserMode: (useLocalParsersOnly: boolean) => void;
   onSetSequentialCourseUnlocking: (enabled: boolean) => void;
+  onSetPodcastAudioEnabled: (enabled: boolean) => void;
   onRebuildIndexes: () => void;
 }) {
   const [providerToDelete, setProviderToDelete] = useState<ProviderRead | null>(null);
@@ -3800,6 +3833,45 @@ function SettingsPage({
                 );
               })}
             </div>
+          </div>
+        </section>
+
+        <section className="rounded-md border border-border bg-surface">
+          <header className="app-chrome flex items-center justify-between gap-3 border-b border-border px-5 py-3">
+            <div className="flex items-center gap-2">
+              <Mic2 className="h-4 w-4 text-primary" />
+              <h2 className="text-sm font-semibold">Podcast generation</h2>
+            </div>
+            <StatusPill active={Boolean(generatorSettings?.podcast_audio_enabled)}>
+              {generatorSettings
+                ? generatorSettings.podcast_audio_enabled
+                  ? "Audio + transcript"
+                  : "Transcript only"
+                : "Loading"}
+            </StatusPill>
+          </header>
+          <div className="px-5 py-4">
+            <label className="flex cursor-pointer items-start justify-between gap-4 rounded-md border border-border bg-background px-3 py-3">
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">Generate an MP3 podcast</span>
+                <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                  When enabled, TeacherLM loads the local voice model and creates an MP3 plus the transcript. Disable it on lower-powered computers to generate only the transcript without loading or running the voice model.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                checked={generatorSettings?.podcast_audio_enabled ?? true}
+                disabled={!generatorSettings || generatorSettingsBusy}
+                onChange={(event) => onSetPodcastAudioEnabled(event.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                aria-label="Generate podcast MP3 audio"
+              />
+            </label>
+            {generatorSettingsError && (
+              <p className="mt-2 text-xs text-[hsl(var(--danger))]" role="alert">
+                {generatorSettingsError}
+              </p>
+            )}
           </div>
         </section>
 

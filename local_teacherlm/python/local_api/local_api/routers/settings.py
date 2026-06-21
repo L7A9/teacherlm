@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 
 from local_api.schemas import (
     CourseBuilderSettingsUpdate,
+    GeneratorSettingsUpdate,
     ParserSettingsUpdate,
     ProviderPatch,
     ProviderWrite,
@@ -70,6 +71,16 @@ async def coursebuilder_settings() -> dict:
 @router.patch("/coursebuilder")
 async def update_coursebuilder_settings(payload: CourseBuilderSettingsUpdate) -> dict:
     return get_settings_service().update_coursebuilder_settings(payload).model_dump()
+
+
+@router.get("/generators")
+async def generator_settings() -> dict:
+    return get_settings_service().get_generator_settings().model_dump()
+
+
+@router.patch("/generators")
+async def update_generator_settings(payload: GeneratorSettingsUpdate) -> dict:
+    return get_settings_service().update_generator_settings(payload).model_dump()
 
 
 @router.get("/retrieval")

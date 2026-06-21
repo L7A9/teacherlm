@@ -109,6 +109,10 @@ export type CourseBuilderSettings = {
   sequential_unlocking_enabled: boolean;
 };
 
+export type GeneratorSettings = {
+  podcast_audio_enabled: boolean;
+};
+
 export type RetrievalSettings = {
   embedding_model: string;
   embedding_dim: number;
