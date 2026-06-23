@@ -22,13 +22,13 @@ jobs:
       WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
       TEACHERLM_OLLAMA_SHA256: ${{ secrets.TEACHERLM_OLLAMA_SHA256 }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "24"
           cache: npm
@@ -62,7 +62,7 @@ jobs:
         shell: pwsh
         run: .\local_teacherlm\packaging\windows\build.ps1 -Version "${{ steps.version.outputs.value }}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: TeacherLM-Windows-${{ steps.version.outputs.value }}
           path: local_teacherlm/release/*
