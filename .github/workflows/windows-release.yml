@@ -60,7 +60,7 @@ jobs:
 
       - name: Build installer
         shell: pwsh
-        run: .\local_teacherlm\packaging\windows\build.ps1 -Version "${{ steps.version.outputs.value }}"
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File .\local_teacherlm\packaging\windows\build.ps1 -Version "${{ steps.version.outputs.value }}"
 
       - uses: actions/upload-artifact@v7
         with:

@@ -46,8 +46,10 @@ New-Item -ItemType Directory -Path $Work -Force | Out-Null
 New-Item -ItemType Directory -Path $Release -Force | Out-Null
 Reset-Directory $ApiResources
 Reset-Directory $OllamaResources
-New-Item -ItemType File -Path (Join-Path $ApiResources ".gitkeep") -Force | Out-Null
-New-Item -ItemType File -Path (Join-Path $OllamaResources ".gitkeep") -Force | Out-Null
+$Utf8WithoutBom = [System.Text.UTF8Encoding]::new($false)
+$GitKeepContent = "# Keeps this generated resource directory in Git.`n"
+[System.IO.File]::WriteAllText((Join-Path $ApiResources ".gitkeep"), $GitKeepContent, $Utf8WithoutBom)
+[System.IO.File]::WriteAllText((Join-Path $OllamaResources ".gitkeep"), $GitKeepContent, $Utf8WithoutBom)
 
 $BuildVenv = Join-Path $Work "venv"
 if (-not (Test-Path -LiteralPath (Join-Path $BuildVenv "Scripts\python.exe"))) {
@@ -55,9 +57,18 @@ if (-not (Test-Path -LiteralPath (Join-Path $BuildVenv "Scripts\python.exe"))) {
 }
 $BuildPython = Join-Path $BuildVenv "Scripts\python.exe"
 Invoke-Checked { & $BuildPython -m pip install --upgrade pip } "Could not update pip."
-Invoke-Checked {
-    & $BuildPython -m pip install -r (Join-Path $Root "python\local_api\requirements.txt") -r (Join-Path $PSScriptRoot "requirements-build.txt")
-} "Could not install the Windows build dependencies."
+$LocalApi = Join-Path $Root "python\local_api"
+Push-Location $LocalApi
+try {
+    # requirements.txt contains `-e ../teacherlm_core`; pip resolves editable
+    # paths from the current directory rather than from the requirements file.
+    Invoke-Checked {
+        & $BuildPython -m pip install -r "requirements.txt" -r (Join-Path $PSScriptRoot "requirements-build.txt")
+    } "Could not install the Windows build dependencies."
+}
+finally {
+    Pop-Location
+}
 
 if (-not $SkipTests) {
     Invoke-Checked { & $BuildPython -m pytest (Join-Path $Root "python\local_api\tests") -q } "Python tests failed."
