@@ -3,6 +3,8 @@ param(
     [string]$Version = "0.1.0",
     [string]$Python = "python",
     [string]$OllamaVersion = "v0.30.10",
+    [ValidateSet("All", "Python", "Ollama", "Frontend", "Tauri")]
+    [string]$Stage = "All",
     [switch]$SkipTests,
     [switch]$SkipOllamaDownload
 )
@@ -41,47 +43,56 @@ function Invoke-Checked([scriptblock]$Command, [string]$FailureMessage) {
     }
 }
 
-Write-Host "Building TeacherLM $Version for Windows"
+Write-Host "Building TeacherLM $Version for Windows (stage: $Stage)"
 New-Item -ItemType Directory -Path $Work -Force | Out-Null
 New-Item -ItemType Directory -Path $Release -Force | Out-Null
-Reset-Directory $ApiResources
-Reset-Directory $OllamaResources
 $Utf8WithoutBom = [System.Text.UTF8Encoding]::new($false)
 $GitKeepContent = "# Keeps this generated resource directory in Git.`n"
-[System.IO.File]::WriteAllText((Join-Path $ApiResources ".gitkeep"), $GitKeepContent, $Utf8WithoutBom)
-[System.IO.File]::WriteAllText((Join-Path $OllamaResources ".gitkeep"), $GitKeepContent, $Utf8WithoutBom)
 
-$BuildVenv = Join-Path $Work "venv"
-if (-not (Test-Path -LiteralPath (Join-Path $BuildVenv "Scripts\python.exe"))) {
-    Invoke-Checked { & $Python -m venv $BuildVenv } "Could not create the packaging virtual environment."
+function Initialize-ResourceDirectory([string]$Path) {
+    Reset-Directory $Path
+    [System.IO.File]::WriteAllText((Join-Path $Path ".gitkeep"), $GitKeepContent, $Utf8WithoutBom)
 }
-$BuildPython = Join-Path $BuildVenv "Scripts\python.exe"
-Invoke-Checked { & $BuildPython -m pip install --upgrade pip } "Could not update pip."
-$LocalApi = Join-Path $Root "python\local_api"
-Push-Location $LocalApi
-try {
-    # requirements.txt contains `-e ../teacherlm_core`; pip resolves editable
-    # paths from the current directory rather than from the requirements file.
+
+if ($Stage -in @("All", "Python")) {
+    Initialize-ResourceDirectory $ApiResources
+
+    $BuildVenv = Join-Path $Work "venv"
+    if (-not (Test-Path -LiteralPath (Join-Path $BuildVenv "Scripts\python.exe"))) {
+        Invoke-Checked { & $Python -m venv $BuildVenv } "Could not create the packaging virtual environment."
+    }
+    $BuildPython = Join-Path $BuildVenv "Scripts\python.exe"
+    Invoke-Checked { & $BuildPython -m pip install --upgrade pip } "Could not update pip."
+    $LocalApi = Join-Path $Root "python\local_api"
+    Push-Location $LocalApi
+    try {
+        # requirements.txt contains `-e ../teacherlm_core`; pip resolves editable
+        # paths from the current directory rather than from the requirements file.
+        Invoke-Checked {
+            & $BuildPython -m pip install -r "requirements.txt" -r (Join-Path $PSScriptRoot "requirements-build.txt")
+        } "Could not install the Windows build dependencies."
+    }
+    finally {
+        Pop-Location
+    }
+
+    if (-not $SkipTests) {
+        Invoke-Checked { & $BuildPython -m pytest (Join-Path $Root "python\local_api\tests") -q } "Python tests failed."
+    }
+
+    $PyInstallerWork = Join-Path $Work "pyinstaller"
+    Reset-Directory $PyInstallerWork
     Invoke-Checked {
-        & $BuildPython -m pip install -r "requirements.txt" -r (Join-Path $PSScriptRoot "requirements-build.txt")
-    } "Could not install the Windows build dependencies."
-}
-finally {
-    Pop-Location
+        & $BuildPython -m PyInstaller --noconfirm --clean --workpath (Join-Path $PyInstallerWork "work") --distpath (Join-Path $PyInstallerWork "dist") (Join-Path $PSScriptRoot "teacherlm-local-api.spec")
+    } "The local API executable could not be built."
+    Copy-Item -Path (Join-Path $PyInstallerWork "dist\teacherlm-local-api\*") -Destination $ApiResources -Recurse -Force
 }
 
-if (-not $SkipTests) {
-    Invoke-Checked { & $BuildPython -m pytest (Join-Path $Root "python\local_api\tests") -q } "Python tests failed."
+if ($Stage -in @("All", "Ollama")) {
+    Initialize-ResourceDirectory $OllamaResources
 }
 
-$PyInstallerWork = Join-Path $Work "pyinstaller"
-Reset-Directory $PyInstallerWork
-Invoke-Checked {
-    & $BuildPython -m PyInstaller --noconfirm --clean --workpath (Join-Path $PyInstallerWork "work") --distpath (Join-Path $PyInstallerWork "dist") (Join-Path $PSScriptRoot "teacherlm-local-api.spec")
-} "The local API executable could not be built."
-Copy-Item -Path (Join-Path $PyInstallerWork "dist\teacherlm-local-api\*") -Destination $ApiResources -Recurse -Force
-
-if (-not $SkipOllamaDownload) {
+if ($Stage -in @("All", "Ollama") -and -not $SkipOllamaDownload) {
     $OllamaArchive = Join-Path $Work "ollama-windows-amd64.zip"
     $ExpectedHash = $env:TEACHERLM_OLLAMA_SHA256
     $CustomUrl = $env:TEACHERLM_OLLAMA_URL
@@ -120,57 +131,62 @@ if (-not $SkipOllamaDownload) {
     Copy-Item -Path (Join-Path $OllamaExe.Directory.FullName "*") -Destination $OllamaResources -Recurse -Force
 }
 
-Push-Location $Desktop
-try {
-    Invoke-Checked { & npm.cmd ci } "npm dependencies could not be installed."
-    if (-not $SkipTests) {
-        Invoke-Checked { & npm.cmd test } "Desktop tests failed."
+if ($Stage -in @("All", "Frontend")) {
+    Push-Location $Desktop
+    try {
+        Invoke-Checked { & npm.cmd ci } "npm dependencies could not be installed."
+        if (-not $SkipTests) {
+            Invoke-Checked { & npm.cmd test } "Desktop tests failed."
+        }
+        Invoke-Checked { & npm.cmd run build } "The desktop frontend could not be built."
     }
-    Invoke-Checked { & npm.cmd run build } "The desktop frontend could not be built."
-
-}
-finally {
-    Pop-Location
+    finally {
+        Pop-Location
+    }
 }
 
-$ReleaseConfig = Join-Path $Work "tauri-release.json"
-$ReleaseConfigData = @{ version = $Version }
-if ($env:TAURI_WINDOWS_CERTIFICATE_THUMBPRINT) {
-    $ReleaseConfigData.bundle = @{
-        windows = @{
-            certificateThumbprint = $env:TAURI_WINDOWS_CERTIFICATE_THUMBPRINT
-            digestAlgorithm = "sha256"
-            timestampUrl = "http://timestamp.digicert.com"
+if ($Stage -in @("All", "Tauri")) {
+    $ReleaseConfig = Join-Path $Work "tauri-release.json"
+    $ReleaseConfigData = @{ version = $Version }
+    if ($env:TAURI_WINDOWS_CERTIFICATE_THUMBPRINT) {
+        $ReleaseConfigData.bundle = @{
+            windows = @{
+                certificateThumbprint = $env:TAURI_WINDOWS_CERTIFICATE_THUMBPRINT
+                digestAlgorithm = "sha256"
+                timestampUrl = "http://timestamp.digicert.com"
+            }
         }
     }
-}
-$ReleaseConfigData | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $ReleaseConfig -Encoding utf8
-$TauriCli = Join-Path $Desktop "node_modules\.bin\tauri.cmd"
-Push-Location $Tauri
-try {
-    Invoke-Checked {
-        & $TauriCli build --config $ReleaseConfig
-    } "The TeacherLM Windows installer could not be built."
-}
-finally {
-    Pop-Location
+    $ReleaseConfigData | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $ReleaseConfig -Encoding utf8
+    $TauriCli = Join-Path $Desktop "node_modules\.bin\tauri.cmd"
+    Push-Location $Tauri
+    try {
+        Invoke-Checked {
+            & $TauriCli build --config $ReleaseConfig
+        } "The TeacherLM Windows installer could not be built."
+    }
+    finally {
+        Pop-Location
+    }
+
+    $Installer = Get-ChildItem -Path (Join-Path $Tauri "target\release\bundle\nsis") -Filter "*.exe" | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+    if (-not $Installer) {
+        throw "Tauri completed without producing an NSIS installer."
+    }
+    $StableInstaller = Join-Path $Release "TeacherLM-Setup.exe"
+    $VersionedInstaller = Join-Path $Release "TeacherLM-Setup-$Version.exe"
+    Copy-Item -LiteralPath $Installer.FullName -Destination $StableInstaller -Force
+    Copy-Item -LiteralPath $Installer.FullName -Destination $VersionedInstaller -Force
+    $Manifest = @{
+        version = $Version
+        filename = "TeacherLM-Setup.exe"
+        size_bytes = (Get-Item -LiteralPath $StableInstaller).Length
+        sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $StableInstaller).Hash.ToLowerInvariant()
+        created_at = [DateTime]::UtcNow.ToString("o")
+    }
+    $Manifest | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $Release "release-manifest.json") -Encoding utf8
+
+    Write-Host "Installer ready: $StableInstaller"
 }
 
-$Installer = Get-ChildItem -Path (Join-Path $Tauri "target\release\bundle\nsis") -Filter "*.exe" | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
-if (-not $Installer) {
-    throw "Tauri completed without producing an NSIS installer."
-}
-$StableInstaller = Join-Path $Release "TeacherLM-Setup.exe"
-$VersionedInstaller = Join-Path $Release "TeacherLM-Setup-$Version.exe"
-Copy-Item -LiteralPath $Installer.FullName -Destination $StableInstaller -Force
-Copy-Item -LiteralPath $Installer.FullName -Destination $VersionedInstaller -Force
-$Manifest = @{
-    version = $Version
-    filename = "TeacherLM-Setup.exe"
-    size_bytes = (Get-Item -LiteralPath $StableInstaller).Length
-    sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $StableInstaller).Hash.ToLowerInvariant()
-    created_at = [DateTime]::UtcNow.ToString("o")
-}
-$Manifest | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $Release "release-manifest.json") -Encoding utf8
-
-Write-Host "Installer ready: $StableInstaller"
+Write-Host "TeacherLM Windows stage completed: $Stage"

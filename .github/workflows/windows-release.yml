@@ -58,9 +58,21 @@ jobs:
           $version = if ("${{ github.event_name }}" -eq "workflow_dispatch") { "${{ inputs.version }}" } else { "${{ github.ref_name }}".TrimStart("v") }
           "value=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-      - name: Build installer
+      - name: Build local API sidecar
         shell: pwsh
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File .\local_teacherlm\packaging\windows\build.ps1 -Version "${{ steps.version.outputs.value }}" -SkipTests
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File .\local_teacherlm\packaging\windows\build.ps1 -Version "${{ steps.version.outputs.value }}" -Stage Python -SkipTests
+
+      - name: Bundle Ollama runtime
+        shell: pwsh
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File .\local_teacherlm\packaging\windows\build.ps1 -Version "${{ steps.version.outputs.value }}" -Stage Ollama
+
+      - name: Build desktop frontend
+        shell: pwsh
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File .\local_teacherlm\packaging\windows\build.ps1 -Version "${{ steps.version.outputs.value }}" -Stage Frontend -SkipTests
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File .\local_teacherlm\packaging\windows\build.ps1 -Version "${{ steps.version.outputs.value }}" -Stage Tauri
 
       - uses: actions/upload-artifact@v7
         with:
