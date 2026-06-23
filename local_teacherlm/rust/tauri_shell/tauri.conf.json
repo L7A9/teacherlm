@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.teacherlm.desktop",
   "build": {
-    "beforeDevCommand": "npm.cmd --prefix ../../apps/desktop run dev -- --host 127.0.0.1",
-    "beforeBuildCommand": "npm.cmd --prefix ../../apps/desktop run build",
+    "beforeDevCommand": "npm.cmd --prefix ../apps/desktop run dev -- --host 127.0.0.1",
+    "beforeBuildCommand": "npm.cmd --prefix ../apps/desktop run build",
     "devUrl": "http://127.0.0.1:1420",
     "frontendDist": "../../apps/desktop/dist"
   },
