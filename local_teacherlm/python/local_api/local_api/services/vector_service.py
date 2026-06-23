@@ -7,6 +7,7 @@ from typing import Any
 
 from teacherlm_core.schemas.chunk import Chunk
 
+from local_api.config import get_settings
 from local_api.db import get_store
 
 
@@ -147,7 +148,20 @@ class LocalVectorService:
             if self._embedder is None or self._embedder_model != settings.embedding_model:
                 from fastembed import TextEmbedding
 
-                self._embedder = await asyncio.to_thread(TextEmbedding, model_name=settings.embedding_model)
+                try:
+                    self._embedder = await asyncio.to_thread(
+                        TextEmbedding,
+                        model_name=settings.embedding_model,
+                        cache_dir=str(get_settings().embedding_cache_dir),
+                    )
+                except TypeError as exc:
+                    if "cache_dir" not in str(exc):
+                        raise
+                    # Keep compatibility with small test doubles and older fastembed builds.
+                    self._embedder = await asyncio.to_thread(
+                        TextEmbedding,
+                        model_name=settings.embedding_model,
+                    )
                 self._embedder_model = settings.embedding_model
         return self._embedder
 

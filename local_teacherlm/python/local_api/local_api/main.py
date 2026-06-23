@@ -25,6 +25,7 @@ from local_api.routers import (
     knowledge_graph,
     mcp,
     review_tests,
+    setup,
     settings,
 )
 
@@ -67,6 +68,7 @@ def create_app() -> FastAPI:
     app.include_router(indexes.router)
     app.include_router(review_tests.router)
     app.include_router(mcp.router)
+    app.include_router(setup.router)
     return app
 
 

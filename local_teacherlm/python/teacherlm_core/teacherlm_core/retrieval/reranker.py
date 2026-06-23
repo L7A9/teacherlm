@@ -6,11 +6,22 @@ from teacherlm_core.schemas.chunk import Chunk
 
 
 class CrossEncoderReranker:
-    def __init__(self, model_name: str = "BAAI/bge-reranker-base") -> None:
+    def __init__(
+        self,
+        model_name: str = "BAAI/bge-reranker-base",
+        *,
+        cache_dir: str | None = None,
+    ) -> None:
         from fastembed.rerank.cross_encoder import TextCrossEncoder
 
         self.model_name = model_name
-        self._encoder = TextCrossEncoder(model_name=model_name)
+        try:
+            self._encoder = TextCrossEncoder(model_name=model_name, cache_dir=cache_dir)
+        except TypeError as exc:
+            if "cache_dir" not in str(exc):
+                raise
+            # Keep compatibility with small test doubles and older fastembed builds.
+            self._encoder = TextCrossEncoder(model_name=model_name)
 
     async def rerank(self, query: str, chunks: list[Chunk], top_k: int = 16) -> list[Chunk]:
         if not query.strip() or not chunks:

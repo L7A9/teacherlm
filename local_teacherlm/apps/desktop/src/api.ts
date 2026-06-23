@@ -11,6 +11,7 @@ import type {
   ParserSettings,
   ProviderRead,
   RetrievalSettings,
+  SetupStatus,
   SourceFile,
   StreamEvent
 } from "./types";
@@ -34,6 +35,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   health: () => request<{ ok: boolean; data_dir: string }>("/health"),
+  setupStatus: () => request<SetupStatus>("/setup"),
+  startSetup: () => request<SetupStatus>("/setup", { method: "POST" }),
   listConversations: () => request<{ conversations: Conversation[] }>("/conversations"),
   getConversation: (conversationId: string) =>
     request<Conversation>(`/conversations/${conversationId}`),

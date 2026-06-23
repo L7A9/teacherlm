@@ -59,3 +59,28 @@ describe("generator settings", () => {
     });
   });
 });
+
+describe("first-run setup", () => {
+  it("starts model provisioning through the setup endpoint", async () => {
+    const payload = {
+      ready: false,
+      running: true,
+      progress: 0.2,
+      message: "Downloading",
+      error: null,
+      active_component: "chat_model",
+      components: [],
+    };
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify(payload), {
+      status: 202,
+      headers: { "Content-Type": "application/json" },
+    }));
+    globalThis.fetch = fetchMock;
+
+    const result = await api.startSetup();
+
+    expect(result.running).toBe(true);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/setup");
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: "POST" });
+  });
+});

@@ -19,21 +19,81 @@ This folder now contains the first local rewrite scaffold:
 
 Developer quick start:
 
+On Windows, double-click `start_teacherlm.cmd`. It bypasses a restrictive
+PowerShell execution policy only for its child processes, starts Ollama, the
+local API, and the Vite UI in order, then opens `http://127.0.0.1:1420`.
+
+The equivalent two-terminal flow is:
+
 ```powershell
 cd C:\Users\melha_eay78bj\Desktop\teacherlm\local_teacherlm
-python -m pip install -r python\local_api\requirements.txt
-.\scripts\dev_api.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev_api.ps1
 ```
+
+On Windows, `dev_api.ps1` starts the installed Ollama runtime when port `11434`
+is not already healthy, stores its models under the TeacherLM app-data
+directory, and stops only the Ollama process it started when the API exits. It
+checks `TEACHERLM_OLLAMA_EXE`, `PATH`, and the standard per-user Ollama install
+directory. This makes the browser/Vite development route use the same local
+model setup flow as the Tauri app.
 
 In another terminal:
 
 ```powershell
-cd C:\Users\melha_eay78bj\Desktop\teacherlm\local_teacherlm\apps\desktop
-npm.cmd install
-npm.cmd run dev
+cd C:\Users\melha_eay78bj\Desktop\teacherlm\local_teacherlm
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev_desktop.ps1
 ```
 
 The Tauri installer path requires Rust/Cargo plus platform webview build tools.
+
+## Windows Installer And Download Site
+
+TeacherLM now has a Windows-first release path that produces one student-facing
+installer: `TeacherLM-Setup.exe`. Students do not need Python, Node.js, Rust,
+Docker, or Ollama installed.
+
+The installer contains:
+
+- the Tauri desktop application,
+- the frozen FastAPI local sidecar and all Python runtime dependencies,
+- the official standalone Ollama Windows runtime,
+- the local ingestion, retrieval, quiz, mind-map, podcast, and course-building
+  code currently present in this desktop app.
+
+On first launch, the app downloads and prepares the large runtime models in
+the TeacherLM app-data directory: the default Ollama chat model, fastembed
+embedding model, cross-encoder reranker, and the English and French podcast
+voice packs. The setup screen reports each component separately and can retry a
+failed download. Later launches reuse those local caches.
+
+Build the installer on a Windows x64 machine with Python 3.14+, Node.js 24+, and
+the stable Rust toolchain:
+
+```powershell
+cd C:\Users\melha_eay78bj\Desktop\teacherlm
+.\local_teacherlm\packaging\windows\build.ps1 -Version 0.1.0
+```
+
+Release artifacts are written to `local_teacherlm/release/`:
+
+- `TeacherLM-Setup.exe` (stable website download name),
+- `TeacherLM-Setup-<version>.exe`,
+- `release-manifest.json` with size and SHA-256.
+
+The build resolves the pinned official Ollama GitHub release and accepts its
+GitHub-published SHA-256 asset digest. Update `OllamaVersion` deliberately when
+upgrading the runtime. For a custom Ollama archive, both
+`TEACHERLM_OLLAMA_URL` and `TEACHERLM_OLLAMA_SHA256` are required.
+
+Tagging a commit as `v<version>` runs `.github/workflows/windows-release.yml`,
+builds the installer, and attaches the stable and versioned files to a GitHub
+release. `.github/workflows/pages.yml` deploys the static download website from
+`website/`; its download buttons point to the stable latest-release asset.
+
+For a public release, configure `WINDOWS_CERTIFICATE_BASE64` and
+`WINDOWS_CERTIFICATE_PASSWORD` repository secrets with an Authenticode code
+signing certificate. Unsigned test installers run, but Windows SmartScreen may
+show an unrecognized-publisher warning.
 
 ### Local podcast audio
 
