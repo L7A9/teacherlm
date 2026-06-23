@@ -80,6 +80,7 @@ import type {
   ParserSettings,
   ProviderRead,
   RetrievalSettings,
+  SetupStatus,
   SourceFile,
   StreamEvent,
 } from "./types";
@@ -175,6 +176,8 @@ export default function App() {
   const [chatStreaming, setChatStreaming] = useState(false);
   const [status, setStatus] = useState("Starting");
   const [bootstrapped, setBootstrapped] = useState(false);
+  const [setup, setSetup] = useState<SetupStatus | null>(null);
+  const [setupError, setSetupError] = useState("");
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [conversationToDelete, setConversationToDelete] = useState<Conversation | null>(null);
@@ -196,12 +199,21 @@ export default function App() {
   const [podcastDialogOpen, setPodcastDialogOpen] = useState(false);
   const [podcastForm, setPodcastForm] = useState<PodcastForm>(DEFAULT_PODCAST_FORM);
   const activeChatController = useRef<AbortController | null>(null);
+  const appDataBootstrap = useRef<Promise<void> | null>(null);
 
   const routeConversationId = route.kind === "conversation" ? route.conversationId : null;
 
   useEffect(() => {
     void bootstrap();
   }, []);
+
+  useEffect(() => {
+    if (!setup || setup.ready || bootstrapped) return;
+    const timer = window.setInterval(() => {
+      void refreshSetup();
+    }, 1200);
+    return () => window.clearInterval(timer);
+  }, [setup?.ready, bootstrapped]);
 
   useEffect(() => {
     const handlePopState = () => setRoute(routeFromLocation());
@@ -237,7 +249,57 @@ export default function App() {
 
   async function bootstrap() {
     setStatus("Connecting");
-    await api.health();
+    try {
+      await waitForApi();
+      const currentSetup = await api.setupStatus();
+      setSetup(currentSetup);
+      if (!currentSetup.ready) {
+        const started = await api.startSetup();
+        setSetup(started);
+        setStatus("Setting up");
+        return;
+      }
+      await bootstrapAppData();
+    } catch (error) {
+      setSetupError(error instanceof Error ? error.message : "TeacherLM could not start its local services.");
+      setStatus("Startup failed");
+    }
+  }
+
+  async function refreshSetup() {
+    try {
+      const currentSetup = await api.setupStatus();
+      setSetup(currentSetup);
+      setSetupError("");
+      if (currentSetup.ready) await bootstrapAppData();
+    } catch (error) {
+      setSetupError(error instanceof Error ? error.message : "Could not read setup progress.");
+    }
+  }
+
+  async function retrySetup() {
+    setSetupError("");
+    try {
+      const started = await api.startSetup();
+      setSetup(started);
+      setStatus("Setting up");
+    } catch (error) {
+      setSetupError(error instanceof Error ? error.message : "Setup could not be restarted.");
+    }
+  }
+
+  async function bootstrapAppData() {
+    if (bootstrapped) return;
+    if (appDataBootstrap.current) return appDataBootstrap.current;
+    appDataBootstrap.current = loadAppData();
+    try {
+      await appDataBootstrap.current;
+    } finally {
+      appDataBootstrap.current = null;
+    }
+  }
+
+  async function loadAppData() {
     const [conversationResponse, generatorResponse, providerResponse, parserResponse, courseBuilderResponse, generatorSettingsResponse, retrievalResponse] = await Promise.all([
       api.listConversations(),
       api.generators(),
@@ -756,6 +818,16 @@ export default function App() {
     readyFiles.length === 0 ? "Wait until at least one course file is ready." : "Select at least one source file.";
   const hint = buildHint(learner);
 
+  if (!bootstrapped) {
+    return (
+      <SetupPage
+        setup={setup}
+        error={setupError}
+        onRetry={() => void retrySetup()}
+      />
+    );
+  }
+
   if (route.kind === "settings") {
     return (
       <SettingsPage
@@ -886,6 +958,110 @@ export default function App() {
         />
       )}
     </>
+  );
+}
+
+function SetupPage({
+  setup,
+  error,
+  onRetry,
+}: {
+  setup: SetupStatus | null;
+  error: string;
+  onRetry: () => void;
+}) {
+  const progress = Math.max(0, Math.min(100, Math.round((setup?.progress ?? 0) * 100)));
+  const visibleError = setup?.error || error;
+  return (
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-5 py-10">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,hsl(var(--primary)/0.18),transparent_32%),radial-gradient(circle_at_85%_80%,hsl(var(--accent)/0.13),transparent_30%)]" />
+      <section className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl shadow-black/15">
+        <div className="border-b border-border px-6 py-6 sm:px-8">
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
+              <GraduationCap className="h-7 w-7" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">TeacherLM</p>
+              <h1 className="mt-1 text-xl font-semibold tracking-tight">Preparing your private AI teacher</h1>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                The first setup downloads the chat, search, ranking, and podcast voice models. Keep this window open; once finished, your course files and models stay on this computer.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-5 px-6 py-6 sm:px-8">
+          <div>
+            <div className="mb-2 flex items-center justify-between gap-4 text-sm">
+              <span className="font-medium">{setup?.message || "Starting local services"}</span>
+              <span className="tabular-nums text-muted-foreground">{progress}%</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-primary to-accent transition-[width] duration-500"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            {(setup?.components ?? []).map((component) => (
+              <div key={component.id} className="flex items-center gap-3 rounded-lg border border-border bg-background/65 px-3 py-3">
+                <div className={cn(
+                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+                  component.status === "ready" && "bg-success/15 text-success",
+                  component.status === "error" && "bg-danger/15 text-danger",
+                  component.status === "downloading" && "bg-primary/15 text-primary",
+                  component.status === "pending" && "bg-muted text-muted-foreground",
+                )}>
+                  {component.status === "ready" ? (
+                    <Check className="h-4 w-4" />
+                  ) : component.status === "error" ? (
+                    <AlertCircle className="h-4 w-4" />
+                  ) : component.status === "downloading" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{component.label}</p>
+                  <p className="truncate text-xs text-muted-foreground">{component.detail || "Waiting"}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {!setup?.components.length && !visibleError && (
+            <div className="flex items-center justify-center gap-3 rounded-lg border border-border bg-background/65 px-4 py-7 text-sm text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              Starting TeacherLM's local services…
+            </div>
+          )}
+
+          {visibleError && (
+            <div className="flex flex-col gap-3 rounded-lg border border-danger/30 bg-danger/10 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-danger" />
+                <div>
+                  <p className="text-sm font-medium">Setup paused</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{visibleError}</p>
+                </div>
+              </div>
+              <Button variant="secondary" onClick={onRetry} className="shrink-0">
+                <RotateCcw className="h-4 w-4" />
+                Retry
+              </Button>
+            </div>
+          )}
+
+          <p className="text-center text-xs text-muted-foreground">
+            Download time depends on your connection. The chat model is the largest component.
+          </p>
+        </div>
+      </section>
+    </main>
   );
 }
 
@@ -4485,6 +4661,20 @@ function optimisticMessage(conversationId: string, role: string, content: string
 
 function cn(...classes: Array<string | false | null | undefined>): string {
   return classes.filter(Boolean).join(" ");
+}
+
+async function waitForApi(): Promise<void> {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    try {
+      await api.health();
+      return;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => window.setTimeout(resolve, 250));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("The local TeacherLM API did not start.");
 }
 
 function isAbortError(error: unknown): boolean {

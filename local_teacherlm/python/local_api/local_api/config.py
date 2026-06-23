@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from functools import lru_cache
 from pathlib import Path
 
@@ -8,7 +9,15 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+def _runtime_root() -> Path:
+    """Return the source root or PyInstaller's extracted resource directory."""
+    frozen_root = getattr(sys, "_MEIPASS", None)
+    if frozen_root:
+        return Path(frozen_root)
+    return Path(__file__).resolve().parents[3]
+
+
+PROJECT_ROOT = _runtime_root()
 
 
 class Settings(BaseSettings):
@@ -87,6 +96,18 @@ class Settings(BaseSettings):
     @property
     def secret_key_path(self) -> Path:
         return self.data_dir / "secrets.key"
+
+    @property
+    def models_dir(self) -> Path:
+        return self.data_dir / "models"
+
+    @property
+    def embedding_cache_dir(self) -> Path:
+        return self.models_dir / "embeddings"
+
+    @property
+    def reranker_cache_dir(self) -> Path:
+        return self.models_dir / "rerankers"
 
 
 @lru_cache(maxsize=1)

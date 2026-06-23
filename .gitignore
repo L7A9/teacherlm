@@ -164,6 +164,14 @@ datasets/
 generators/*/artifacts/
 platform/backend/artifacts/
 *.tex
+/local_teacherlm/.packaging/
+/local_teacherlm/.teacherlm-run/
+/local_teacherlm/release/
+/local_teacherlm/rust/tauri_shell/target/
+/local_teacherlm/rust/tauri_shell/resources/api/*
+!/local_teacherlm/rust/tauri_shell/resources/api/.gitkeep
+/local_teacherlm/rust/tauri_shell/resources/ollama/*
+!/local_teacherlm/rust/tauri_shell/resources/ollama/.gitkeep
 
 # ============================================
 # VECTOR DB / CHROMADB / QDRANT

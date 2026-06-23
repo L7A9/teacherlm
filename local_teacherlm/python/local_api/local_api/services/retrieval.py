@@ -12,6 +12,7 @@ from teacherlm_core.retrieval import BM25Index, build_hyde_prompt, rrf_fuse, sho
 from teacherlm_core.retrieval.reranker import CrossEncoderReranker
 from teacherlm_core.schemas.chunk import Chunk
 
+from local_api.config import get_settings
 from local_api.db import get_store
 from local_api.services.knowledge_graph import get_knowledge_graph_service
 from local_api.services.settings import get_settings_service
@@ -285,7 +286,10 @@ class RetrievalService:
             return chunks[:top_k]
         try:
             if self._reranker is None or self._reranker_model != settings.retrieval_reranker_model:
-                self._reranker = CrossEncoderReranker(settings.retrieval_reranker_model)
+                self._reranker = CrossEncoderReranker(
+                    settings.retrieval_reranker_model,
+                    cache_dir=str(get_settings().reranker_cache_dir),
+                )
                 self._reranker_model = settings.retrieval_reranker_model
             labels = _comparison_labels(chunks)
             if len(labels) >= 2:

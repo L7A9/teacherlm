@@ -9,8 +9,8 @@
     "preview": "vite preview --host 127.0.0.1 --port 1420",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "tauri:dev": "tauri dev --config ../../rust/tauri_shell/tauri.conf.json",
-    "tauri:build": "tauri build --config ../../rust/tauri_shell/tauri.conf.json"
+    "tauri:dev": "cd ../../rust/tauri_shell && ..\\..\\apps\\desktop\\node_modules\\.bin\\tauri.cmd dev",
+    "tauri:build": "cd ../../rust/tauri_shell && ..\\..\\apps\\desktop\\node_modules\\.bin\\tauri.cmd build"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.59.0",

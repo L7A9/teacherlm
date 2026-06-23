@@ -113,6 +113,23 @@ export type GeneratorSettings = {
   podcast_audio_enabled: boolean;
 };
 
+export type SetupComponent = {
+  id: string;
+  label: string;
+  status: "pending" | "downloading" | "ready" | "error" | string;
+  detail: string;
+};
+
+export type SetupStatus = {
+  ready: boolean;
+  running: boolean;
+  progress: number;
+  message: string;
+  error: string | null;
+  active_component: string | null;
+  components: SetupComponent[];
+};
+
 export type RetrievalSettings = {
   embedding_model: string;
   embedding_dim: number;
