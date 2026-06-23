@@ -3,7 +3,7 @@ param(
     [string]$Version = "0.1.0",
     [string]$Python = "python",
     [string]$OllamaVersion = "v0.30.10",
-    [ValidateSet("All", "Python", "Ollama", "Frontend", "Tauri")]
+    [ValidateSet("All", "Python", "Ollama", "Frontend", "Tauri", "Rust", "Installer")]
     [string]$Stage = "All",
     [switch]$SkipTests,
     [switch]$SkipOllamaDownload
@@ -145,7 +145,7 @@ if ($Stage -in @("All", "Frontend")) {
     }
 }
 
-if ($Stage -in @("All", "Tauri")) {
+if ($Stage -in @("All", "Tauri", "Rust", "Installer")) {
     $ReleaseConfig = Join-Path $Work "tauri-release.json"
     $ReleaseConfigData = @{ version = $Version }
     if ($env:TAURI_WINDOWS_CERTIFICATE_THUMBPRINT) {
@@ -159,16 +159,40 @@ if ($Stage -in @("All", "Tauri")) {
     }
     $ReleaseConfigData | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $ReleaseConfig -Encoding utf8
     $TauriCli = Join-Path $Desktop "node_modules\.bin\tauri.cmd"
+}
+
+if ($Stage -in @("All", "Tauri", "Rust")) {
     Push-Location $Tauri
     try {
-        Invoke-Checked {
-            & $TauriCli build --config $ReleaseConfig
-        } "The TeacherLM Windows installer could not be built."
+        if ($Stage -eq "Rust") {
+            Invoke-Checked {
+                & $TauriCli build --no-bundle --config $ReleaseConfig
+            } "The TeacherLM Windows application could not be compiled."
+        }
+        else {
+            Invoke-Checked {
+                & $TauriCli build --config $ReleaseConfig
+            } "The TeacherLM Windows installer could not be built."
+        }
     }
     finally {
         Pop-Location
     }
+}
 
+if ($Stage -eq "Installer") {
+    Push-Location $Tauri
+    try {
+        Invoke-Checked {
+            & $TauriCli bundle --bundles nsis --config $ReleaseConfig
+        } "The TeacherLM NSIS installer could not be packaged."
+    }
+    finally {
+        Pop-Location
+    }
+}
+
+if ($Stage -in @("All", "Tauri", "Installer")) {
     $Installer = Get-ChildItem -Path (Join-Path $Tauri "target\release\bundle\nsis") -Filter "*.exe" | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
     if (-not $Installer) {
         throw "Tauri completed without producing an NSIS installer."

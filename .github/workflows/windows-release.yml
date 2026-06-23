@@ -70,9 +70,13 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File .\local_teacherlm\packaging\windows\build.ps1 -Version "${{ steps.version.outputs.value }}" -Stage Frontend -SkipTests
 
-      - name: Build Windows installer
+      - name: Compile Windows application
         shell: pwsh
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File .\local_teacherlm\packaging\windows\build.ps1 -Version "${{ steps.version.outputs.value }}" -Stage Tauri
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File .\local_teacherlm\packaging\windows\build.ps1 -Version "${{ steps.version.outputs.value }}" -Stage Rust
+
+      - name: Package NSIS installer
+        shell: pwsh
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File .\local_teacherlm\packaging\windows\build.ps1 -Version "${{ steps.version.outputs.value }}" -Stage Installer
 
       - uses: actions/upload-artifact@v7
         with:
