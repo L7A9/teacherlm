@@ -62,10 +62,6 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File .\local_teacherlm\packaging\windows\build.ps1 -Version "${{ steps.version.outputs.value }}" -Stage Python -SkipTests
 
-      - name: Bundle Ollama runtime
-        shell: pwsh
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File .\local_teacherlm\packaging\windows\build.ps1 -Version "${{ steps.version.outputs.value }}" -Stage Ollama
-
       - name: Build desktop frontend
         shell: pwsh
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File .\local_teacherlm\packaging\windows\build.ps1 -Version "${{ steps.version.outputs.value }}" -Stage Frontend -SkipTests

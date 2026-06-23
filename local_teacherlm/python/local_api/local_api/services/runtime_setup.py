@@ -96,9 +96,9 @@ class RuntimeSetupService:
 
     async def _prepare_ollama(self) -> None:
         component_id = "ollama_runtime"
-        self._begin(component_id, 0.02, "Starting the local AI engine")
+        self._begin(component_id, 0.02, "Preparing the local AI engine (about 1.4 GB)")
         base_url = get_settings().default_ollama_base_url.rstrip("/")
-        for _ in range(60):
+        for _ in range(7_200):
             try:
                 async with httpx.AsyncClient(timeout=1.0) as client:
                     response = await client.get(f"{base_url}/api/version")
@@ -107,9 +107,22 @@ class RuntimeSetupService:
                         return
             except httpx.HTTPError:
                 pass
-            await asyncio.sleep(0.5)
+            install_error = _read_ollama_runtime_marker("ollama-install-error.txt")
+            if install_error:
+                raise RuntimeError(f"Local AI engine setup failed: {install_error}")
+            downloaded, total = _ollama_download_progress()
+            if downloaded > 0:
+                if total > 0:
+                    percent = min(100, round((downloaded / total) * 100))
+                    message = f"Downloading the local AI engine ({percent}%)"
+                    self._progress = max(self._progress, 0.02 + (downloaded / total) * 0.03)
+                else:
+                    message = "Downloading the local AI engine"
+                self._message = message
+                self._details[component_id] = message
+            await asyncio.sleep(1.0)
         raise RuntimeError(
-            "The bundled local AI engine did not start. Restart TeacherLM and try again."
+            "The local AI engine did not finish installing. Check your connection and restart TeacherLM."
         )
 
     async def _prepare_chat_model(self) -> None:
@@ -209,7 +222,17 @@ class RuntimeSetupService:
                         self._details["chat_model"] = "Not downloaded"
         except httpx.HTTPError:
             self._states["ollama_runtime"] = "pending"
-            self._details["ollama_runtime"] = "Waiting for local engine"
+            install_error = _read_ollama_runtime_marker("ollama-install-error.txt")
+            downloaded, total = _ollama_download_progress()
+            if install_error:
+                self._states["ollama_runtime"] = "error"
+                self._details["ollama_runtime"] = install_error
+            elif downloaded > 0 and total > 0:
+                percent = min(100, round((downloaded / total) * 100))
+                self._states["ollama_runtime"] = "downloading"
+                self._details["ollama_runtime"] = f"Downloading ({percent}%)"
+            else:
+                self._details["ollama_runtime"] = "Waiting for local engine"
             self._states["chat_model"] = "pending"
             self._details["chat_model"] = "Waiting for local engine"
         except Exception:  # noqa: BLE001 - setup remains retryable when the engine is starting.
@@ -284,6 +307,23 @@ def _ollama_model_names(response: Any) -> set[str]:
             names.add(text)
             names.add(text.removesuffix(":latest"))
     return names
+
+
+def _read_ollama_runtime_marker(filename: str) -> str:
+    path = get_settings().data_dir / "runtime" / filename
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def _ollama_download_progress() -> tuple[int, int]:
+    marker = _read_ollama_runtime_marker("ollama-download-progress.txt")
+    try:
+        downloaded_text, total_text = marker.split(",", maxsplit=1)
+        return max(0, int(downloaded_text)), max(0, int(total_text))
+    except (TypeError, ValueError):
+        return 0, 0
 
 
 _runtime_setup_service: RuntimeSetupService | None = None

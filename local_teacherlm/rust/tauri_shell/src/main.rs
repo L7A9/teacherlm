@@ -1,13 +1,20 @@
 use std::{
     env,
     fs::{self, File, OpenOptions},
+    io::{Read, Write},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::Mutex,
     time::Duration,
 };
 
+use sha2::{Digest, Sha256};
 use tauri::{Manager, State};
+
+const OLLAMA_VERSION: &str = "v0.30.10";
+const OLLAMA_DOWNLOAD_URL: &str =
+    "https://github.com/ollama/ollama/releases/download/v0.30.10/ollama-windows-amd64.zip";
+const OLLAMA_SHA256: &str = "9606cee7501703a0969682667def313130f99ed73f44a88a7a8efe82d4b565f0";
 
 struct RuntimeState {
     api: Mutex<Option<Child>>,
@@ -65,18 +72,24 @@ fn start_ollama(app: &tauri::AppHandle, state: State<RuntimeState>) -> Result<()
     if service_healthy("http://127.0.0.1:11434/api/version") {
         return Ok(());
     }
-    let mut guard = state.ollama.lock().map_err(|error| error.to_string())?;
-    if guard.is_some() {
-        return Ok(());
-    }
 
     let app_data = app
         .path()
         .app_data_dir()
         .map_err(|error| error.to_string())?;
+    fs::create_dir_all(&app_data).map_err(|error| error.to_string())?;
+    let _ = fs::remove_file(app_data.join("runtime").join("ollama-install-error.txt"));
     let models_dir = app_data.join("models").join("ollama");
     fs::create_dir_all(&models_dir).map_err(|error| error.to_string())?;
-    let executable = find_ollama_executable(app);
+    let executable = match find_ollama_executable(app, &app_data) {
+        Some(executable) => executable,
+        None => install_ollama_runtime(&app_data)?,
+    };
+
+    let mut guard = state.ollama.lock().map_err(|error| error.to_string())?;
+    if guard.is_some() {
+        return Ok(());
+    }
     let working_dir = executable
         .parent()
         .filter(|path| path.exists())
@@ -96,7 +109,7 @@ fn start_ollama(app: &tauri::AppHandle, state: State<RuntimeState>) -> Result<()
     }
     let child = command
         .spawn()
-        .map_err(|error| format!("failed to start the bundled Ollama runtime: {error}"))?;
+        .map_err(|error| format!("failed to start the local Ollama runtime: {error}"))?;
     *guard = Some(child);
     Ok(())
 }
@@ -151,14 +164,18 @@ fn bundled_executable(app: &tauri::AppHandle, directory: &str, filename: &str) -
     .find(|candidate| candidate.is_file())
 }
 
-fn find_ollama_executable(app: &tauri::AppHandle) -> PathBuf {
+fn find_ollama_executable(app: &tauri::AppHandle, app_data: &Path) -> Option<PathBuf> {
     if let Some(executable) = bundled_executable(app, "ollama", "ollama.exe") {
-        return executable;
+        return Some(executable);
+    }
+    let downloaded = app_data.join("runtime").join("ollama").join("ollama.exe");
+    if downloaded.is_file() {
+        return Some(downloaded);
     }
     if let Some(configured) = env::var_os("TEACHERLM_OLLAMA_EXE") {
         let executable = PathBuf::from(configured);
         if executable.is_file() {
-            return executable;
+            return Some(executable);
         }
     }
     if let Some(local_app_data) = env::var_os("LOCALAPPDATA") {
@@ -167,10 +184,159 @@ fn find_ollama_executable(app: &tauri::AppHandle) -> PathBuf {
             .join("Ollama")
             .join("ollama.exe");
         if executable.is_file() {
-            return executable;
+            return Some(executable);
         }
     }
-    PathBuf::from("ollama")
+    None
+}
+
+fn install_ollama_runtime(app_data: &Path) -> Result<PathBuf, String> {
+    let runtime_root = app_data.join("runtime");
+    let target = runtime_root.join("ollama");
+    let archive = runtime_root.join(format!("ollama-{OLLAMA_VERSION}-windows-amd64.zip.part"));
+    let staging = runtime_root.join("ollama-extracting");
+    let progress = runtime_root.join("ollama-download-progress.txt");
+    let error_marker = runtime_root.join("ollama-install-error.txt");
+    fs::create_dir_all(&runtime_root).map_err(|error| error.to_string())?;
+    let _ = fs::remove_file(&error_marker);
+    let _ = fs::remove_file(&progress);
+    let _ = fs::remove_file(&archive);
+    remove_directory_if_present(&staging)?;
+
+    let result = (|| -> Result<PathBuf, String> {
+        download_ollama_archive(&archive, &progress)?;
+        verify_sha256(&archive, OLLAMA_SHA256)?;
+        extract_zip(&archive, &staging)?;
+        let executable = find_named_file(&staging, "ollama.exe")
+            .ok_or("the downloaded Ollama archive did not contain ollama.exe")?;
+        let source = executable
+            .parent()
+            .ok_or("the downloaded Ollama executable had no parent directory")?
+            .to_path_buf();
+        remove_directory_if_present(&target)?;
+        fs::rename(&source, &target)
+            .map_err(|error| format!("could not install the downloaded Ollama runtime: {error}"))?;
+        if staging.exists() {
+            remove_directory_if_present(&staging)?;
+        }
+        let installed = target.join("ollama.exe");
+        if !installed.is_file() {
+            return Err("the installed Ollama runtime is incomplete".to_string());
+        }
+        Ok(installed)
+    })();
+
+    let _ = fs::remove_file(&archive);
+    let _ = fs::remove_file(&progress);
+    if let Err(error) = &result {
+        let _ = fs::write(&error_marker, error.as_bytes());
+    } else {
+        let _ = fs::remove_file(&error_marker);
+    }
+    result
+}
+
+fn download_ollama_archive(destination: &Path, progress_path: &Path) -> Result<(), String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(60 * 60 * 2))
+        .build()
+        .map_err(|error| format!("could not initialize the Ollama download: {error}"))?;
+    let mut response = client
+        .get(OLLAMA_DOWNLOAD_URL)
+        .send()
+        .and_then(reqwest::blocking::Response::error_for_status)
+        .map_err(|error| format!("could not download the local AI engine: {error}"))?;
+    let total = response.content_length().unwrap_or(0);
+    let mut output = File::create(destination)
+        .map_err(|error| format!("could not create the Ollama download: {error}"))?;
+    let mut buffer = vec![0_u8; 1024 * 1024];
+    let mut downloaded = 0_u64;
+    loop {
+        let count = response
+            .read(&mut buffer)
+            .map_err(|error| format!("the Ollama download was interrupted: {error}"))?;
+        if count == 0 {
+            break;
+        }
+        output
+            .write_all(&buffer[..count])
+            .map_err(|error| format!("could not save the Ollama download: {error}"))?;
+        downloaded += count as u64;
+        let _ = fs::write(progress_path, format!("{downloaded},{total}"));
+    }
+    output
+        .sync_all()
+        .map_err(|error| format!("could not finish the Ollama download: {error}"))?;
+    Ok(())
+}
+
+fn verify_sha256(path: &Path, expected: &str) -> Result<(), String> {
+    let mut input = File::open(path).map_err(|error| error.to_string())?;
+    let mut hasher = Sha256::new();
+    let mut buffer = vec![0_u8; 1024 * 1024];
+    loop {
+        let count = input.read(&mut buffer).map_err(|error| error.to_string())?;
+        if count == 0 {
+            break;
+        }
+        hasher.update(&buffer[..count]);
+    }
+    let actual = format!("{:x}", hasher.finalize());
+    if actual != expected {
+        return Err("the local AI engine download failed SHA-256 verification".to_string());
+    }
+    Ok(())
+}
+
+fn extract_zip(archive_path: &Path, destination: &Path) -> Result<(), String> {
+    fs::create_dir_all(destination).map_err(|error| error.to_string())?;
+    let archive_file = File::open(archive_path).map_err(|error| error.to_string())?;
+    let mut archive = zip::ZipArchive::new(archive_file).map_err(|error| error.to_string())?;
+    for index in 0..archive.len() {
+        let mut entry = archive.by_index(index).map_err(|error| error.to_string())?;
+        let relative = entry
+            .enclosed_name()
+            .ok_or("the Ollama archive contained an unsafe path")?
+            .to_path_buf();
+        let output = destination.join(relative);
+        if entry.is_dir() {
+            fs::create_dir_all(&output).map_err(|error| error.to_string())?;
+            continue;
+        }
+        if let Some(parent) = output.parent() {
+            fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
+        let mut file = File::create(&output).map_err(|error| error.to_string())?;
+        std::io::copy(&mut entry, &mut file).map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+fn find_named_file(root: &Path, filename: &str) -> Option<PathBuf> {
+    for entry in fs::read_dir(root).ok()?.filter_map(Result::ok) {
+        let path = entry.path();
+        if path.is_file()
+            && entry
+                .file_name()
+                .to_string_lossy()
+                .eq_ignore_ascii_case(filename)
+        {
+            return Some(path);
+        }
+        if path.is_dir() {
+            if let Some(found) = find_named_file(&path, filename) {
+                return Some(found);
+            }
+        }
+    }
+    None
+}
+
+fn remove_directory_if_present(path: &Path) -> Result<(), String> {
+    if path.exists() {
+        fs::remove_dir_all(path).map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
 
 fn development_api_command() -> Result<Command, String> {
@@ -228,12 +394,23 @@ fn main() {
         .manage(RuntimeState::new())
         .setup(|app| {
             let handle = app.handle().clone();
-            if let Err(error) = start_ollama(&handle, handle.state::<RuntimeState>()) {
-                eprintln!("{error}");
-            }
             if let Err(error) = start_python_sidecar(&handle, handle.state::<RuntimeState>()) {
                 eprintln!("{error}");
             }
+            let ollama_handle = handle.clone();
+            std::thread::spawn(move || {
+                if let Err(error) =
+                    start_ollama(&ollama_handle, ollama_handle.state::<RuntimeState>())
+                {
+                    eprintln!("{error}");
+                    if let Ok(app_data) = ollama_handle.path().app_data_dir() {
+                        let runtime = app_data.join("runtime");
+                        let _ = fs::create_dir_all(&runtime);
+                        let _ =
+                            fs::write(runtime.join("ollama-install-error.txt"), error.as_bytes());
+                    }
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![sidecar_health, app_data_dir])

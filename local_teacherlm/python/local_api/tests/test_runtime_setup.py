@@ -28,6 +28,20 @@ def test_ollama_model_names_normalizes_latest_tag() -> None:
     }
 
 
+def test_ollama_download_progress_reads_runtime_marker(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("TEACHERLM_APP_DATA_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    marker = tmp_path / "runtime" / "ollama-download-progress.txt"
+    marker.parent.mkdir(parents=True)
+    marker.write_text("25,100", encoding="utf-8")
+
+    assert runtime_setup._ollama_download_progress() == (25, 100)
+
+    marker.write_text("invalid", encoding="utf-8")
+    assert runtime_setup._ollama_download_progress() == (0, 0)
+    get_settings.cache_clear()
+
+
 def test_setup_status_recovers_completed_components(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("TEACHERLM_APP_DATA_DIR", str(tmp_path))
     get_settings.cache_clear()

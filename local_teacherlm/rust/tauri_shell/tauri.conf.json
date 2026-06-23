@@ -38,8 +38,7 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "resources/api/": "api/",
-      "resources/ollama/": "ollama/"
+      "resources/api/": "api/"
     },
     "windows": {
       "allowDowngrades": false,

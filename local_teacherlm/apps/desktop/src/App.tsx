@@ -985,7 +985,7 @@ function SetupPage({
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">TeacherLM</p>
               <h1 className="mt-1 text-xl font-semibold tracking-tight">Preparing your private AI teacher</h1>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                The first setup downloads the chat, search, ranking, and podcast voice models. Keep this window open; once finished, your course files and models stay on this computer.
+                The first setup downloads the local AI engine plus the chat, search, ranking, and podcast voice models. Keep this window open; once finished, your course files and models stay on this computer.
               </p>
             </div>
           </div>

@@ -88,11 +88,11 @@ if ($Stage -in @("All", "Python")) {
     Copy-Item -Path (Join-Path $PyInstallerWork "dist\teacherlm-local-api\*") -Destination $ApiResources -Recurse -Force
 }
 
-if ($Stage -in @("All", "Ollama")) {
+if ($Stage -eq "Ollama") {
     Initialize-ResourceDirectory $OllamaResources
 }
 
-if ($Stage -in @("All", "Ollama") -and -not $SkipOllamaDownload) {
+if ($Stage -eq "Ollama" -and -not $SkipOllamaDownload) {
     $OllamaArchive = Join-Path $Work "ollama-windows-amd64.zip"
     $ExpectedHash = $env:TEACHERLM_OLLAMA_SHA256
     $CustomUrl = $env:TEACHERLM_OLLAMA_URL

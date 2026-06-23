@@ -56,22 +56,23 @@ The installer contains:
 
 - the Tauri desktop application,
 - the frozen FastAPI local sidecar and all Python runtime dependencies,
-- the official standalone Ollama Windows runtime,
 - the local ingestion, retrieval, quiz, mind-map, podcast, and course-building
   code currently present in this desktop app.
 
-On first launch, the app downloads and prepares the large runtime models in
-the TeacherLM app-data directory: the default Ollama chat model, fastembed
-embedding model, cross-encoder reranker, and the English and French podcast
-voice packs. The setup screen reports each component separately and can retry a
-failed download. Later launches reuse those local caches.
+On first launch, the app downloads the pinned official Ollama Windows runtime,
+verifies its SHA-256 digest, and prepares the large runtime models in the
+TeacherLM app-data directory: the default Ollama chat model, fastembed embedding
+model, cross-encoder reranker, and the English and French podcast voice packs.
+The setup screen reports each component separately and can retry a failed
+download. Later launches reuse those local caches. Keeping Ollama in first-run
+setup also keeps the Windows installer below the 2 GB NSIS limit.
 
 Build the installer on a Windows x64 machine with Python 3.14+, Node.js 24+, and
 the stable Rust toolchain:
 
 ```powershell
 cd C:\Users\melha_eay78bj\Desktop\teacherlm
-.\local_teacherlm\packaging\windows\build.ps1 -Version 0.1.0
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\local_teacherlm\packaging\windows\build.ps1 -Version 0.1.0
 ```
 
 Release artifacts are written to `local_teacherlm/release/`:
@@ -80,10 +81,11 @@ Release artifacts are written to `local_teacherlm/release/`:
 - `TeacherLM-Setup-<version>.exe`,
 - `release-manifest.json` with size and SHA-256.
 
-The build resolves the pinned official Ollama GitHub release and accepts its
-GitHub-published SHA-256 asset digest. Update `OllamaVersion` deliberately when
-upgrading the runtime. For a custom Ollama archive, both
-`TEACHERLM_OLLAMA_URL` and `TEACHERLM_OLLAMA_SHA256` are required.
+The first-run downloader pins the official Ollama release URL and its
+GitHub-published SHA-256 digest in `rust/tauri_shell/src/main.rs`. Update both
+deliberately when upgrading the runtime. The packaging script's optional
+`-Stage Ollama` mode remains available for offline-build diagnostics, but the
+student installer does not embed that multi-gigabyte runtime.
 
 Tagging a commit as `v<version>` runs `.github/workflows/windows-release.yml`,
 builds the installer, and attaches the stable and versioned files to a GitHub
